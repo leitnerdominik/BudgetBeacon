@@ -1,0 +1,257 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using PTSManagerYC.Core.Entities;
+using PTSManagerYC.Core.Interfaces;
+using PTSManagerYC.Core.Services;
+
+namespace PTSManagerWeb.Api.Controllers;
+
+[ApiController]
+[Authorize]
+[Route("api/[controller]")]
+public class TransactionsController : ControllerBase
+{
+    private const long MaxCsvUploadSizeBytes = 5 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedCsvExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".csv"
+    };
+    private static readonly HashSet<string> AllowedCsvContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "text/csv",
+        "application/csv",
+        "application/vnd.ms-excel"
+    };
+
+    private readonly ITransactionRepository _repository;
+    private readonly FinanceAggregationService _aggregationService;
+    private readonly IAiAdvisorService _aiService;
+    private readonly ICsvReaderService _csvReader;
+    private readonly ILogger<TransactionsController> _logger;
+
+    public TransactionsController(
+        ITransactionRepository repository,
+        FinanceAggregationService aggregationService,
+        IAiAdvisorService aiService,
+        ICsvReaderService csvReader,
+        ILogger<TransactionsController> logger)
+    {
+        _repository = repository;
+        _aggregationService = aggregationService;
+        _aiService = aiService;
+        _csvReader = csvReader;
+        _logger = logger;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAllTransactions(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 15)
+    {
+        if (page < 1 || pageSize < 1 || pageSize > 200)
+        {
+            return this.ApiValidationProblem(
+                "Invalid transaction query",
+                "Check the provided pagination values and try again.",
+                errors =>
+                {
+                    if (page < 1)
+                    {
+                        errors.AddModelError(nameof(page), "Page must be greater than 0.");
+                    }
+
+                    if (pageSize < 1 || pageSize > 200)
+                    {
+                        errors.AddModelError(nameof(pageSize), "Page size must be between 1 and 200.");
+                    }
+                });
+        }
+
+        _logger.LogInformation("API requested paginated transactions. Page: {Page}", page);
+        var (items, totalCount) = await _repository.GetTransactionsPagedAsync(startDate, page, pageSize);
+
+        return Ok(new
+        {
+            TotalCount = totalCount,
+            CurrentPage = page,
+            PageSize = pageSize,
+            Data = items
+        });
+    }
+
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetMonthlySummary([FromQuery] int year, [FromQuery] int month)
+    {
+        if (year < 2000 || year > 2100 || month < 1 || month > 12)
+        {
+            return this.ApiValidationProblem(
+                "Invalid summary query",
+                "Year must be between 2000 and 2100, and month must be between 1 and 12.",
+                errors =>
+                {
+                    if (year < 2000 || year > 2100)
+                    {
+                        errors.AddModelError(nameof(year), "Year must be between 2000 and 2100.");
+                    }
+
+                    if (month < 1 || month > 12)
+                    {
+                        errors.AddModelError(nameof(month), "Month must be between 1 and 12.");
+                    }
+                });
+        }
+
+        _logger.LogInformation("API requested monthly summary for {Month}/{Year}", month, year);
+        var transactions = (await _repository.GetByMonthAsync(year, month)).ToList();
+
+        if (!transactions.Any())
+        {
+            return this.ApiProblem(
+                StatusCodes.Status404NotFound,
+                "Monthly summary not found",
+                $"No transactions were found for {month}/{year}.",
+                "urn:ptsmanager:summary-not-found");
+        }
+
+        var incomes = transactions.Where(t => t.Amount > 0).ToList();
+        var expenses = transactions.Where(t => t.Amount < 0).ToList();
+
+        var summary = new
+        {
+            TotalIncome = _aggregationService.CalculateTotal(incomes),
+            TotalExpense = _aggregationService.CalculateTotal(expenses),
+            NetBalance = _aggregationService.CalculateTotal(transactions),
+            AverageExpense = _aggregationService.CalculateAverage(expenses),
+            MedianExpense = _aggregationService.CalculateMedian(expenses),
+            TransactionCount = transactions.Count
+        };
+
+        return Ok(summary);
+    }
+
+    [HttpPost("import")]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxCsvUploadSizeBytes)]
+    [RequestSizeLimit(MaxCsvUploadSizeBytes)]
+    public async Task<IActionResult> UploadCsv([FromForm] IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return this.ApiValidationProblem(
+                "Invalid CSV upload",
+                "A non-empty CSV file is required.",
+                errors => errors.AddModelError(nameof(file), "Please upload a CSV file."));
+        }
+
+        var fileExtension = Path.GetExtension(file.FileName);
+
+        if (!AllowedCsvExtensions.Contains(fileExtension))
+        {
+            return this.ApiValidationProblem(
+                "Invalid CSV upload",
+                "Only .csv files are supported.",
+                errors => errors.AddModelError(nameof(file), "The uploaded file must have a .csv extension."));
+        }
+
+        if (file.Length > MaxCsvUploadSizeBytes)
+        {
+            return this.ApiValidationProblem(
+                "Invalid CSV upload",
+                $"The uploaded file exceeds the {MaxCsvUploadSizeBytes / (1024 * 1024)} MB limit.",
+                errors => errors.AddModelError(nameof(file), "The uploaded file is too large."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(file.ContentType) && !AllowedCsvContentTypes.Contains(file.ContentType))
+        {
+            return this.ApiValidationProblem(
+                "Invalid CSV upload",
+                "The uploaded file does not look like a supported CSV file.",
+                errors => errors.AddModelError(nameof(file), "Unsupported file content type."));
+        }
+
+        _logger.LogInformation("API processing CSV upload: {FileName}", file.FileName);
+
+        using var stream = file.OpenReadStream();
+        var parsedTransactions = _csvReader.ParseTransactions(stream).ToList();
+
+        if (!parsedTransactions.Any())
+        {
+            return this.ApiValidationProblem(
+                "Invalid CSV upload",
+                "No valid transactions were found in the uploaded file.",
+                errors => errors.AddModelError(nameof(file), "The uploaded CSV file does not contain any valid transaction rows."));
+        }
+
+        var existingTransactions = await _repository.GetAllAsync();
+        var existingSignatures = existingTransactions
+            .Select(t => $"{t.Date:yyyyMMdd}_{t.Amount}_{t.Metadata.RawDescription}")
+            .ToHashSet();
+
+        var newTransactions = parsedTransactions
+            .Where(t => !existingSignatures.Contains($"{t.Date:yyyyMMdd}_{t.Amount}_{t.Metadata.RawDescription}"))
+            .ToList();
+
+        if (newTransactions.Any())
+        {
+            await _repository.AddRangeAsync(newTransactions);
+        }
+
+        return Ok(new
+        {
+            Message = "Import successful",
+            TotalParsed = parsedTransactions.Count,
+            Imported = newTransactions.Count,
+            DuplicatesSkipped = parsedTransactions.Count - newTransactions.Count
+        });
+    }
+
+    [HttpPost("ai/categorize")]
+    public async Task<IActionResult> TriggerCategorization()
+    {
+        _logger.LogInformation("API triggered AI categorization.");
+
+        var allTransactions = await _repository.GetAllAsync();
+        var uncategorized = allTransactions.Where(t => t.Category == "Uncategorized").ToList();
+
+        if (!uncategorized.Any())
+        {
+            return Ok(new { Message = "All transactions are already categorized. Nothing to do." });
+        }
+
+        await _aiService.CategorizeTransactionsAsync(uncategorized);
+
+        await _repository.AddRangeAsync(new List<Transaction>());
+
+        return Ok(new { Message = "Categorization successful", ProcessedCount = uncategorized.Count });
+    }
+
+    [HttpGet("ai/tips")]
+    public async Task<IActionResult> GetAiSavingsTips([FromQuery] int monthsBack = 3)
+    {
+        if (monthsBack < 1 || monthsBack > 24)
+        {
+            return this.ApiValidationProblem(
+                "Invalid tips query",
+                "Months back must be between 1 and 24.",
+                errors => errors.AddModelError(nameof(monthsBack), "Months back must be between 1 and 24."));
+        }
+
+        _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
+
+        var startDate = DateTime.Now.AddMonths(-monthsBack);
+        var (transactions, _) = await _repository.GetTransactionsPagedAsync(startDate, 1, 10000);
+
+        if (!transactions.Any())
+        {
+            return this.ApiProblem(
+                StatusCodes.Status404NotFound,
+                "No transactions available for analysis",
+                "No transactions were found in the selected timeframe to generate savings tips.",
+                "urn:ptsmanager:tips-source-data-not-found");
+        }
+
+        var tips = await _aiService.GetSavingTipsAsync(transactions);
+
+        return Ok(new { Timeframe = $"Last {monthsBack} months", Tips = tips });
+    }
+}
