@@ -193,8 +193,8 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<FinzManagerDbContext>();
-        await dbContext.Database.EnsureCreatedAsync();
-        Log.Information("Database connection established and schema is ready.");
+        await dbContext.Database.MigrateAsync();
+        Log.Information("Database migrations applied and schema is ready.");
     }
 
     app.Lifetime.ApplicationStarted.Register(() =>

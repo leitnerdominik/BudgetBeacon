@@ -28,3 +28,6 @@ obj/
 publish/
 logs/
 .vs/
+
+# Codex AI Agent
+.codex-build/
