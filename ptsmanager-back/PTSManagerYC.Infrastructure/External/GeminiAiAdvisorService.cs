@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using PTSManagerYC.Core.Diagnostics;
 using PTSManagerYC.Core.Entities;
 using PTSManagerYC.Core.Exceptions;
 using PTSManagerYC.Core.Interfaces;
@@ -96,7 +97,12 @@ public class GeminiAiAdvisorService : IAiAdvisorService
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
-                _logger.LogError("Gemini API Error: {Error}", error);
+                _logger.LogError(
+                    ObservabilityEventIds.GeminiUpstreamFailure,
+                    "Gemini categorization request failed. StatusCode: {StatusCode}, Model: {Model}, Error: {Error}",
+                    (int)response.StatusCode,
+                    _model,
+                    error);
                 throw new ExternalServiceException("AI categorization is currently unavailable.");
             }
 
@@ -131,7 +137,11 @@ public class GeminiAiAdvisorService : IAiAdvisorService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to parse the JSON response from Gemini for the current batch.");
+                _logger.LogError(
+                    ObservabilityEventIds.GeminiInvalidResponse,
+                    ex,
+                    "Failed to parse Gemini categorization response for model {Model}.",
+                    _model);
             }
         }
 
@@ -198,7 +208,12 @@ public class GeminiAiAdvisorService : IAiAdvisorService
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync();
-            _logger.LogError("Gemini API Error during saving tips: {Error}", error);
+            _logger.LogError(
+                ObservabilityEventIds.GeminiUpstreamFailure,
+                "Gemini savings tips request failed. StatusCode: {StatusCode}, Model: {Model}, Error: {Error}",
+                (int)response.StatusCode,
+                _model,
+                error);
             throw new ExternalServiceException("AI tips are currently unavailable.");
         }
 
@@ -227,7 +242,11 @@ public class GeminiAiAdvisorService : IAiAdvisorService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to parse the saving tips response from Gemini.");
+            _logger.LogError(
+                ObservabilityEventIds.GeminiInvalidResponse,
+                ex,
+                "Failed to parse Gemini savings tips response for model {Model}.",
+                _model);
             throw new ExternalServiceException("The AI provider returned an invalid response.");
         }
     }

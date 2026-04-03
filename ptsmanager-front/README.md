@@ -64,6 +64,8 @@ Key backend decisions:
 - EF Core schema changes are tracked with migrations and applied on startup.
 - Authentication uses ASP.NET Identity with cookie sessions.
 - Unsafe requests are protected with CSRF tokens that the SPA fetches and sends automatically.
+- Health and readiness endpoints expose API, database and Gemini dependency state.
+- Request handling includes correlation IDs for log tracing across failures.
 - Serilog writes API logs to console and rolling log files.
 - Gemini is used for savings tip generation.
 - Swagger is enabled in development.
@@ -86,6 +88,29 @@ Important consequences:
 - the session cookie is sent automatically by the browser
 - CSRF validation is mandatory for unsafe requests
 - transaction data is isolated per authenticated user
+
+## Observability
+
+The backend exposes operational endpoints and structured log signals for runtime monitoring.
+
+Health endpoints:
+
+- `GET /health/live`
+  Confirms that the API process is running.
+- `GET /health/ready`
+  Verifies API readiness, including database connectivity and Gemini configuration.
+
+Request correlation:
+
+- incoming `X-Correlation-ID` headers are respected
+- if no correlation ID is provided, the API generates one
+- the correlation ID is returned in the response header and included in structured logs
+
+Alert-friendly signals:
+
+- unhandled API exceptions are logged with stable event IDs
+- database migration and readiness failures are logged explicitly
+- Gemini upstream failures and invalid responses are logged explicitly
 
 ## Database and migrations
 
@@ -261,6 +286,11 @@ The frontend currently consumes these backend routes:
 - `POST /api/transactions/import`
 - `GET /api/transactions/summary`
 - `GET /api/transactions/ai/tips`
+
+Operational endpoints exposed by the backend:
+
+- `GET /health/live`
+- `GET /health/ready`
 
 ## Known production gaps
 

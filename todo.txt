@@ -50,10 +50,10 @@ High priority
     - Frontend: component tests for login, dashboard, transactions, tips and notifications.
     - End-to-end: login, CSV import, dashboard refresh, mobile drawer, logout.
 
-[ ] Add production observability.
+[x] Add production observability.
     - Health endpoint / readiness checks.
     - Structured request correlation and error monitoring.
-    - Alerting for API failures, database failures and Gemini failures.
+    - Alert-friendly signals for API failures, database failures and Gemini failures.
 
 [ ] Review AI endpoint safety and cost control.
     - Add rate limiting / quotas for AI endpoints.

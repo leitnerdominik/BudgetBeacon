@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
+using PTSManagerYC.Core.Diagnostics;
 using PTSManagerYC.Core.Exceptions;
 
 namespace PTSManagerYC.Api.Infrastructure;
@@ -23,11 +24,23 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
 
         if (statusCode >= StatusCodes.Status500InternalServerError)
         {
-            _logger.LogError(exception, "Unhandled exception for request {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
+            _logger.LogError(
+                ObservabilityEventIds.ApiUnhandledException,
+                exception,
+                "Unhandled exception for request {Method} {Path}. TraceId: {TraceId}",
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier);
         }
         else
         {
-            _logger.LogWarning(exception, "Handled exception for request {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
+            _logger.LogWarning(
+                ObservabilityEventIds.ApiHandledException,
+                exception,
+                "Handled exception for request {Method} {Path}. TraceId: {TraceId}",
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier);
         }
 
         var problemDetails = new ProblemDetails

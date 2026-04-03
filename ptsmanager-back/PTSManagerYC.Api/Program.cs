@@ -1,11 +1,17 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Serilog.Context;
 using PTSManagerYC.Api.Infrastructure;
+using PTSManagerYC.Api.Infrastructure.Health;
+using PTSManagerYC.Core.Diagnostics;
 using PTSManagerYC.Core.Interfaces;
 using PTSManagerYC.Core.Services;
 using PTSManagerYC.Infrastructure.Data;
@@ -46,6 +52,10 @@ try
     });
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddControllers();
+    builder.Services.AddHealthChecks()
+        .AddCheck("self", () => HealthCheckResult.Healthy("API process is running."), tags: ["live"])
+        .AddCheck<DatabaseReadinessHealthCheck>("database", failureStatus: HealthStatus.Unhealthy, tags: ["ready", "database"])
+        .AddCheck<GeminiReadinessHealthCheck>("gemini", failureStatus: HealthStatus.Degraded, tags: ["ready", "gemini"]);
     builder.Services.Configure<ApiBehaviorOptions>(options =>
     {
         options.InvalidModelStateResponseFactory = context =>
@@ -191,10 +201,48 @@ try
     }
 
     app.UseExceptionHandler();
-    app.UseSerilogRequestLogging();
+    app.Use(async (context, next) =>
+    {
+        var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(correlationId))
+        {
+            correlationId = Guid.NewGuid().ToString("n");
+        }
+
+        context.TraceIdentifier = correlationId;
+        context.Response.Headers["X-Correlation-ID"] = correlationId;
+
+        using (LogContext.PushProperty("CorrelationId", correlationId))
+        {
+            await next();
+        }
+    });
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            diagnosticContext.Set("CorrelationId", httpContext.TraceIdentifier);
+            diagnosticContext.Set("TraceId", System.Diagnostics.Activity.Current?.TraceId.ToString() ?? httpContext.TraceIdentifier);
+            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+            diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
+            diagnosticContext.Set("UserId", httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous");
+        };
+    });
     app.UseHttpsRedirection();
 
     app.UseCors("AllowFrontend");
+
+    app.MapHealthChecks("/health/live", new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("live"),
+        ResponseWriter = WriteHealthResponseAsync
+    });
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("ready"),
+        ResponseWriter = WriteHealthResponseAsync
+    });
 
     app.UseAuthentication();
     app.Use(async (context, next) =>
@@ -224,8 +272,19 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<FinzManagerDbContext>();
-        await dbContext.Database.MigrateAsync();
-        Log.Information("Database migrations applied and schema is ready.");
+        try
+        {
+            await dbContext.Database.MigrateAsync();
+            Log.Information("Database migrations applied and schema is ready.");
+        }
+        catch (Exception ex)
+        {
+            Log.ForContext("ConnectionStringPresent", !string.IsNullOrWhiteSpace(defaultConnection))
+                .ForContext("EventId", ObservabilityEventIds.DatabaseMigrationFailed.Id)
+                .ForContext("EventName", ObservabilityEventIds.DatabaseMigrationFailed.Name)
+                .Fatal(ex, "Database migration failed during startup.");
+            throw;
+        }
     }
 
     app.Lifetime.ApplicationStarted.Register(() =>
@@ -280,4 +339,27 @@ static async Task WriteAuthProblemAsync(
     problemDetails.Extensions["message"] = detail;
 
     await httpContext.Response.WriteAsJsonAsync(problemDetails);
+}
+
+static async Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json";
+
+    var payload = new
+    {
+        status = report.Status.ToString(),
+        correlationId = context.TraceIdentifier,
+        totalDurationMs = report.TotalDuration.TotalMilliseconds,
+        checks = report.Entries.Select(entry => new
+        {
+            name = entry.Key,
+            status = entry.Value.Status.ToString(),
+            description = entry.Value.Description,
+            durationMs = entry.Value.Duration.TotalMilliseconds,
+            tags = entry.Value.Tags,
+            data = entry.Value.Data.ToDictionary(item => item.Key, item => item.Value)
+        })
+    };
+
+    await context.Response.WriteAsJsonAsync(payload);
 }
