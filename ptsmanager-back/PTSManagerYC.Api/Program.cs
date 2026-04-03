@@ -95,6 +95,12 @@ try
             "JWT authentication is not configured. Provide Jwt:Issuer, Jwt:Audience, and Jwt:SigningKey via configuration.");
     }
 
+    if (Encoding.UTF8.GetByteCount(jwtSigningKey) < 16)
+    {
+        throw new InvalidOperationException(
+            "JWT signing key must be at least 16 UTF-8 bytes (128 bits) for HS256.");
+    }
+
     var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSigningKey));
 
     builder.Services
@@ -239,6 +245,19 @@ try
         await dbContext.Database.EnsureCreatedAsync();
         Log.Information("Database connection established and schema is ready.");
     }
+
+    app.Lifetime.ApplicationStarted.Register(() =>
+    {
+        var addresses = app.Urls;
+
+        if (addresses.Count == 0)
+        {
+            Log.Warning("Backend started, but no listening addresses were reported.");
+            return;
+        }
+
+        Log.Information("Backend available at: {BackendAddresses}", string.Join(", ", addresses));
+    });
 
     app.Run();
 }

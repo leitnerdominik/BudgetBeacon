@@ -72,8 +72,8 @@ public class AuthController : ControllerBase
     }
 
     public sealed record LoginRequest(
-        [property: Required, EmailAddress] string Email,
-        [property: Required, StringLength(200, MinimumLength = 6)] string Password
+        [Required, EmailAddress] string Email,
+        [Required, StringLength(200, MinimumLength = 6)] string Password
     );
 
     public sealed record LoginResponse(string Token, AuthenticatedUser User);

@@ -29,6 +29,12 @@ public sealed class JwtTokenService
                 "JWT authentication is not configured. Provide Jwt:Issuer, Jwt:Audience, and Jwt:SigningKey.");
         }
 
+        if (Encoding.UTF8.GetByteCount(signingKey) < 16)
+        {
+            throw new InvalidOperationException(
+                "JWT signing key must be at least 16 UTF-8 bytes (128 bits) for HS256.");
+        }
+
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId),

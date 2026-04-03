@@ -1,9 +1,13 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { notifyUnauthorized } from "../features/auth/contexts/AuthContext";
 
+const backendUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const apiBaseUrl = backendUrl
+  ? `${backendUrl.replace(/\/+$/, "")}/api`
+  : "http://localhost:5078/api";
+
 export const apiClient = axios.create({
-  // This can later be replaced with an environment variable (e.g., import.meta.env.VITE_API_URL)
-  baseURL: "/api",
+  baseURL: apiBaseUrl,
   headers: {
     "Content-Type": "application/json",
   },
