@@ -6,7 +6,7 @@ Critical before production
 [x] Replace demo authentication with real user management.
     - Remove DemoAuth-based login from `PTSManagerYC.Api/Controllers/AuthController.cs`.
     - Remove demo credentials from `PTSManagerYC.Api/appsettings.Development.json`.
-    - Remove the demo credentials hint from `ptsmanager/src/features/auth/components/LoginPage.tsx`.
+    - Remove the demo credentials hint from `ptsmanager-front/src/features/auth/components/LoginPage.tsx`.
 
 [x] Implement real API authentication and authorization.
     - Add JWT or secure session auth in the backend.
@@ -21,7 +21,7 @@ Critical before production
 [ ] Replace development-only CORS and API endpoint assumptions.
     - Remove hardcoded localhost origins from `PTSManagerYC.Api/Program.cs`.
     - Make frontend API base URL and backend allowed origins environment-driven.
-    - Replace the dev proxy target in `ptsmanager/vite.config.ts` with production env config.
+    - Replace the dev proxy target in `ptsmanager-front/vite.config.ts` with production env config.
 
 [x] Replace `EnsureCreatedAsync()` with proper EF Core migrations.
     - Create and apply database migrations.
@@ -63,7 +63,7 @@ High priority
 Frontend and mobile polish
 --------------------------
 [x] Optimize the transactions screen for mobile.
-    - `@mui/x-data-grid` with fixed columns is not mobile-friendly in `ptsmanager/src/features/transactions/components/TransactionList.tsx`.
+    - `@mui/x-data-grid` with fixed columns is not mobile-friendly in `ptsmanager-front/src/features/transactions/components/TransactionList.tsx`.
     - Add a mobile list/card layout or responsive column reduction.
     - Improve spacing, typography and touch targets for small screens.
 

@@ -6,16 +6,16 @@ PTS Manager is a full-stack personal finance application with a React frontend a
 
 This workspace contains two projects:
 
-- `ptsmanager`
+- `ptsmanager-front`
   React 19 + TypeScript frontend built with Vite, Material UI and TanStack Query.
-- `PTSManagerYC`
+- `ptsmanager-back`
   ASP.NET Core Web API with a layered architecture, PostgreSQL persistence via EF Core, and Gemini integration for financial tips.
 
 ## Architecture overview
 
 ### Frontend
 
-The frontend lives in `ptsmanager/src` and is feature-oriented:
+The frontend lives in `ptsmanager-front/src` and is feature-oriented:
 
 - `features/auth`
   Login page, auth context, protected routing and login mutation.
@@ -42,7 +42,7 @@ Key frontend decisions:
 
 ### Backend
 
-The backend follows a simple layered split inside `PTSManagerYC`:
+The backend follows a simple layered split inside `ptsmanager-back`:
 
 - `PTSManagerYC.Api`
   HTTP controllers, startup configuration and runtime host.
@@ -61,9 +61,52 @@ Current backend entry points:
 Key backend decisions:
 
 - EF Core uses PostgreSQL via `FinzManagerDbContext`.
+- EF Core schema changes are tracked with migrations and applied on startup.
+- Authentication uses ASP.NET Identity with cookie sessions.
+- Unsafe requests are protected with CSRF tokens that the SPA fetches and sends automatically.
 - Serilog writes API logs to console and rolling log files.
 - Gemini is used for savings tip generation.
 - Swagger is enabled in development.
+
+## Authentication and session flow
+
+The application no longer uses demo credentials or JWTs stored in the browser.
+
+Current flow:
+
+1. The frontend requests `GET /api/auth/csrf` to obtain a request token.
+2. The frontend sends that token in the `X-CSRF-TOKEN` header for `POST`, `PUT`, `PATCH` and `DELETE`.
+3. `POST /api/auth/login` or `POST /api/auth/register` creates an ASP.NET Identity cookie session.
+4. On app startup, the frontend calls `GET /api/auth/me` to restore the current session.
+5. Protected backend endpoints use the authenticated user identity and filter data by `UserId`.
+
+Important consequences:
+
+- production auth tokens are not stored in `localStorage`
+- the session cookie is sent automatically by the browser
+- CSRF validation is mandatory for unsafe requests
+- transaction data is isolated per authenticated user
+
+## Database and migrations
+
+Database schema is now migration-managed.
+
+Tooling:
+
+```powershell
+dotnet tool restore
+```
+
+Useful commands:
+
+```powershell
+dotnet tool run dotnet-ef migrations list --project ptsmanager-back\PTSManagerYC.Infrastructure\PTSManagerYC.Infrastructure.csproj --context PTSManagerYC.Infrastructure.Data.FinzManagerDbContext
+dotnet tool run dotnet-ef database update --project ptsmanager-back\PTSManagerYC.Infrastructure\PTSManagerYC.Infrastructure.csproj --context PTSManagerYC.Infrastructure.Data.FinzManagerDbContext
+```
+
+For local development, the API applies pending migrations automatically on startup.
+
+If your local PostgreSQL database was created before migrations were introduced, drop it once before starting the updated backend. A database created through the old `EnsureCreatedAsync()` path will not have a valid EF migration history.
 
 ## Local development
 
@@ -86,8 +129,6 @@ $env:ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=pts
 $env:Gemini__ApiKey="YOUR_GEMINI_API_KEY"
 ```
 
-If you have an older local database that was created before migrations were introduced, drop it once before starting the API. The application now applies EF Core migrations on startup and expects the schema to be migration-managed.
-
 Then start the API:
 
 ```powershell
@@ -102,7 +143,7 @@ By default, local development uses the profile from `Properties/launchSettings.j
 Open a second terminal:
 
 ```powershell
-cd ptsmanager
+cd ptsmanager-front
 npm install
 npm run dev
 ```
@@ -123,6 +164,10 @@ The backend currently reads:
 - `Gemini:ApiKey`
 - `Gemini:Model`
 
+The frontend currently reads:
+
+- `VITE_API_BASE_URL`
+
 Checked-in config now contains the required keys again, but not the secret values. Provide the database connection string and Gemini API key through environment variables or secret management in deployed environments.
 
 Important:
@@ -135,7 +180,7 @@ Important:
 ### Frontend
 
 ```powershell
-cd ptsmanager
+cd ptsmanager-front
 npm run lint
 npx tsc -b
 npm run build
@@ -143,7 +188,7 @@ npm run build
 
 The production frontend output is written to:
 
-- `ptsmanager/dist`
+- `ptsmanager-front/dist`
 
 ### Backend
 
@@ -155,19 +200,19 @@ dotnet build PTSManagerYC.Api.csproj -v minimal -p:UseAppHost=false
 To produce a publishable backend build:
 
 ```powershell
-cd PTSManagerYC\PTSManagerYC.Api
+cd ptsmanager-back\PTSManagerYC.Api
 dotnet publish PTSManagerYC.Api.csproj -c Release -o .\publish
 ```
 
 The publish output is written to:
 
-- `PTSManagerYC/PTSManagerYC.Api/publish`
+- `ptsmanager-back/PTSManagerYC.Api/publish`
 
 ## Deployment overview
 
 The application is not fully production-ready yet, but the intended deployment shape is:
 
-1. Build the frontend and host `ptsmanager/dist` behind a static web server or reverse proxy.
+1. Build the frontend and host `ptsmanager-front/dist` behind a static web server or reverse proxy.
 2. Publish the backend API with `dotnet publish`.
 3. Run the API behind HTTPS, typically behind a reverse proxy such as Nginx, IIS or a cloud ingress.
 4. Point the frontend to the API base URL and configure backend CORS for the deployed frontend origin.
@@ -199,7 +244,7 @@ These limitations are important when planning release scope:
 
 - this is a responsive web app, not a native iOS or Android app
 - no PWA install/offline strategy is implemented yet
-- cookie-based auth now requires CSRF protection for unsafe requests; the frontend handles this automatically
+- cookie-based auth requires correct frontend/backend origin configuration and CSRF handling for unsafe requests
 - CSV import depends on the browser file picker experience
 - desktop and mobile layouts are both supported, but not every screen has dedicated offline/poor-network handling yet
 
@@ -226,6 +271,8 @@ The main remaining release topics are tracked in:
 Highlights:
 
 - secrets management
+- production CORS and environment-driven origins
+- automated tests for auth, CSRF and user data isolation
 - consistent loading/error UX
 - CI/CD and deployment documentation
 
