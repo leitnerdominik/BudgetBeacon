@@ -3,7 +3,7 @@ PTS Manager Production TODO
 
 Critical before production
 --------------------------
-[ ] Replace demo authentication with real user management.
+[x] Replace demo authentication with real user management.
     - Remove DemoAuth-based login from `PTSManagerYC.Api/Controllers/AuthController.cs`.
     - Remove demo credentials from `PTSManagerYC.Api/appsettings.Development.json`.
     - Remove the demo credentials hint from `ptsmanager/src/features/auth/components/LoginPage.tsx`.
@@ -23,7 +23,7 @@ Critical before production
     - Make frontend API base URL and backend allowed origins environment-driven.
     - Replace the dev proxy target in `ptsmanager/vite.config.ts` with production env config.
 
-[ ] Replace `EnsureCreatedAsync()` with proper EF Core migrations.
+[x] Replace `EnsureCreatedAsync()` with proper EF Core migrations.
     - Create and apply database migrations.
     - Add startup strategy for schema updates per environment.
     - Define backup and rollback procedure for production deployments.
@@ -35,10 +35,15 @@ High priority
     - Avoid broad `Exception` messages leaking implementation details.
     - Add request size/file type validation for CSV uploads.
 
-[ ] Harden frontend auth storage.
+[x] Harden frontend auth storage.
     - Avoid storing production auth tokens in `localStorage` if possible.
     - Prefer secure, HTTP-only cookies or another server-backed session strategy.
     - Add token refresh / expiry handling and forced logout on 401.
+
+[x] Add CSRF protection for cookie-based auth.
+    - Issue CSRF tokens from the backend for SPA clients.
+    - Validate unsafe requests server-side.
+    - Send CSRF tokens automatically from the frontend on `POST`, `PUT`, `PATCH` and `DELETE`.
 
 [ ] Add automated tests.
     - Backend: controller/service tests for auth, transactions, import and AI tips.

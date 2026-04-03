@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using PTSManagerYC.Core.Exceptions;
 
@@ -61,6 +62,11 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 "Upstream service failure",
                 externalService.Message,
                 "urn:ptsmanager:external-service"),
+            AntiforgeryValidationException => (
+                StatusCodes.Status400BadRequest,
+                "Invalid CSRF token",
+                "The request could not be validated. Refresh the page and try again.",
+                "urn:ptsmanager:invalid-csrf-token"),
             BadHttpRequestException => (
                 StatusCodes.Status400BadRequest,
                 "Invalid HTTP request",

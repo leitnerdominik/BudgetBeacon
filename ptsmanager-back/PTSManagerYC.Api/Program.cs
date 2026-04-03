@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -82,6 +83,15 @@ try
         });
     });
     builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddAntiforgery(options =>
+    {
+        options.HeaderName = "X-CSRF-TOKEN";
+        options.Cookie.Name = "ptsmanager.csrf";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.IsEssential = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    });
     builder.Services.AddSwaggerGen(c =>
     {
         c.SwaggerDoc("v1", new() { Title = "PTS Manager API", Version = "v1" });
@@ -187,6 +197,27 @@ try
     app.UseCors("AllowFrontend");
 
     app.UseAuthentication();
+    app.Use(async (context, next) =>
+    {
+        if (HttpMethods.IsGet(context.Request.Method) ||
+            HttpMethods.IsHead(context.Request.Method) ||
+            HttpMethods.IsOptions(context.Request.Method) ||
+            HttpMethods.IsTrace(context.Request.Method))
+        {
+            await next();
+            return;
+        }
+
+        if (context.Request.Path.StartsWithSegments("/swagger"))
+        {
+            await next();
+            return;
+        }
+
+        var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
+        await antiforgery.ValidateRequestAsync(context);
+        await next();
+    });
     app.UseAuthorization();
     app.MapControllers();
 

@@ -54,7 +54,7 @@ The backend follows a simple layered split inside `PTSManagerYC`:
 Current backend entry points:
 
 - `AuthController`
-  Demo-style login endpoint used by the current frontend auth flow.
+  Session-based authentication endpoints for CSRF, register, login, logout and current-user lookup.
 - `TransactionsController`
   Transactions listing, CSV import, monthly summary and AI tips endpoints.
 
@@ -70,7 +70,7 @@ Key backend decisions:
 ### Prerequisites
 
 - Node.js 20+ and npm
-- .NET 8 SDK
+- .NET 9 SDK
 - PostgreSQL
 
 ### 1. Start the backend
@@ -82,16 +82,16 @@ Set the required values through environment variables. The keys are present in `
 PowerShell example:
 
 ```powershell
-cd PTSManagerYC\PTSManagerYC.Api
 $env:ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=ptsmanageryc;Username=YOUR_USER;Password=YOUR_PASSWORD;SSL Mode=Disable"
 $env:Gemini__ApiKey="YOUR_GEMINI_API_KEY"
-$env:Jwt__SigningKey="YOUR_LONG_RANDOM_JWT_SIGNING_KEY"
 ```
+
+If you have an older local database that was created before migrations were introduced, drop it once before starting the API. The application now applies EF Core migrations on startup and expects the schema to be migration-managed.
 
 Then start the API:
 
 ```powershell
-cd PTSManagerYC\PTSManagerYC.Api
+cd ptsmanager-back\PTSManagerYC.Api
 dotnet run
 ```
 
@@ -120,19 +120,15 @@ Use:
 The backend currently reads:
 
 - `ConnectionStrings:DefaultConnection`
-- `Jwt:Issuer`
-- `Jwt:Audience`
-- `Jwt:SigningKey`
 - `Gemini:ApiKey`
 - `Gemini:Model`
-- `DemoAuth:*`
 
 Checked-in config now contains the required keys again, but not the secret values. Provide the database connection string and Gemini API key through environment variables or secret management in deployed environments.
 
 Important:
 
 - the previously committed database password and Gemini API key should be rotated outside the repo
-- `DemoAuth:*` still exists for the current prototype login flow and is tracked separately in `todo.txt`
+- local development now uses EF Core migrations; install local tools with `dotnet tool restore` if you need to add or update migrations
 
 ## Build and verification
 
@@ -152,8 +148,8 @@ The production frontend output is written to:
 ### Backend
 
 ```powershell
-cd PTSManagerYC\PTSManagerYC.Api
-dotnet build PTSManagerYC.Api.csproj --no-restore -v minimal
+cd ptsmanager-back\PTSManagerYC.Api
+dotnet build PTSManagerYC.Api.csproj -v minimal -p:UseAppHost=false
 ```
 
 To produce a publishable backend build:
@@ -180,9 +176,7 @@ The application is not fully production-ready yet, but the intended deployment s
 
 Before any real production release, these blockers should be addressed:
 
-- replace demo auth with real authentication and authorization
 - remove committed secrets from source control
-- replace `EnsureCreatedAsync()` with EF Core migrations
 - add automated tests, health checks and deployment automation
 
 ## Mobile support
@@ -205,7 +199,7 @@ These limitations are important when planning release scope:
 
 - this is a responsive web app, not a native iOS or Android app
 - no PWA install/offline strategy is implemented yet
-- authentication is still demo-oriented and not production-safe
+- cookie-based auth now requires CSRF protection for unsafe requests; the frontend handles this automatically
 - CSV import depends on the browser file picker experience
 - desktop and mobile layouts are both supported, but not every screen has dedicated offline/poor-network handling yet
 
@@ -213,7 +207,11 @@ These limitations are important when planning release scope:
 
 The frontend currently consumes these backend routes:
 
+- `GET /api/auth/csrf`
+- `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
 - `GET /api/transactions`
 - `POST /api/transactions/import`
 - `GET /api/transactions/summary`
@@ -227,9 +225,7 @@ The main remaining release topics are tracked in:
 
 Highlights:
 
-- real auth and protected backend endpoints
 - secrets management
-- migrations instead of `EnsureCreatedAsync()`
 - consistent loading/error UX
 - CI/CD and deployment documentation
 
@@ -238,9 +234,10 @@ Highlights:
 For day-to-day development:
 
 1. Start PostgreSQL.
-2. Run the API via `dotnet run`.
-3. Run the frontend via `npm run dev`.
-4. Use `npx tsc -b`, `npm run build` and `dotnet build` before handing changes off.
+2. Run `dotnet tool restore` once per clone if the EF tools are not installed yet.
+3. Run the API via `dotnet run`.
+4. Run the frontend via `npm run dev`.
+5. Use `npx tsc -b`, `npm run build` and `dotnet build -p:UseAppHost=false` before handing changes off.
 
 For release preparation:
 

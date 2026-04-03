@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PTSManagerYC.Infrastructure.Data;
@@ -22,6 +23,24 @@ public class AuthController : ControllerBase
         _userManager = userManager;
         _signInManager = signInManager;
         _logger = logger;
+    }
+
+    [AllowAnonymous]
+    [HttpGet("csrf")]
+    public IActionResult GetCsrfToken([FromServices] IAntiforgery antiforgery)
+    {
+        var tokens = antiforgery.GetAndStoreTokens(HttpContext);
+
+        if (string.IsNullOrWhiteSpace(tokens.RequestToken))
+        {
+            return this.ApiProblem(
+                StatusCodes.Status500InternalServerError,
+                "CSRF token unavailable",
+                "The server could not generate a CSRF token.",
+                "urn:ptsmanager:csrf-token-unavailable");
+        }
+
+        return Ok(new CsrfTokenResponse(tokens.RequestToken));
     }
 
     [AllowAnonymous]
@@ -155,6 +174,7 @@ public class AuthController : ControllerBase
         bool RememberMe = false
     );
 
+    public sealed record CsrfTokenResponse(string Token);
     public sealed record SessionResponse(AuthenticatedUser User);
 
     public sealed record AuthenticatedUser(

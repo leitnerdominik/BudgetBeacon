@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { AUTH_UNAUTHORIZED_EVENT } from "../auth-events";
 import { getCurrentSession } from "../api/session";
+import { refreshCsrfToken } from "../../../lib/api-client";
 import type { User } from "../types";
 
 interface AuthContextType {
@@ -34,6 +35,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const loadSession = async () => {
       try {
+        await refreshCsrfToken().catch(() => undefined);
         const session = await getCurrentSession();
         if (isMounted) {
           setUser(session.user);

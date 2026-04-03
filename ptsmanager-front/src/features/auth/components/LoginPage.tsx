@@ -127,7 +127,7 @@ export const LoginPage = () => {
 
           {isError && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              {error instanceof Error ? error.message : "Login failed"}
+              {error instanceof Error ? error.message : "Authentication failed"}
             </Alert>
           )}
 
