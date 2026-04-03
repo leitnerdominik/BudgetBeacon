@@ -27,6 +27,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 
 import { useNotification } from "../notifications/NotificationProvider";
+import { logoutCurrentSession } from "../../features/auth/api/session";
 import { useAuth } from "../../features/auth/contexts/AuthContext";
 
 const DRAWER_WIDTH = 240;
@@ -81,9 +82,14 @@ export const RootLayout = () => {
     handleCloseMobileDrawer();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     handleCloseMenu();
     handleCloseMobileDrawer();
+    try {
+      await logoutCurrentSession();
+    } catch {
+      // Even if the server session is already gone, clear local auth state.
+    }
     logout();
     showNotification({
       severity: "success",

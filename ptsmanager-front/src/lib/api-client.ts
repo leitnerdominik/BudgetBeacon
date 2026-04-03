@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
-import { notifyUnauthorized } from "../features/auth/contexts/AuthContext";
+import { notifyUnauthorized } from "../features/auth/auth-events";
 
 const backendUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 const apiBaseUrl = backendUrl
@@ -8,23 +8,15 @@ const apiBaseUrl = backendUrl
 
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem("token");
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
+apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  return config;
+});
 
 // Response Interceptor: Useful for global error handling
 apiClient.interceptors.response.use(

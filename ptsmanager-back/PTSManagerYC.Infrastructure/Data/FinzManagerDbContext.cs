@@ -1,39 +1,51 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PTSManagerYC.Core.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Emit;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
-namespace PTSManagerYC.Infrastructure.Data
+namespace PTSManagerYC.Infrastructure.Data;
+
+public class FinzManagerDbContext : IdentityDbContext<ApplicationUser>
 {
-    public class FinzManagerDbContext : DbContext
+    public FinzManagerDbContext(DbContextOptions<FinzManagerDbContext> options) : base(options)
     {
-        public FinzManagerDbContext(DbContextOptions<FinzManagerDbContext> options) : base(options) { }
+    }
 
-        public DbSet<Transaction> Transactions { get; set; }
+    public DbSet<Transaction> Transactions => Set<Transaction>();
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<ApplicationUser>(entity =>
         {
-            base.OnModelCreating(modelBuilder);
+            entity.Property(user => user.FirstName).HasMaxLength(100);
+            entity.Property(user => user.LastName).HasMaxLength(100);
+        });
 
-            modelBuilder.Entity<Transaction>(entity =>
+        modelBuilder.Entity<Transaction>(entity =>
+        {
+            entity.HasKey(transaction => transaction.Id);
+
+            entity.Property(transaction => transaction.UserId)
+                .HasMaxLength(450);
+
+            entity.Property(transaction => transaction.Date)
+                .HasConversion(
+                    value => value.ToUniversalTime(),
+                    value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+            entity.HasIndex(transaction => new { transaction.UserId, transaction.Date });
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(transaction => transaction.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.OwnsOne(transaction => transaction.Metadata, metadata =>
             {
-                entity.HasKey(t => t.Id);
-
-                entity.Property(t => t.Date)
-                      .HasConversion(
-                          v => v.ToUniversalTime(),
-                          v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
-
-                entity.OwnsOne(t => t.Metadata, metadata =>
-                {
-                    metadata.ToJson();
-                    metadata.Property(m => m.RawDescription).HasMaxLength(500);
-                });
+                metadata.ToJson();
+                metadata.Property(value => value.RawDescription).HasMaxLength(500);
             });
-        }
+        });
     }
 }

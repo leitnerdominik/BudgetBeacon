@@ -1,14 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { AUTH_UNAUTHORIZED_EVENT } from "../auth-events";
+import { getCurrentSession } from "../api/session";
 import type { User } from "../types";
-
-const AUTH_UNAUTHORIZED_EVENT = "auth:unauthorized";
-
-const isLikelyJwt = (token: string) => token.split(".").length === 3;
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (token: string, user: User) => void;
+  isInitializing: boolean;
+  login: (user: User) => void;
   logout: () => void;
 }
 
@@ -19,48 +18,48 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-  // Lazy Initialization: This callback only runs ONCE during the initial mount.
-  // It prevents double-rendering and synchronously sets the correct initial state.
-  const [user, setUser] = useState<User | null>(() => {
-    const storedToken = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+  const [user, setUser] = useState<User | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-    if (storedToken && storedUser) {
-      if (!isLikelyJwt(storedToken)) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        return null;
-      }
-
-      try {
-        return JSON.parse(storedUser);
-      } catch {
-        console.error("Failed to parse user from local storage");
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        return null;
-      }
-    }
-    return null;
-  });
-
-  const login = (token: string, newUser: User) => {
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(newUser));
+  const login = (newUser: User) => {
     setUser(newUser);
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
     setUser(null);
   };
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadSession = async () => {
+      try {
+        const session = await getCurrentSession();
+        if (isMounted) {
+          setUser(session.user);
+        }
+      } catch {
+        if (isMounted) {
+          setUser(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsInitializing(false);
+        }
+      }
+    };
+
+    void loadSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const handleUnauthorized = () => {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
       setUser(null);
+      setIsInitializing(false);
     };
 
     window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
@@ -73,6 +72,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const value = {
     user,
     isAuthenticated: !!user,
+    isInitializing,
     login,
     logout,
   };
@@ -89,8 +89,4 @@ export const useAuth = () => {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-};
-
-export const notifyUnauthorized = () => {
-  window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
 };

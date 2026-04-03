@@ -1,28 +1,29 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNotification } from "../../../components/notifications/NotificationProvider";
-import { loginWithEmailAndPassword } from "../api/session";
+import { registerWithEmailAndPassword } from "../api/session";
 import { useAuth } from "../contexts/AuthContext";
-import type { LoginCredentials } from "../types";
+import type { RegisterCredentials } from "../types";
 
-export const useLogin = () => {
+export const useRegister = () => {
   const { login } = useAuth();
   const { showNotification } = useNotification();
 
   return useMutation({
-    mutationFn: (credentials: LoginCredentials) =>
-      loginWithEmailAndPassword(credentials),
+    mutationFn: (credentials: RegisterCredentials) =>
+      registerWithEmailAndPassword(credentials),
     onSuccess: (data) => {
       login(data.user);
       showNotification({
         severity: "success",
-        message: `Welcome back, ${data.user.firstName}!`,
+        message: `Welcome, ${data.user.firstName}!`,
       });
     },
     onError: (error) => {
-      console.error("Login failed:", error);
+      console.error("Registration failed:", error);
       showNotification({
         severity: "error",
-        message: error instanceof Error ? error.message : "Login failed.",
+        message:
+          error instanceof Error ? error.message : "Registration failed.",
       });
     },
   });

@@ -1,16 +1,30 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Box, CircularProgress } from "@mui/material";
 import { useAuth } from "../contexts/AuthContext";
 
 export const ProtectedRoute = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isInitializing } = useAuth();
   const location = useLocation();
 
+  if (isInitializing) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          px: 2,
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   if (!isAuthenticated) {
-    // Redirect them to the /login page, but save the current location they were
-    // trying to go to, so we can redirect them back after a successful login.
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // If authenticated, render the child routes
   return <Outlet />;
 };

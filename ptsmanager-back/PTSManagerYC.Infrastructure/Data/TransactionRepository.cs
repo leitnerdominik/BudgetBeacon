@@ -19,35 +19,43 @@ public class TransactionRepository : ITransactionRepository
         await _context.SaveChangesAsync();
     }
 
-    public async Task<IEnumerable<Transaction>> GetAllAsync()
+    public async Task SaveChangesAsync()
+    {
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<IEnumerable<Transaction>> GetAllAsync(string userId)
     {
         return await _context.Transactions
+            .Where(t => t.UserId == userId)
             .OrderByDescending(t => t.Date)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Transaction>> GetByMonthAsync(int year, int month)
+    public async Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month)
     {
         return await _context.Transactions
-            .Where(t => t.Date.Year == year && t.Date.Month == month)
+            .Where(t => t.UserId == userId && t.Date.Year == year && t.Date.Month == month)
             .OrderByDescending(t => t.Date)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Transaction>> GetByDateRangeAsync(DateTime startDate, DateTime endDate)
+    public async Task<IEnumerable<Transaction>> GetByDateRangeAsync(string userId, DateTime startDate, DateTime endDate)
     {
         var startUtc = startDate.ToUniversalTime();
         var endUtc = endDate.ToUniversalTime();
 
         return await _context.Transactions
-            .Where(t => t.Date >= startUtc && t.Date <= endUtc)
+            .Where(t => t.UserId == userId && t.Date >= startUtc && t.Date <= endUtc)
             .OrderByDescending(t => t.Date)
             .ToListAsync();
     }
 
-    public async Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(DateTime? startDate, int pageNumber, int pageSize)
+    public async Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(string userId, DateTime? startDate, int pageNumber, int pageSize)
     {
-        var query = _context.Transactions.AsQueryable();
+        var query = _context.Transactions
+            .Where(t => t.UserId == userId)
+            .AsQueryable();
 
         if (startDate.HasValue)
         {

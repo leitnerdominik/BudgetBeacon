@@ -10,9 +10,10 @@ namespace PTSManagerYC.Core.Interfaces
     public interface ITransactionRepository
     {
         Task AddRangeAsync(IEnumerable<Transaction> transactions);
-        Task<IEnumerable<Transaction>> GetAllAsync();
-        Task<IEnumerable<Transaction>> GetByMonthAsync(int year, int month);
-        Task<IEnumerable<Transaction>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
-        Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(DateTime? startDate, int pageNumber, int pageSize);
+        Task SaveChangesAsync();
+        Task<IEnumerable<Transaction>> GetAllAsync(string userId);
+        Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month);
+        Task<IEnumerable<Transaction>> GetByDateRangeAsync(string userId, DateTime startDate, DateTime endDate);
+        Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(string userId, DateTime? startDate, int pageNumber, int pageSize);
     }
 }

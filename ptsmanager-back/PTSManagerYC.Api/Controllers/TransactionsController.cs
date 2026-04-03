@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PTSManagerYC.Core.Entities;
@@ -49,6 +50,12 @@ public class TransactionsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 15)
     {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access transactions.");
+        }
+
         if (page < 1 || pageSize < 1 || pageSize > 200)
         {
             return this.ApiValidationProblem(
@@ -69,7 +76,7 @@ public class TransactionsController : ControllerBase
         }
 
         _logger.LogInformation("API requested paginated transactions. Page: {Page}", page);
-        var (items, totalCount) = await _repository.GetTransactionsPagedAsync(startDate, page, pageSize);
+        var (items, totalCount) = await _repository.GetTransactionsPagedAsync(userId, startDate, page, pageSize);
 
         return Ok(new
         {
@@ -83,6 +90,12 @@ public class TransactionsController : ControllerBase
     [HttpGet("summary")]
     public async Task<IActionResult> GetMonthlySummary([FromQuery] int year, [FromQuery] int month)
     {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access summaries.");
+        }
+
         if (year < 2000 || year > 2100 || month < 1 || month > 12)
         {
             return this.ApiValidationProblem(
@@ -103,7 +116,7 @@ public class TransactionsController : ControllerBase
         }
 
         _logger.LogInformation("API requested monthly summary for {Month}/{Year}", month, year);
-        var transactions = (await _repository.GetByMonthAsync(year, month)).ToList();
+        var transactions = (await _repository.GetByMonthAsync(userId, year, month)).ToList();
 
         if (!transactions.Any())
         {
@@ -135,6 +148,12 @@ public class TransactionsController : ControllerBase
     [RequestSizeLimit(MaxCsvUploadSizeBytes)]
     public async Task<IActionResult> UploadCsv([FromForm] IFormFile? file)
     {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to import transactions.");
+        }
+
         if (file == null || file.Length == 0)
         {
             return this.ApiValidationProblem(
@@ -173,6 +192,7 @@ public class TransactionsController : ControllerBase
 
         using var stream = file.OpenReadStream();
         var parsedTransactions = _csvReader.ParseTransactions(stream).ToList();
+        parsedTransactions.ForEach(transaction => transaction.UserId = userId);
 
         if (!parsedTransactions.Any())
         {
@@ -182,7 +202,7 @@ public class TransactionsController : ControllerBase
                 errors => errors.AddModelError(nameof(file), "The uploaded CSV file does not contain any valid transaction rows."));
         }
 
-        var existingTransactions = await _repository.GetAllAsync();
+        var existingTransactions = await _repository.GetAllAsync(userId);
         var existingSignatures = existingTransactions
             .Select(t => $"{t.Date:yyyyMMdd}_{t.Amount}_{t.Metadata.RawDescription}")
             .ToHashSet();
@@ -208,9 +228,15 @@ public class TransactionsController : ControllerBase
     [HttpPost("ai/categorize")]
     public async Task<IActionResult> TriggerCategorization()
     {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to categorize transactions.");
+        }
+
         _logger.LogInformation("API triggered AI categorization.");
 
-        var allTransactions = await _repository.GetAllAsync();
+        var allTransactions = await _repository.GetAllAsync(userId);
         var uncategorized = allTransactions.Where(t => t.Category == "Uncategorized").ToList();
 
         if (!uncategorized.Any())
@@ -220,7 +246,7 @@ public class TransactionsController : ControllerBase
 
         await _aiService.CategorizeTransactionsAsync(uncategorized);
 
-        await _repository.AddRangeAsync(new List<Transaction>());
+        await _repository.SaveChangesAsync();
 
         return Ok(new { Message = "Categorization successful", ProcessedCount = uncategorized.Count });
     }
@@ -228,6 +254,12 @@ public class TransactionsController : ControllerBase
     [HttpGet("ai/tips")]
     public async Task<IActionResult> GetAiSavingsTips([FromQuery] int monthsBack = 3)
     {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to generate AI tips.");
+        }
+
         if (monthsBack < 1 || monthsBack > 24)
         {
             return this.ApiValidationProblem(
@@ -239,7 +271,7 @@ public class TransactionsController : ControllerBase
         _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
 
         var startDate = DateTime.Now.AddMonths(-monthsBack);
-        var (transactions, _) = await _repository.GetTransactionsPagedAsync(startDate, 1, 10000);
+        var (transactions, _) = await _repository.GetTransactionsPagedAsync(userId, startDate, 1, 10000);
 
         if (!transactions.Any())
         {
@@ -253,5 +285,19 @@ public class TransactionsController : ControllerBase
         var tips = await _aiService.GetSavingTipsAsync(transactions);
 
         return Ok(new { Timeframe = $"Last {monthsBack} months", Tips = tips });
+    }
+
+    private IActionResult UnauthorizedProblem(string detail)
+    {
+        return this.ApiProblem(
+            StatusCodes.Status401Unauthorized,
+            "Authentication required",
+            detail,
+            "urn:ptsmanager:authentication-required");
+    }
+
+    private string? GetCurrentUserId()
+    {
+        return User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 }

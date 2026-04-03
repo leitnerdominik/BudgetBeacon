@@ -1,12 +1,10 @@
-using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using PTSManagerYC.Api.Infrastructure;
-using PTSManagerYC.Api.Infrastructure.Security;
 using PTSManagerYC.Core.Interfaces;
 using PTSManagerYC.Core.Services;
 using PTSManagerYC.Infrastructure.Data;
@@ -79,109 +77,20 @@ try
                     "http://localhost:5173"
                 )
                 .AllowAnyHeader()
-                .AllowAnyMethod();
+                .AllowAnyMethod()
+                .AllowCredentials();
         });
     });
-
-    var jwtIssuer = builder.Configuration["Jwt:Issuer"];
-    var jwtAudience = builder.Configuration["Jwt:Audience"];
-    var jwtSigningKey = builder.Configuration["Jwt:SigningKey"];
-
-    if (string.IsNullOrWhiteSpace(jwtIssuer) ||
-        string.IsNullOrWhiteSpace(jwtAudience) ||
-        string.IsNullOrWhiteSpace(jwtSigningKey))
-    {
-        throw new InvalidOperationException(
-            "JWT authentication is not configured. Provide Jwt:Issuer, Jwt:Audience, and Jwt:SigningKey via configuration.");
-    }
-
-    if (Encoding.UTF8.GetByteCount(jwtSigningKey) < 16)
-    {
-        throw new InvalidOperationException(
-            "JWT signing key must be at least 16 UTF-8 bytes (128 bits) for HS256.");
-    }
-
-    var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSigningKey));
-
-    builder.Services
-        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
-        {
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidIssuer = jwtIssuer,
-                ValidateAudience = true,
-                ValidAudience = jwtAudience,
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = signingKey,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromMinutes(1)
-            };
-
-            options.Events = new JwtBearerEvents
-            {
-                OnChallenge = async context =>
-                {
-                    context.HandleResponse();
-
-                    if (context.Response.HasStarted)
-                    {
-                        return;
-                    }
-
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    context.Response.ContentType = "application/problem+json";
-
-                    var problemDetails = new ProblemDetails
-                    {
-                        Status = StatusCodes.Status401Unauthorized,
-                        Title = "Authentication required",
-                        Detail = "A valid bearer token is required to access this resource.",
-                        Type = "urn:ptsmanager:authentication-required",
-                        Instance = context.HttpContext.Request.Path
-                    };
-
-                    problemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
-                    problemDetails.Extensions["message"] = problemDetails.Detail;
-
-                    await context.Response.WriteAsJsonAsync(problemDetails);
-                },
-                OnForbidden = async context =>
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    context.Response.ContentType = "application/problem+json";
-
-                    var problemDetails = new ProblemDetails
-                    {
-                        Status = StatusCodes.Status403Forbidden,
-                        Title = "Forbidden",
-                        Detail = "You do not have permission to access this resource.",
-                        Type = "urn:ptsmanager:forbidden",
-                        Instance = context.HttpContext.Request.Path
-                    };
-
-                    problemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
-                    problemDetails.Extensions["message"] = problemDetails.Detail;
-
-                    await context.Response.WriteAsJsonAsync(problemDetails);
-                }
-            };
-        });
-
-    builder.Services.AddAuthorization();
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(c =>
     {
         c.SwaggerDoc("v1", new() { Title = "PTS Manager API", Version = "v1" });
-        c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        c.AddSecurityDefinition("CookieAuth", new OpenApiSecurityScheme
         {
-            Description = "JWT Authorization header using the Bearer scheme. Example: 'Bearer {token}'",
-            Name = "Authorization",
-            In = ParameterLocation.Header,
-            Type = SecuritySchemeType.Http,
-            Scheme = "bearer",
-            BearerFormat = "JWT"
+            Description = "Session cookie authentication.",
+            Name = "ptsmanager.session",
+            In = ParameterLocation.Cookie,
+            Type = SecuritySchemeType.ApiKey
         });
         c.AddSecurityRequirement(new OpenApiSecurityRequirement
         {
@@ -191,7 +100,7 @@ try
                     Reference = new OpenApiReference
                     {
                         Type = ReferenceType.SecurityScheme,
-                        Id = "Bearer"
+                        Id = "CookieAuth"
                     }
                 },
                 Array.Empty<string>()
@@ -209,11 +118,53 @@ try
 
     builder.Services.AddDbContext<FinzManagerDbContext>(options =>
         options.UseNpgsql(defaultConnection));
+    builder.Services
+        .AddIdentity<ApplicationUser, IdentityRole>(options =>
+        {
+            options.User.RequireUniqueEmail = true;
+            options.Password.RequiredLength = 8;
+            options.Password.RequireDigit = true;
+            options.Password.RequireLowercase = true;
+            options.Password.RequireUppercase = true;
+            options.Password.RequireNonAlphanumeric = false;
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+            options.Lockout.MaxFailedAccessAttempts = 5;
+            options.Lockout.AllowedForNewUsers = true;
+        })
+        .AddEntityFrameworkStores<FinzManagerDbContext>()
+        .AddDefaultTokenProviders();
+
+    builder.Services.ConfigureApplicationCookie(options =>
+    {
+        options.Cookie.Name = "ptsmanager.session";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.IsEssential = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.SlidingExpiration = true;
+        options.ExpireTimeSpan = TimeSpan.FromDays(7);
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnRedirectToLogin = context => WriteAuthProblemAsync(
+                context.HttpContext,
+                StatusCodes.Status401Unauthorized,
+                "Authentication required",
+                "A valid authenticated session is required to access this resource.",
+                "urn:ptsmanager:authentication-required"),
+            OnRedirectToAccessDenied = context => WriteAuthProblemAsync(
+                context.HttpContext,
+                StatusCodes.Status403Forbidden,
+                "Forbidden",
+                "You do not have permission to access this resource.",
+                "urn:ptsmanager:forbidden")
+        };
+    });
+
+    builder.Services.AddAuthorization();
 
     builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
     builder.Services.AddScoped<FinanceAggregationService>();
     builder.Services.AddScoped<ICsvReaderService, CsvReaderService>();
-    builder.Services.AddScoped<JwtTokenService>();
 
     builder.Services.AddHttpClient<IAiAdvisorService, GeminiAiAdvisorService>(client =>
     {
@@ -268,4 +219,34 @@ catch (Exception ex)
 finally
 {
     Log.CloseAndFlush();
+}
+
+static async Task WriteAuthProblemAsync(
+    HttpContext httpContext,
+    int statusCode,
+    string title,
+    string detail,
+    string type)
+{
+    if (httpContext.Response.HasStarted)
+    {
+        return;
+    }
+
+    httpContext.Response.StatusCode = statusCode;
+    httpContext.Response.ContentType = "application/problem+json";
+
+    var problemDetails = new ProblemDetails
+    {
+        Status = statusCode,
+        Title = title,
+        Detail = detail,
+        Type = type,
+        Instance = httpContext.Request.Path
+    };
+
+    problemDetails.Extensions["traceId"] = httpContext.TraceIdentifier;
+    problemDetails.Extensions["message"] = detail;
+
+    await httpContext.Response.WriteAsJsonAsync(problemDetails);
 }
