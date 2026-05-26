@@ -55,7 +55,7 @@ try
     builder.Services.AddHealthChecks()
         .AddCheck("self", () => HealthCheckResult.Healthy("API process is running."), tags: ["live"])
         .AddCheck<DatabaseReadinessHealthCheck>("database", failureStatus: HealthStatus.Unhealthy, tags: ["ready", "database"])
-        .AddCheck<GeminiReadinessHealthCheck>("gemini", failureStatus: HealthStatus.Degraded, tags: ["ready", "gemini"]);
+        .AddCheck<OpenRouterReadinessHealthCheck>("openrouter", failureStatus: HealthStatus.Degraded, tags: ["ready", "openrouter"]);
     builder.Services.Configure<ApiBehaviorOptions>(options =>
     {
         options.InvalidModelStateResponseFactory = context =>
@@ -186,10 +186,24 @@ try
     builder.Services.AddScoped<FinanceAggregationService>();
     builder.Services.AddScoped<ICsvReaderService, CsvReaderService>();
 
-    builder.Services.AddHttpClient<IAiAdvisorService, GeminiAiAdvisorService>(client =>
+    builder.Services.AddHttpClient<IAiAdvisorService, OpenRouterAiAdvisorService>((serviceProvider, client) =>
     {
-        client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+
+        client.BaseAddress = new Uri(configuration["OpenRouter:BaseUrl"] ?? "https://openrouter.ai/api/v1/");
         client.Timeout = TimeSpan.FromMinutes(5);
+
+        var referer = configuration["OpenRouter:Referer"];
+        if (!string.IsNullOrWhiteSpace(referer))
+        {
+            client.DefaultRequestHeaders.TryAddWithoutValidation("HTTP-Referer", referer);
+        }
+
+        var title = configuration["OpenRouter:Title"];
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            client.DefaultRequestHeaders.TryAddWithoutValidation("X-OpenRouter-Title", title);
+        }
     });
 
     var app = builder.Build();

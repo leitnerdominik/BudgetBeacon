@@ -32,6 +32,14 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync();
     }
 
+    public async Task<List<Transaction>> GetUncategorizedAsync(string userId)
+    {
+        return await _context.Transactions
+            .Where(t => t.UserId == userId && t.Category == "Uncategorized")
+            .OrderByDescending(t => t.Date)
+            .ToListAsync();
+    }
+
     public async Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month)
     {
         return await _context.Transactions

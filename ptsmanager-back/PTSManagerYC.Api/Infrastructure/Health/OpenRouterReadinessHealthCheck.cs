@@ -3,14 +3,14 @@ using PTSManagerYC.Core.Diagnostics;
 
 namespace PTSManagerYC.Api.Infrastructure.Health;
 
-public sealed class GeminiReadinessHealthCheck : IHealthCheck
+public sealed class OpenRouterReadinessHealthCheck : IHealthCheck
 {
     private readonly IConfiguration _configuration;
-    private readonly ILogger<GeminiReadinessHealthCheck> _logger;
+    private readonly ILogger<OpenRouterReadinessHealthCheck> _logger;
 
-    public GeminiReadinessHealthCheck(
+    public OpenRouterReadinessHealthCheck(
         IConfiguration configuration,
-        ILogger<GeminiReadinessHealthCheck> logger)
+        ILogger<OpenRouterReadinessHealthCheck> logger)
     {
         _configuration = configuration;
         _logger = logger;
@@ -20,19 +20,19 @@ public sealed class GeminiReadinessHealthCheck : IHealthCheck
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        var apiKey = _configuration["Gemini:ApiKey"];
-        var model = _configuration["Gemini:Model"];
+        var apiKey = _configuration["OpenRouter:ApiKey"];
+        var model = _configuration["OpenRouter:Model"];
 
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(model))
         {
             _logger.LogWarning(
-                ObservabilityEventIds.GeminiHealthCheckFailed,
-                "Gemini readiness check is degraded. ApiKeyConfigured: {ApiKeyConfigured}, ModelConfigured: {ModelConfigured}",
+                ObservabilityEventIds.OpenRouterHealthCheckFailed,
+                "OpenRouter readiness check is degraded. ApiKeyConfigured: {ApiKeyConfigured}, ModelConfigured: {ModelConfigured}",
                 !string.IsNullOrWhiteSpace(apiKey),
                 !string.IsNullOrWhiteSpace(model));
 
             return Task.FromResult(HealthCheckResult.Degraded(
-                "Gemini configuration is incomplete.",
+                "OpenRouter configuration is incomplete.",
                 data: new Dictionary<string, object>
                 {
                     ["apiKeyConfigured"] = !string.IsNullOrWhiteSpace(apiKey),
@@ -40,6 +40,6 @@ public sealed class GeminiReadinessHealthCheck : IHealthCheck
                 }));
         }
 
-        return Task.FromResult(HealthCheckResult.Healthy("Gemini configuration is available."));
+        return Task.FromResult(HealthCheckResult.Healthy("OpenRouter configuration is available."));
     }
 }

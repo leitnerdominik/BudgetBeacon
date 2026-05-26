@@ -14,9 +14,9 @@ Critical before production
     - Validate tokens on every protected API route, not only in the frontend.
 
 [ ] Remove secrets and local credentials from source control.
-    - Move `ConnectionStrings:DefaultConnection` and `Gemini:ApiKey` out of `PTSManagerYC.Api/appsettings.json`.
+    - Move `ConnectionStrings:DefaultConnection` and `OpenRouter:ApiKey` out of `PTSManagerYC.Api/appsettings.json`.
     - Use environment variables, user secrets, vault/secret manager and separate production config.
-    - Rotate the exposed Gemini API key and database password.
+    - Rotate any exposed AI provider API key and database password.
 
 [ ] Replace development-only CORS and API endpoint assumptions.
     - Remove hardcoded localhost origins from `PTSManagerYC.Api/Program.cs`.
@@ -53,7 +53,7 @@ High priority
 [x] Add production observability.
     - Health endpoint / readiness checks.
     - Structured request correlation and error monitoring.
-    - Alert-friendly signals for API failures, database failures and Gemini failures.
+    - Alert-friendly signals for API failures, database failures and AI provider failures.
 
 [ ] Review AI endpoint safety and cost control.
     - Add rate limiting / quotas for AI endpoints.

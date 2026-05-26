@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from "react";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import {
   Box,
   Button,
@@ -18,6 +19,7 @@ import {
 import { LoadingState, StatusMessage } from "../../../components/feedback/AsyncState";
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../../hooks/useSlowLoading";
+import { useCategorizeUncategorizedTransactions } from "../hooks/useCategorizeUncategorizedTransactions";
 import { useTransactions } from "../hooks/useTransactions";
 import { CsvUploadButton } from "./CsvUploadButton";
 import type { PaginatedTransactions } from "../types";
@@ -69,6 +71,7 @@ export const TransactionList = () => {
     paginationModel.page + 1,
     paginationModel.pageSize,
   );
+  const categorizeMutation = useCategorizeUncategorizedTransactions();
   const isSlowLoading = useSlowLoading(isLoading);
 
   const transactions: PaginatedTransactions["data"] = data?.data ?? [];
@@ -113,7 +116,34 @@ export const TransactionList = () => {
         <Typography variant="h4" component="h1">
           Transactions
         </Typography>
-        <CsvUploadButton />
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          alignItems={{ xs: "stretch", sm: "center" }}
+        >
+          <Button
+            variant="outlined"
+            onClick={() => {
+              categorizeMutation.mutate();
+            }}
+            disabled={
+              !isOnline ||
+              !hasTransactions ||
+              isLoading ||
+              categorizeMutation.isPending
+            }
+            startIcon={
+              categorizeMutation.isPending ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <AutoAwesomeIcon />
+              )
+            }
+          >
+            Categorize uncategorized
+          </Button>
+          <CsvUploadButton />
+        </Stack>
       </Box>
       {showRefreshError ? (
         <Box sx={{ mb: 2 }}>

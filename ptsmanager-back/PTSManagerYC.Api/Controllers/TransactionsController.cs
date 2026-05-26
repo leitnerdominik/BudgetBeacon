@@ -236,19 +236,31 @@ public class TransactionsController : ControllerBase
 
         _logger.LogInformation("API triggered AI categorization.");
 
-        var allTransactions = await _repository.GetAllAsync(userId);
-        var uncategorized = allTransactions.Where(t => t.Category == "Uncategorized").ToList();
+        var uncategorized = await _repository.GetUncategorizedAsync(userId);
 
         if (!uncategorized.Any())
         {
-            return Ok(new { Message = "All transactions are already categorized. Nothing to do." });
+            return Ok(new
+            {
+                Message = "All transactions are already categorized. Nothing to do.",
+                ProcessedCount = 0,
+                CategorizedCount = 0
+            });
         }
 
         await _aiService.CategorizeTransactionsAsync(uncategorized);
 
+        var categorizedCount = uncategorized.Count(t =>
+            !string.Equals(t.Category, "Uncategorized", StringComparison.OrdinalIgnoreCase));
+
         await _repository.SaveChangesAsync();
 
-        return Ok(new { Message = "Categorization successful", ProcessedCount = uncategorized.Count });
+        return Ok(new
+        {
+            Message = "Categorization successful",
+            ProcessedCount = uncategorized.Count,
+            CategorizedCount = categorizedCount
+        });
     }
 
     [HttpGet("ai/tips")]

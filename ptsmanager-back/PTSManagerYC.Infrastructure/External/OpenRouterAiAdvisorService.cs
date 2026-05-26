@@ -1,5 +1,7 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using PTSManagerYC.Core.Diagnostics;
@@ -10,8 +12,13 @@ using PTSManagerYC.Core.Models;
 
 namespace PTSManagerYC.Infrastructure.External;
 
-public class GeminiAiAdvisorService : IAiAdvisorService
+public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private static readonly string[] AllowedCategories =
     [
         "Transport",
@@ -29,16 +36,19 @@ public class GeminiAiAdvisorService : IAiAdvisorService
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
     private readonly string _model;
-    private readonly ILogger<GeminiAiAdvisorService> _logger;
+    private readonly ILogger<OpenRouterAiAdvisorService> _logger;
 
-    public GeminiAiAdvisorService(HttpClient httpClient, IConfiguration config, ILogger<GeminiAiAdvisorService> logger)
+    public OpenRouterAiAdvisorService(
+        HttpClient httpClient,
+        IConfiguration config,
+        ILogger<OpenRouterAiAdvisorService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiKey = config["Gemini:ApiKey"] ?? throw new InvalidOperationException(
-            "Gemini:ApiKey is missing. Configure it via .NET user secrets or environment variables.");
-        _model = config["Gemini:Model"] ?? throw new InvalidOperationException(
-            "Gemini:Model is missing. Configure it via application settings.");
+        _apiKey = config["OpenRouter:ApiKey"] ?? throw new InvalidOperationException(
+            "OpenRouter:ApiKey is missing. Configure it via .NET user secrets or environment variables.");
+        _model = config["OpenRouter:Model"] ?? throw new InvalidOperationException(
+            "OpenRouter:Model is missing. Configure it via application settings.");
     }
 
     public async Task CategorizeTransactionsAsync(List<Transaction> transactions)
@@ -46,9 +56,13 @@ public class GeminiAiAdvisorService : IAiAdvisorService
         if (!transactions.Any())
             return;
 
-        _logger.LogInformation("Starting AI categorization for {Count} transactions via Gemini.", transactions.Count);
+        _logger.LogInformation(
+            "Starting AI categorization for {Count} transactions via OpenRouter model {Model}.",
+            transactions.Count,
+            _model);
+
         var batches = transactions.Chunk(50).ToList();
-        int processedCount = 0;
+        var processedCount = 0;
 
         foreach (var batch in batches)
         {
@@ -62,17 +76,17 @@ public class GeminiAiAdvisorService : IAiAdvisorService
                 t.Amount
             });
 
-            string jsonPayload = JsonSerializer.Serialize(transactionData);
+            var jsonPayload = JsonSerializer.Serialize(transactionData);
 
-            string prompt = $@"
+            var prompt = $@"
                 You are an expert financial categorization AI.
                 Context: The user is located in Brixen, Trentino-South Tyrol, Italy. Keep local merchants, utilities, and regional services in mind when analyzing the descriptions.
-                
+
                 Task: Categorize the following bank transactions into standard budgeting categories (e.g., Groceries, Housing, Utilities, Entertainment, Salary, Transport, Health, Subscriptions).
 
                 CRUCIAL INSTRUCTION: For EACH transaction, you MUST calculate a realistic 'Confidence' score between 0.0 (completely guessing) and 1.0 (absolutely certain) based on how recognizable the description is. Do not just copy the example value!
-                
-                Return ONLY a raw JSON array of objects with the following exact structure (no markdown tags like ```json):
+
+                Return ONLY a raw JSON array of objects with the following exact structure. Do not use markdown fences or prose:
                 [
                   {{
                     ""Id"": ""the-guid-here"",
@@ -80,46 +94,20 @@ public class GeminiAiAdvisorService : IAiAdvisorService
                     ""Confidence"": 0.82
                   }}
                 ]
-                
+
                 Transactions to categorize:
                 {jsonPayload}";
 
-            var requestBody = new
-            {
-                contents = new[] { new { parts = new[] { new { text = prompt } } } },
-                generationConfig = new { response_mime_type = "application/json" }
-            };
+            var textResult = await SendPromptAsync(prompt, "categorization");
 
-            var url = $"v1beta/models/{_model}:generateContent?key={_apiKey}";
-
-            var response = await _httpClient.PostAsJsonAsync(url, requestBody);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                _logger.LogError(
-                    ObservabilityEventIds.GeminiUpstreamFailure,
-                    "Gemini categorization request failed. StatusCode: {StatusCode}, Model: {Model}, Error: {Error}",
-                    (int)response.StatusCode,
-                    _model,
-                    error);
-                throw new ExternalServiceException("AI categorization is currently unavailable.");
-            }
-
-            var responseJson = await response.Content.ReadFromJsonAsync<JsonElement>();
+            if (string.IsNullOrWhiteSpace(textResult))
+                continue;
 
             try
             {
-                var textResult = responseJson
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text").GetString();
-
-                if (string.IsNullOrWhiteSpace(textResult))
-                    continue;
-
-                var aiResults = JsonSerializer.Deserialize<List<AiCategoryResponse>>(textResult, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var aiResults = JsonSerializer.Deserialize<List<AiCategoryResponse>>(
+                    NormalizeJsonText(textResult),
+                    JsonOptions);
 
                 if (aiResults == null)
                     continue;
@@ -129,18 +117,19 @@ public class GeminiAiAdvisorService : IAiAdvisorService
                     var target = transactions.FirstOrDefault(t => t.Id == result.Id);
                     if (target != null)
                     {
-                        target.Category = result.Category;
-                        target.Metadata.AiSuggestedCategory = result.Category;
-                        target.Metadata.AiConfidenceScore = result.Confidence;
+                        var category = NormalizeCategory(result.Category);
+                        target.Category = category;
+                        target.Metadata.AiSuggestedCategory = category;
+                        target.Metadata.AiConfidenceScore = Math.Clamp(result.Confidence, 0.0, 1.0);
                     }
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(
-                    ObservabilityEventIds.GeminiInvalidResponse,
+                    ObservabilityEventIds.OpenRouterInvalidResponse,
                     ex,
-                    "Failed to parse Gemini categorization response for model {Model}.",
+                    "Failed to parse OpenRouter categorization response for model {Model}.",
                     _model);
             }
         }
@@ -155,7 +144,10 @@ public class GeminiAiAdvisorService : IAiAdvisorService
         if (!transactionList.Any())
             return Array.Empty<SavingsTip>();
 
-        _logger.LogInformation("Generating AI savings tips for {Count} transactions.", transactionList.Count);
+        _logger.LogInformation(
+            "Generating AI savings tips for {Count} transactions via OpenRouter model {Model}.",
+            transactionList.Count,
+            _model);
 
         var expensesByCategory = transactionList
             .Where(t => t.Amount < 0)
@@ -168,14 +160,14 @@ public class GeminiAiAdvisorService : IAiAdvisorService
             .OrderByDescending(x => x.TotalSpent)
             .ToList();
 
-        string jsonPayload = JsonSerializer.Serialize(expensesByCategory);
+        var jsonPayload = JsonSerializer.Serialize(expensesByCategory);
 
-        string prompt = $@"
+        var prompt = $@"
             You are a highly skilled personal finance advisor.
             Context: The user is located in Brixen, Trentino-South Tyrol, Italy. Use this context to provide realistic, localized advice if applicable.
-            
+
             Task: Analyze the user's spending habits based on the following categorized expense summary. Provide exactly 3 actionable and specific tips on how to save money.
-            
+
             CRUCIAL OUTPUT INSTRUCTIONS (STRICTLY ENFORCED):
             1. Return ONLY a raw JSON array. No markdown, no prose before or after.
             2. Use this exact structure:
@@ -191,48 +183,20 @@ public class GeminiAiAdvisorService : IAiAdvisorService
             4. Allowed Category values: Transport, Energy, Groceries, Lifestyle, Housing, Utilities, Entertainment, Health, Subscriptions, Income.
             5. Keep each title under 60 characters.
             6. Description must be plain text, readable in a web UI, and may include the EUR symbol.
-            
+
             Expense Summary (Absolute Values):
             {jsonPayload}";
 
-        var requestBody = new
-        {
-            contents = new[] { new { parts = new[] { new { text = prompt } } } },
-            generationConfig = new { temperature = 0.7, response_mime_type = "application/json" }
-        };
+        var textResult = await SendPromptAsync(prompt, "savings tips", temperature: 0.7);
 
-        var url = $"v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
-
-        var response = await _httpClient.PostAsJsonAsync(url, requestBody);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync();
-            _logger.LogError(
-                ObservabilityEventIds.GeminiUpstreamFailure,
-                "Gemini savings tips request failed. StatusCode: {StatusCode}, Model: {Model}, Error: {Error}",
-                (int)response.StatusCode,
-                _model,
-                error);
-            throw new ExternalServiceException("AI tips are currently unavailable.");
-        }
-
-        var responseJson = await response.Content.ReadFromJsonAsync<JsonElement>();
+        if (string.IsNullOrWhiteSpace(textResult))
+            return Array.Empty<SavingsTip>();
 
         try
         {
-            var textResult = responseJson
-                .GetProperty("candidates")[0]
-                .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text").GetString();
-
-            if (string.IsNullOrWhiteSpace(textResult))
-                return Array.Empty<SavingsTip>();
-
             var aiResults = JsonSerializer.Deserialize<List<SavingsTip>>(
-                textResult,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                NormalizeJsonText(textResult),
+                JsonOptions
             ) ?? new List<SavingsTip>();
 
             return aiResults
@@ -243,12 +207,58 @@ public class GeminiAiAdvisorService : IAiAdvisorService
         catch (Exception ex)
         {
             _logger.LogError(
-                ObservabilityEventIds.GeminiInvalidResponse,
+                ObservabilityEventIds.OpenRouterInvalidResponse,
                 ex,
-                "Failed to parse Gemini savings tips response for model {Model}.",
+                "Failed to parse OpenRouter savings tips response for model {Model}.",
                 _model);
             throw new ExternalServiceException("The AI provider returned an invalid response.");
         }
+    }
+
+    private async Task<string?> SendPromptAsync(string prompt, string operation, double? temperature = null)
+    {
+        var requestBody = new OpenRouterChatRequest
+        {
+            Model = _model,
+            Messages =
+            [
+                new OpenRouterMessage
+                {
+                    Role = "user",
+                    Content = prompt
+                }
+            ],
+            Temperature = temperature
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+        {
+            Content = JsonContent.Create(requestBody)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError(
+                ObservabilityEventIds.OpenRouterUpstreamFailure,
+                "OpenRouter {Operation} request failed. StatusCode: {StatusCode}, Model: {Model}, Error: {Error}",
+                operation,
+                (int)response.StatusCode,
+                _model,
+                error);
+            throw new ExternalServiceException($"AI {operation} is currently unavailable.");
+        }
+
+        var responseJson = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        return responseJson
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
     }
 
     private static SavingsTip NormalizeSavingsTip(SavingsTip tip, int index)
@@ -300,7 +310,48 @@ public class GeminiAiAdvisorService : IAiAdvisorService
         return match ?? "Lifestyle";
     }
 
-    private class AiCategoryResponse
+    private static string NormalizeJsonText(string text)
+    {
+        var trimmed = text.Trim();
+
+        if (!trimmed.StartsWith("```", StringComparison.Ordinal))
+            return trimmed;
+
+        var firstLineEnd = trimmed.IndexOf('\n');
+        if (firstLineEnd < 0)
+            return trimmed;
+
+        var withoutOpeningFence = trimmed[(firstLineEnd + 1)..].Trim();
+        var closingFenceIndex = withoutOpeningFence.LastIndexOf("```", StringComparison.Ordinal);
+
+        return closingFenceIndex >= 0
+            ? withoutOpeningFence[..closingFenceIndex].Trim()
+            : withoutOpeningFence;
+    }
+
+    private sealed class OpenRouterChatRequest
+    {
+        [JsonPropertyName("model")]
+        public string Model { get; init; } = string.Empty;
+
+        [JsonPropertyName("messages")]
+        public IReadOnlyList<OpenRouterMessage> Messages { get; init; } = Array.Empty<OpenRouterMessage>();
+
+        [JsonPropertyName("temperature")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? Temperature { get; init; }
+    }
+
+    private sealed class OpenRouterMessage
+    {
+        [JsonPropertyName("role")]
+        public string Role { get; init; } = string.Empty;
+
+        [JsonPropertyName("content")]
+        public string Content { get; init; } = string.Empty;
+    }
+
+    private sealed class AiCategoryResponse
     {
         public Guid Id { get; set; }
         public string Category { get; set; } = string.Empty;

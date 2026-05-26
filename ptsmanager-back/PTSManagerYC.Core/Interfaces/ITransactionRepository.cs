@@ -12,6 +12,7 @@ namespace PTSManagerYC.Core.Interfaces
         Task AddRangeAsync(IEnumerable<Transaction> transactions);
         Task SaveChangesAsync();
         Task<IEnumerable<Transaction>> GetAllAsync(string userId);
+        Task<List<Transaction>> GetUncategorizedAsync(string userId);
         Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month);
         Task<IEnumerable<Transaction>> GetByDateRangeAsync(string userId, DateTime startDate, DateTime endDate);
         Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(string userId, DateTime? startDate, int pageNumber, int pageSize);
