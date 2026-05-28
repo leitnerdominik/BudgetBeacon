@@ -1,3 +1,4 @@
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
@@ -35,11 +36,13 @@ type DesktopTransactionGridProps = {
   onCategoryEditStart: (transactionId: string) => void;
   onCategorySave: (transactionId: string) => void;
   onDeleteRequest: (transactionId: string) => void;
+  onRegenerateCategory: (transactionId: string) => void;
   paginationModel: GridPaginationModel;
   setPaginationModel: (model: GridPaginationModel) => void;
   totalCount: number;
   transactions: PaginatedTransactions["data"];
   deletingTransactionId?: string;
+  regeneratingCategoryId?: string;
   updatingCategoryId?: string;
 };
 
@@ -52,11 +55,13 @@ export const DesktopTransactionGrid = ({
   onCategoryEditStart,
   onCategorySave,
   onDeleteRequest,
+  onRegenerateCategory,
   paginationModel,
   setPaginationModel,
   totalCount,
   transactions,
   deletingTransactionId,
+  regeneratingCategoryId,
   updatingCategoryId,
 }: DesktopTransactionGridProps) => {
   const columns: GridColDef[] = [
@@ -115,7 +120,7 @@ export const DesktopTransactionGrid = ({
     {
       field: "actions",
       headerName: "",
-      width: 96,
+      width: 132,
       align: "center",
       sortable: false,
       filterable: false,
@@ -151,12 +156,33 @@ export const DesktopTransactionGrid = ({
           </Box>
         ) : (
           <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 0.5 }}>
+            <Tooltip title="Regenerate category">
+              <span>
+                <IconButton
+                  aria-label="Regenerate transaction category"
+                  color="secondary"
+                  size="small"
+                  disabled={
+                    Boolean(updatingCategoryId) ||
+                    Boolean(deletingTransactionId) ||
+                    Boolean(regeneratingCategoryId)
+                  }
+                  onClick={() => onRegenerateCategory(params.row.id)}
+                >
+                  <AutoAwesomeIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
             <Tooltip title="Edit category">
               <span>
                 <IconButton
                   aria-label="Edit transaction category"
                   size="small"
-                  disabled={Boolean(updatingCategoryId) || Boolean(deletingTransactionId)}
+                  disabled={
+                    Boolean(updatingCategoryId) ||
+                    Boolean(deletingTransactionId) ||
+                    Boolean(regeneratingCategoryId)
+                  }
                   onClick={() => onCategoryEditStart(params.row.id)}
                 >
                   <EditIcon fontSize="small" />
@@ -169,7 +195,11 @@ export const DesktopTransactionGrid = ({
                   aria-label="Delete transaction"
                   color="error"
                   size="small"
-                  disabled={Boolean(updatingCategoryId) || Boolean(deletingTransactionId)}
+                  disabled={
+                    Boolean(updatingCategoryId) ||
+                    Boolean(deletingTransactionId) ||
+                    Boolean(regeneratingCategoryId)
+                  }
                   onClick={() => onDeleteRequest(params.row.id)}
                 >
                   <DeleteIcon fontSize="small" />

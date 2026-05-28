@@ -276,6 +276,32 @@ public class TransactionsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{transactionId:guid}/ai/categorize")]
+    public async Task<IActionResult> RegenerateCategory(Guid transactionId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to categorize transactions.");
+        }
+
+        var transaction = await _repository.GetByIdAsync(userId, transactionId);
+        if (transaction is null)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status404NotFound,
+                "Transaction not found",
+                "The requested transaction could not be found for the current user.",
+                "urn:ptsmanager:transaction-not-found");
+        }
+
+        var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
+        await _aiService.CategorizeTransactionsAsync([transaction], aiLocationContext);
+        await _repository.SaveChangesAsync();
+
+        return Ok(transaction);
+    }
+
     [HttpPost("ai/categorize")]
     public async Task<IActionResult> TriggerCategorization()
     {

@@ -251,6 +251,68 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task RegenerateCategory_CategorizesCurrentUsersTransaction()
+    {
+        var transactionId = Guid.NewGuid();
+        var transaction = new Transaction
+        {
+            Id = transactionId,
+            UserId = "user-1",
+            Category = "Uncategorized",
+            Metadata = new TransactionMetadata
+            {
+                RawDescription = "Bakery purchase"
+            }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = transaction
+        };
+        var preferencesRepository = new FakeUserPreferencesRepository
+        {
+            AiLocationContext = "Brixen, South Tyrol, Italy"
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = items =>
+            {
+                items[0].Category = "Dining";
+                items[0].Metadata.AiSuggestedCategory = "Dining";
+                items[0].Metadata.AiConfidenceScore = 0.87;
+                return Task.CompletedTask;
+            }
+        };
+        var controller = CreateController(repository, preferencesRepository, aiService: aiService);
+
+        var result = await controller.RegenerateCategory(transactionId);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        Assert.Equal("Dining", updatedTransaction.Category);
+        Assert.Equal(0.87, updatedTransaction.Metadata.AiConfidenceScore);
+        Assert.Equal("user-1", repository.LastGetByIdUserId);
+        Assert.Equal(transactionId, repository.LastGetByIdTransactionId);
+        Assert.Equal(1, aiService.CategorizeCalls);
+        Assert.Equal("Brixen, South Tyrol, Italy", aiService.LastCategorizationLocationContext);
+        Assert.True(repository.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task RegenerateCategory_ReturnsNotFoundWhenTransactionIsNotOwnedByCurrentUser()
+    {
+        var repository = new FakeTransactionRepository();
+        var aiService = new FakeAiAdvisorService();
+        var controller = CreateController(repository, aiService: aiService);
+
+        var result = await controller.RegenerateCategory(Guid.NewGuid());
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+        Assert.Equal(0, aiService.CategorizeCalls);
+        Assert.False(repository.SaveChangesCalled);
+    }
+
+    [Fact]
     public async Task TriggerCategorization_ReturnsNoOpWhenThereAreNoUncategorizedTransactions()
     {
         var aiService = new FakeAiAdvisorService();
@@ -426,10 +488,13 @@ public sealed class TransactionsControllerTests
         public int ImportedCount { get; init; }
         public bool SaveChangesCalled { get; private set; }
         public bool DeleteCalled { get; private set; }
+        public Transaction? TransactionById { get; init; }
         public Transaction? TransactionToDelete { get; init; }
         public Transaction? TransactionToUpdate { get; init; }
         public string? LastDeleteUserId { get; private set; }
         public Guid? LastDeleteTransactionId { get; private set; }
+        public string? LastGetByIdUserId { get; private set; }
+        public Guid? LastGetByIdTransactionId { get; private set; }
         public string? LastUpdateCategoryUserId { get; private set; }
         public Guid? LastUpdateCategoryTransactionId { get; private set; }
 
@@ -459,6 +524,21 @@ public sealed class TransactionsControllerTests
 
             DeleteCalled = true;
             return Task.FromResult(true);
+        }
+
+        public Task<Transaction?> GetByIdAsync(string userId, Guid transactionId)
+        {
+            LastGetByIdUserId = userId;
+            LastGetByIdTransactionId = transactionId;
+
+            if (TransactionById is null ||
+                TransactionById.Id != transactionId ||
+                TransactionById.UserId != userId)
+            {
+                return Task.FromResult<Transaction?>(null);
+            }
+
+            return Task.FromResult<Transaction?>(TransactionById);
         }
 
         public Task SaveChangesAsync()

@@ -93,6 +93,12 @@ public class TransactionRepository : ITransactionRepository
         return true;
     }
 
+    public async Task<Transaction?> GetByIdAsync(string userId, Guid transactionId)
+    {
+        return await _context.Transactions
+            .SingleOrDefaultAsync(candidate => candidate.Id == transactionId && candidate.UserId == userId);
+    }
+
     public async Task SaveChangesAsync()
     {
         await _context.SaveChangesAsync();

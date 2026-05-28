@@ -32,6 +32,7 @@ import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../../hooks/useSlowLoading";
 import { useCategorizeUncategorizedTransactions } from "../hooks/useCategorizeUncategorizedTransactions";
 import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
+import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
 import { useUpdateTransactionCategory } from "../hooks/useUpdateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
 import { TransactionCategorySelect } from "../TransactionCategorySelect";
@@ -93,6 +94,7 @@ export const TransactionList = () => {
   );
   const categorizeMutation = useCategorizeUncategorizedTransactions();
   const deleteTransactionMutation = useDeleteTransaction();
+  const regenerateCategoryMutation = useRegenerateTransactionCategory();
   const updateCategoryMutation = useUpdateTransactionCategory();
   const isSlowLoading = useSlowLoading(isLoading);
 
@@ -145,6 +147,11 @@ export const TransactionList = () => {
         onSuccess: () => handleCategoryCancel(),
       },
     );
+  };
+
+  const handleRegenerateCategory = (transactionId: string) => {
+    handleCategoryCancel();
+    regenerateCategoryMutation.mutate(transactionId);
   };
 
   const handleDeleteRequest = (transactionId: string) => {
@@ -395,6 +402,25 @@ export const TransactionList = () => {
                             </>
                           ) : (
                             <>
+                              <Tooltip title="Regenerate category">
+                                <span>
+                                  <IconButton
+                                    aria-label="Regenerate transaction category"
+                                    color="secondary"
+                                    size="small"
+                                    disabled={
+                                      updateCategoryMutation.isPending ||
+                                      deleteTransactionMutation.isPending ||
+                                      regenerateCategoryMutation.isPending
+                                    }
+                                    onClick={() =>
+                                      handleRegenerateCategory(transaction.id)
+                                    }
+                                  >
+                                    <AutoAwesomeIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
                               <Tooltip title="Edit category">
                                 <span>
                                   <IconButton
@@ -402,7 +428,8 @@ export const TransactionList = () => {
                                     size="small"
                                     disabled={
                                       updateCategoryMutation.isPending ||
-                                      deleteTransactionMutation.isPending
+                                      deleteTransactionMutation.isPending ||
+                                      regenerateCategoryMutation.isPending
                                     }
                                     onClick={() =>
                                       handleCategoryEditStart(
@@ -423,7 +450,8 @@ export const TransactionList = () => {
                                     size="small"
                                     disabled={
                                       updateCategoryMutation.isPending ||
-                                      deleteTransactionMutation.isPending
+                                      deleteTransactionMutation.isPending ||
+                                      regenerateCategoryMutation.isPending
                                     }
                                     onClick={() => handleDeleteRequest(transaction.id)}
                                   >
@@ -498,7 +526,13 @@ export const TransactionList = () => {
             }}
             onCategorySave={handleCategorySave}
             onDeleteRequest={handleDeleteRequest}
+            onRegenerateCategory={handleRegenerateCategory}
             paginationModel={paginationModel}
+            regeneratingCategoryId={
+              regenerateCategoryMutation.isPending
+                ? regenerateCategoryMutation.variables
+                : undefined
+            }
             setPaginationModel={setPaginationModel}
             updatingCategoryId={
               updateCategoryMutation.isPending

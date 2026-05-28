@@ -76,6 +76,17 @@ export const updateTransactionCategory = async (
   return mapTransaction(response);
 };
 
+export const regenerateTransactionCategory = async (
+  transactionId: string,
+): Promise<Transaction> => {
+  const response = await apiClient.post<
+    TransactionApiResponse,
+    TransactionApiResponse
+  >(`/transactions/${transactionId}/ai/categorize`, {});
+
+  return mapTransaction(response);
+};
+
 export const deleteTransaction = async (transactionId: string): Promise<void> => {
   await apiClient.delete(`/transactions/${transactionId}`);
 };
