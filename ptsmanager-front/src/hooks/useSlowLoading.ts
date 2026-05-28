@@ -5,6 +5,7 @@ export const useSlowLoading = (isActive: boolean, delay = 1400) => {
 
   useEffect(() => {
     if (!isActive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsSlow(false);
       return;
     }
