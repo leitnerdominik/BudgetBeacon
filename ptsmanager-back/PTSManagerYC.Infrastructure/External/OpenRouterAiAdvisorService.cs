@@ -33,6 +33,7 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
         "Income"
     ];
 
+    private const int MaxLocationContextLength = 120;
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
     private readonly string _model;
@@ -51,7 +52,7 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
             "OpenRouter:Model is missing. Configure it via application settings.");
     }
 
-    public async Task CategorizeTransactionsAsync(List<Transaction> transactions)
+    public async Task CategorizeTransactionsAsync(List<Transaction> transactions, string? aiLocationContext = null)
     {
         if (!transactions.Any())
             return;
@@ -78,25 +79,7 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
 
             var jsonPayload = JsonSerializer.Serialize(transactionData);
 
-            var prompt = $@"
-                You are an expert financial categorization AI.
-                Context: The user is located in Brixen, Trentino-South Tyrol, Italy. Keep local merchants, utilities, and regional services in mind when analyzing the descriptions.
-
-                Task: Categorize the following bank transactions into standard budgeting categories (e.g., Groceries, Housing, Utilities, Entertainment, Salary, Transport, Health, Subscriptions).
-
-                CRUCIAL INSTRUCTION: For EACH transaction, you MUST calculate a realistic 'Confidence' score between 0.0 (completely guessing) and 1.0 (absolutely certain) based on how recognizable the description is. Do not just copy the example value!
-
-                Return ONLY a raw JSON array of objects with the following exact structure. Do not use markdown fences or prose:
-                [
-                  {{
-                    ""Id"": ""the-guid-here"",
-                    ""Category"": ""Suggested Category"",
-                    ""Confidence"": 0.82
-                  }}
-                ]
-
-                Transactions to categorize:
-                {jsonPayload}";
+            var prompt = BuildCategorizationPrompt(jsonPayload, aiLocationContext);
 
             var textResult = await SendPromptAsync(prompt, "categorization");
 
@@ -137,7 +120,9 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
         _logger.LogInformation("Successfully completed AI categorization batches.");
     }
 
-    public async Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(IEnumerable<Transaction> transactions)
+    public async Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(
+        IEnumerable<Transaction> transactions,
+        string? aiLocationContext = null)
     {
         var transactionList = transactions.ToList();
 
@@ -162,30 +147,7 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
 
         var jsonPayload = JsonSerializer.Serialize(expensesByCategory);
 
-        var prompt = $@"
-            You are a highly skilled personal finance advisor.
-            Context: The user is located in Brixen, Trentino-South Tyrol, Italy. Use this context to provide realistic, localized advice if applicable.
-
-            Task: Analyze the user's spending habits based on the following categorized expense summary. Provide exactly 3 actionable and specific tips on how to save money.
-
-            CRUCIAL OUTPUT INSTRUCTIONS (STRICTLY ENFORCED):
-            1. Return ONLY a raw JSON array. No markdown, no prose before or after.
-            2. Use this exact structure:
-               [
-                 {{
-                   ""Title"": ""Short headline"",
-                   ""Description"": ""One practical paragraph with the recommendation."",
-                   ""Impact"": ""High"",
-                   ""Category"": ""Transport""
-                 }}
-               ]
-            3. Allowed Impact values: High, Medium, Low.
-            4. Allowed Category values: Transport, Energy, Groceries, Lifestyle, Housing, Utilities, Entertainment, Health, Subscriptions, Income.
-            5. Keep each title under 60 characters.
-            6. Description must be plain text, readable in a web UI, and may include the EUR symbol.
-
-            Expense Summary (Absolute Values):
-            {jsonPayload}";
+        var prompt = BuildSavingsTipsPrompt(jsonPayload, aiLocationContext);
 
         var textResult = await SendPromptAsync(prompt, "savings tips", temperature: 0.7);
 
@@ -259,6 +221,80 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
             .GetProperty("message")
             .GetProperty("content")
             .GetString();
+    }
+
+    private static string BuildCategorizationPrompt(string jsonPayload, string? aiLocationContext)
+    {
+        return $@"
+                You are an expert financial categorization AI.
+                Context: {BuildLocationContext(aiLocationContext)}
+
+                Task: Categorize the following bank transactions into standard budgeting categories (e.g., Groceries, Housing, Utilities, Entertainment, Salary, Transport, Health, Subscriptions).
+
+                CRUCIAL INSTRUCTION: For EACH transaction, you MUST calculate a realistic 'Confidence' score between 0.0 (completely guessing) and 1.0 (absolutely certain) based on how recognizable the description is. Do not just copy the example value!
+
+                Return ONLY a raw JSON array of objects with the following exact structure. Do not use markdown fences or prose:
+                [
+                  {{
+                    ""Id"": ""the-guid-here"",
+                    ""Category"": ""Suggested Category"",
+                    ""Confidence"": 0.82
+                  }}
+                ]
+
+                Transactions to categorize:
+                {jsonPayload}";
+    }
+
+    private static string BuildSavingsTipsPrompt(string jsonPayload, string? aiLocationContext)
+    {
+        return $@"
+            You are a highly skilled personal finance advisor.
+            Context: {BuildLocationContext(aiLocationContext)}
+
+            Task: Analyze the user's spending habits based on the following categorized expense summary. Provide exactly 3 actionable and specific tips on how to save money.
+
+            CRUCIAL OUTPUT INSTRUCTIONS (STRICTLY ENFORCED):
+            1. Return ONLY a raw JSON array. No markdown, no prose before or after.
+            2. Use this exact structure:
+               [
+                 {{
+                   ""Title"": ""Short headline"",
+                   ""Description"": ""One practical paragraph with the recommendation."",
+                   ""Impact"": ""High"",
+                   ""Category"": ""Transport""
+                 }}
+               ]
+            3. Allowed Impact values: High, Medium, Low.
+            4. Allowed Category values: Transport, Energy, Groceries, Lifestyle, Housing, Utilities, Entertainment, Health, Subscriptions, Income.
+            5. Keep each title under 60 characters.
+            6. Description must be plain text, readable in a web UI, and may include the EUR symbol.
+
+            Expense Summary (Absolute Values):
+            {jsonPayload}";
+    }
+
+    private static string BuildLocationContext(string? aiLocationContext)
+    {
+        var normalized = NormalizeLocationContext(aiLocationContext);
+
+        return normalized is null
+            ? "No specific user location is configured. Do not assume a city or region."
+            : $"The user is located in {normalized}. Keep local merchants, utilities, and regional services in mind.";
+    }
+
+    private static string? NormalizeLocationContext(string? value)
+    {
+        var normalized = string.Join(
+            ' ',
+            (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        return normalized.Length <= MaxLocationContextLength
+            ? normalized
+            : normalized[..MaxLocationContextLength].TrimEnd();
     }
 
     private static SavingsTip NormalizeSavingsTip(SavingsTip tip, int index)

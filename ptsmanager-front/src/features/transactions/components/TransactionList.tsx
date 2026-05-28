@@ -40,6 +40,9 @@ type GridPaginationModel = {
   pageSize: number;
 };
 
+const formatConfidenceScore = (value: number | null | undefined) =>
+  typeof value === "number" ? `${Math.round(value * 100)}%` : "N/A";
+
 const DesktopTransactionGrid = lazy(async () => ({
   default: (await import("./DesktopTransactionGrid")).DesktopTransactionGrid,
 }));
@@ -271,7 +274,7 @@ export const TransactionList = () => {
                           variant="outlined"
                         />
                         <Chip
-                          label={`ID ${transaction.id}`}
+                          label={`Confidence ${formatConfidenceScore(transaction.aiConfidenceScore)}`}
                           size="medium"
                           variant="filled"
                           sx={{

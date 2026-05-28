@@ -25,6 +25,7 @@ public class TransactionsController : ControllerBase
     };
 
     private readonly ITransactionRepository _repository;
+    private readonly IUserPreferencesRepository _userPreferencesRepository;
     private readonly FinanceAggregationService _aggregationService;
     private readonly IAiAdvisorService _aiService;
     private readonly ICsvReaderService _csvReader;
@@ -32,12 +33,14 @@ public class TransactionsController : ControllerBase
 
     public TransactionsController(
         ITransactionRepository repository,
+        IUserPreferencesRepository userPreferencesRepository,
         FinanceAggregationService aggregationService,
         IAiAdvisorService aiService,
         ICsvReaderService csvReader,
         ILogger<TransactionsController> logger)
     {
         _repository = repository;
+        _userPreferencesRepository = userPreferencesRepository;
         _aggregationService = aggregationService;
         _aiService = aiService;
         _csvReader = csvReader;
@@ -240,7 +243,8 @@ public class TransactionsController : ControllerBase
             });
         }
 
-        await _aiService.CategorizeTransactionsAsync(uncategorized);
+        var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
+        await _aiService.CategorizeTransactionsAsync(uncategorized, aiLocationContext);
 
         var categorizedCount = uncategorized.Count(t =>
             !string.Equals(t.Category, "Uncategorized", StringComparison.OrdinalIgnoreCase));
@@ -286,7 +290,8 @@ public class TransactionsController : ControllerBase
                 "urn:ptsmanager:tips-source-data-not-found");
         }
 
-        var tips = await _aiService.GetSavingTipsAsync(transactions);
+        var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
+        var tips = await _aiService.GetSavingTipsAsync(transactions, aiLocationContext);
 
         return Ok(new { Timeframe = $"Last {monthsBack} months", Tips = tips });
     }

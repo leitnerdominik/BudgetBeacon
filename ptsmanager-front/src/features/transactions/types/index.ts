@@ -4,6 +4,7 @@ export interface Transaction {
   amount: number;
   description: string;
   category: string;
+  aiConfidenceScore: number | null;
 }
 
 export interface PaginatedTransactions {

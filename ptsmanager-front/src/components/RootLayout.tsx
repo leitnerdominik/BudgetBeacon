@@ -21,6 +21,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import LocationCityIcon from "@mui/icons-material/LocationCity";
+import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -44,6 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   { title: "Dashboard", path: "/", icon: <DashboardIcon /> },
   { title: "Transactions", path: "/transactions", icon: <ReceiptIcon /> },
   { title: "Tips", path: "/tips", icon: <LocationCityIcon /> },
+  { title: "Settings", path: "/settings", icon: <SettingsIcon /> },
 ];
 
 export const RootLayout = () => {

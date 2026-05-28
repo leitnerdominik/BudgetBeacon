@@ -5,7 +5,7 @@ namespace PTSManagerYC.Core.Interfaces
 {
     public interface IAiAdvisorService
     {
-        Task CategorizeTransactionsAsync(List<Transaction> transactions);
-        Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(IEnumerable<Transaction> transactions);
+        Task CategorizeTransactionsAsync(List<Transaction> transactions, string? aiLocationContext = null);
+        Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(IEnumerable<Transaction> transactions, string? aiLocationContext = null);
     }
 }

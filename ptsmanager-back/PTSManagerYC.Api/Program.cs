@@ -183,6 +183,7 @@ try
     builder.Services.AddAuthorization();
 
     builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+    builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
     builder.Services.AddScoped<FinanceAggregationService>();
     builder.Services.AddScoped<ICsvReaderService, CsvReaderService>();
 

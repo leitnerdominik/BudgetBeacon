@@ -94,6 +94,48 @@ public sealed class OpenRouterAiAdvisorServiceTests
     }
 
     [Fact]
+    public async Task CategorizeTransactionsAsync_UsesProvidedLocationContextInPrompt()
+    {
+        var transaction = new Transaction
+        {
+            Id = Guid.NewGuid(),
+            Amount = -15m,
+            Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
+        };
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        var sut = CreateService(handler);
+
+        await sut.CategorizeTransactionsAsync([transaction], " Bolzano,\nSouth Tyrol, Italy ");
+
+        var request = Assert.Single(handler.Requests);
+        var prompt = GetPrompt(request.Body);
+        Assert.Contains("Bolzano, South Tyrol, Italy", prompt);
+        Assert.DoesNotContain("Brixen, Trentino-South Tyrol, Italy", prompt);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_UsesNeutralPromptWhenLocationIsMissing()
+    {
+        var transaction = new Transaction
+        {
+            Id = Guid.NewGuid(),
+            Amount = -15m,
+            Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
+        };
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        var sut = CreateService(handler);
+
+        await sut.CategorizeTransactionsAsync([transaction], "   ");
+
+        var request = Assert.Single(handler.Requests);
+        var prompt = GetPrompt(request.Body);
+        Assert.Contains("No specific user location is configured", prompt);
+        Assert.DoesNotContain("Brixen, Trentino-South Tyrol, Italy", prompt);
+    }
+
+    [Fact]
     public async Task CategorizeTransactionsAsync_SplitsRequestsIntoBatchesOfFifty()
     {
         var transactions = Enumerable.Range(0, 51)
@@ -225,6 +267,23 @@ public sealed class OpenRouterAiAdvisorServiceTests
     }
 
     [Fact]
+    public async Task GetSavingTipsAsync_UsesProvidedLocationContextInPrompt()
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse("[{\"Title\":\"Tip\",\"Description\":\"Use local alternatives.\",\"Impact\":\"Medium\",\"Category\":\"Transport\"}]"));
+        var sut = CreateService(handler);
+
+        await sut.GetSavingTipsAsync(
+            [new Transaction { Amount = -20m, Category = "Transport" }],
+            "Merano, South Tyrol, Italy");
+
+        var request = Assert.Single(handler.Requests);
+        var prompt = GetPrompt(request.Body);
+        Assert.Contains("Merano, South Tyrol, Italy", prompt);
+        Assert.DoesNotContain("Brixen, Trentino-South Tyrol, Italy", prompt);
+    }
+
+    [Fact]
     public async Task GetSavingTipsAsync_ThrowsExternalServiceExceptionForInvalidProviderJson()
     {
         var handler = new StubHttpMessageHandler();
@@ -293,6 +352,16 @@ public sealed class OpenRouterAiAdvisorServiceTests
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
+    }
+
+    private static string GetPrompt(string requestBody)
+    {
+        using var body = JsonDocument.Parse(requestBody);
+
+        return body.RootElement
+            .GetProperty("messages")[0]
+            .GetProperty("content")
+            .GetString() ?? string.Empty;
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler

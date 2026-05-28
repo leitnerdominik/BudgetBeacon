@@ -181,6 +181,10 @@ public sealed class TransactionsControllerTests
         {
             UncategorizedTransactions = transactions
         };
+        var preferencesRepository = new FakeUserPreferencesRepository
+        {
+            AiLocationContext = "Bolzano, South Tyrol, Italy"
+        };
         var aiService = new FakeAiAdvisorService
         {
             CategorizeAction = items =>
@@ -189,7 +193,7 @@ public sealed class TransactionsControllerTests
                 return Task.CompletedTask;
             }
         };
-        var controller = CreateController(repository, aiService: aiService);
+        var controller = CreateController(repository, preferencesRepository, aiService: aiService);
 
         var result = await controller.TriggerCategorization();
 
@@ -197,6 +201,7 @@ public sealed class TransactionsControllerTests
         Assert.Equal(2, GetValue<int>(ok.Value, "ProcessedCount"));
         Assert.Equal(1, GetValue<int>(ok.Value, "CategorizedCount"));
         Assert.Equal(1, aiService.CategorizeCalls);
+        Assert.Equal("Bolzano, South Tyrol, Italy", aiService.LastCategorizationLocationContext);
         Assert.True(repository.SaveChangesCalled);
     }
 
@@ -222,6 +227,10 @@ public sealed class TransactionsControllerTests
             PagedTransactions = [new Transaction { Amount = -25m, Category = "Groceries" }],
             PagedTotalCount = 1
         };
+        var preferencesRepository = new FakeUserPreferencesRepository
+        {
+            AiLocationContext = "Merano, South Tyrol, Italy"
+        };
         var aiService = new FakeAiAdvisorService
         {
             SavingTips =
@@ -236,7 +245,7 @@ public sealed class TransactionsControllerTests
                 }
             ]
         };
-        var controller = CreateController(repository, aiService: aiService);
+        var controller = CreateController(repository, preferencesRepository, aiService: aiService);
 
         var result = await controller.GetAiSavingsTips(3);
 
@@ -246,16 +255,19 @@ public sealed class TransactionsControllerTests
         var tip = Assert.Single(tips);
         Assert.Equal("tip-1", tip.Id);
         Assert.Equal(1, aiService.GetSavingTipsCalls);
+        Assert.Equal("Merano, South Tyrol, Italy", aiService.LastSavingsTipsLocationContext);
     }
 
     private static TransactionsController CreateController(
         FakeTransactionRepository? repository = null,
+        FakeUserPreferencesRepository? preferencesRepository = null,
         FakeAiAdvisorService? aiService = null,
         FakeCsvReaderService? csvReader = null,
         string? userId = "user-1")
     {
         var controller = new TransactionsController(
             repository ?? new FakeTransactionRepository(),
+            preferencesRepository ?? new FakeUserPreferencesRepository(),
             new FinanceAggregationService(),
             aiService ?? new FakeAiAdvisorService(),
             csvReader ?? new FakeCsvReaderService(),
@@ -365,22 +377,54 @@ public sealed class TransactionsControllerTests
         }
     }
 
+    private sealed class FakeUserPreferencesRepository : IUserPreferencesRepository
+    {
+        public string? AiLocationContext { get; init; }
+
+        public Task<UserPreferences?> GetAsync(string userId)
+        {
+            return Task.FromResult<UserPreferences?>(new UserPreferences
+            {
+                AiLocationContext = AiLocationContext
+            });
+        }
+
+        public Task<string?> GetAiLocationContextAsync(string userId)
+        {
+            return Task.FromResult(AiLocationContext);
+        }
+
+        public Task<UserPreferences?> UpdateAsync(string userId, string? aiLocationContext)
+        {
+            return Task.FromResult<UserPreferences?>(new UserPreferences
+            {
+                AiLocationContext = aiLocationContext
+            });
+        }
+    }
+
     private sealed class FakeAiAdvisorService : IAiAdvisorService
     {
         public int CategorizeCalls { get; private set; }
         public int GetSavingTipsCalls { get; private set; }
+        public string? LastCategorizationLocationContext { get; private set; }
+        public string? LastSavingsTipsLocationContext { get; private set; }
         public Func<List<Transaction>, Task>? CategorizeAction { get; init; }
         public IReadOnlyList<SavingsTip> SavingTips { get; init; } = [];
 
-        public Task CategorizeTransactionsAsync(List<Transaction> transactions)
+        public Task CategorizeTransactionsAsync(List<Transaction> transactions, string? aiLocationContext = null)
         {
             CategorizeCalls++;
+            LastCategorizationLocationContext = aiLocationContext;
             return CategorizeAction?.Invoke(transactions) ?? Task.CompletedTask;
         }
 
-        public Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(IEnumerable<Transaction> transactions)
+        public Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(
+            IEnumerable<Transaction> transactions,
+            string? aiLocationContext = null)
         {
             GetSavingTipsCalls++;
+            LastSavingsTipsLocationContext = aiLocationContext;
             return Task.FromResult(SavingTips);
         }
     }

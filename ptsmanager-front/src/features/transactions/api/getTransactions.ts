@@ -9,6 +9,7 @@ interface TransactionsApiResponse {
     category: string;
     metadata?: {
       rawDescription?: string;
+      aiConfidenceScore?: number | null;
     };
   }>;
   totalCount: number;
@@ -35,6 +36,7 @@ export const getTransactions = async (
       date: transaction.date,
       amount: transaction.amount,
       category: transaction.category,
+      aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
       description:
         transaction.metadata?.rawDescription?.trim() || "No description",
     })),

@@ -8,8 +8,10 @@ import {
 import { formatCurrency, formatDate } from "../../utils/formatDate";
 import type { PaginatedTransactions } from "./types";
 
+const formatConfidenceScore = (value: number | null | undefined) =>
+  typeof value === "number" ? `${Math.round(value * 100)}%` : "N/A";
+
 const columns: GridColDef[] = [
-  { field: "id", headerName: "ID", width: 90 },
   {
     field: "date",
     headerName: "Date",
@@ -18,6 +20,14 @@ const columns: GridColDef[] = [
   },
   { field: "description", headerName: "Description", flex: 1 },
   { field: "category", headerName: "Category", width: 150 },
+  {
+    field: "aiConfidenceScore",
+    headerName: "Confidence",
+    width: 130,
+    align: "right",
+    headerAlign: "right",
+    valueFormatter: (value) => formatConfidenceScore(value as number | null),
+  },
   {
     field: "amount",
     headerName: "Amount",

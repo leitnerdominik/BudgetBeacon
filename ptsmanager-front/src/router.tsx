@@ -18,6 +18,9 @@ const TransactionsPage = lazy(async () => ({
 const TipsPage = lazy(async () => ({
   default: (await import("./pages/TipsPage")).TipsPage,
 }));
+const SettingsPage = lazy(async () => ({
+  default: (await import("./pages/SettingsPage")).SettingsPage,
+}));
 const ProtectedRoute = lazy(async () => ({
   default: (await import("./features/auth/ProtectedRoute")).ProtectedRoute,
 }));
@@ -60,6 +63,7 @@ export const router = createBrowserRouter([
           { index: true, element: withSuspense(<DashboardPage />) },
           { path: "transactions", element: withSuspense(<TransactionsPage />) },
           { path: "tips", element: withSuspense(<TipsPage />) },
+          { path: "settings", element: withSuspense(<SettingsPage />) },
           { path: "*", element: <NotFound /> },
         ],
       },

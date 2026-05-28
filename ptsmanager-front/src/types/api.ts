@@ -22,12 +22,17 @@ export interface RegisterCredentials {
   password: string;
 }
 
+export interface UserPreferences {
+  aiLocationContext: string | null;
+}
+
 export interface Transaction {
   id: string;
   date: string;
   amount: number;
   description: string;
   category: string;
+  aiConfidenceScore: number | null;
 }
 
 export interface PaginatedTransactions {

@@ -20,6 +20,7 @@ public class FinzManagerDbContext : IdentityDbContext<ApplicationUser>
         {
             entity.Property(user => user.FirstName).HasMaxLength(100);
             entity.Property(user => user.LastName).HasMaxLength(100);
+            entity.Property(user => user.AiLocationContext).HasMaxLength(120);
         });
 
         modelBuilder.Entity<Transaction>(entity =>
