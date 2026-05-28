@@ -29,12 +29,20 @@ public class FinzManagerDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(transaction => transaction.UserId)
                 .HasMaxLength(450);
 
+            entity.Property(transaction => transaction.ImportFingerprint)
+                .HasMaxLength(64);
+
             entity.Property(transaction => transaction.Date)
                 .HasConversion(
                     value => value.ToUniversalTime(),
                     value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
             entity.HasIndex(transaction => new { transaction.UserId, transaction.Date });
+
+            entity.HasIndex(transaction => new { transaction.UserId, transaction.ImportFingerprint })
+                .IsUnique()
+                .HasDatabaseName("IX_Transactions_UserId_ImportFingerprint")
+                .HasFilter("\"ImportFingerprint\" IS NOT NULL");
 
             entity.HasOne<ApplicationUser>()
                 .WithMany()

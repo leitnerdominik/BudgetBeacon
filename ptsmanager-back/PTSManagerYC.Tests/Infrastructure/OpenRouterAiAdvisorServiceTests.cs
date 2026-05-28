@@ -1,0 +1,339 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using PTSManagerYC.Core.Entities;
+using PTSManagerYC.Core.Exceptions;
+using PTSManagerYC.Infrastructure.External;
+
+namespace PTSManagerYC.Tests.Infrastructure;
+
+public sealed class OpenRouterAiAdvisorServiceTests
+{
+    [Fact]
+    public void Constructor_ThrowsWhenApiKeyIsMissing()
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler())
+        {
+            BaseAddress = new Uri("https://openrouter.test/api/v1/")
+        };
+        var config = CreateConfig(("OpenRouter:Model", "test-model"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            new OpenRouterAiAdvisorService(
+                httpClient,
+                config,
+                NullLogger<OpenRouterAiAdvisorService>.Instance));
+
+        Assert.Contains("OpenRouter:ApiKey", exception.Message);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_DoesNotCallProviderForEmptyInput()
+    {
+        var handler = new StubHttpMessageHandler();
+        var sut = CreateService(handler);
+
+        await sut.CategorizeTransactionsAsync([]);
+
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_MapsNormalizedCategoriesAndClampedConfidence()
+    {
+        var transportId = Guid.NewGuid();
+        var unknownCategoryId = Guid.NewGuid();
+        var ignoredId = Guid.NewGuid();
+        var transactions = new List<Transaction>
+        {
+            new()
+            {
+                Id = transportId,
+                Amount = -12m,
+                Metadata = new TransactionMetadata { RawDescription = "SAD NAHVERKEHR" }
+            },
+            new()
+            {
+                Id = unknownCategoryId,
+                Amount = -80m,
+                Metadata = new TransactionMetadata { RawDescription = "Ambiguous merchant" }
+            }
+        };
+        var providerContent =
+            "```json\n[" +
+            $"{{\"Id\":\"{transportId}\",\"Category\":\"transport\",\"Confidence\":1.2}}," +
+            $"{{\"Id\":\"{unknownCategoryId}\",\"Category\":\"Not a real category\",\"Confidence\":-0.25}}," +
+            $"{{\"Id\":\"{ignoredId}\",\"Category\":\"Groceries\",\"Confidence\":0.9}}" +
+            "\n]```";
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse(providerContent));
+        var sut = CreateService(handler);
+
+        await sut.CategorizeTransactionsAsync(transactions);
+
+        Assert.Equal("Transport", transactions[0].Category);
+        Assert.Equal("Transport", transactions[0].Metadata.AiSuggestedCategory);
+        Assert.Equal(1.0, transactions[0].Metadata.AiConfidenceScore);
+
+        Assert.Equal("Lifestyle", transactions[1].Category);
+        Assert.Equal("Lifestyle", transactions[1].Metadata.AiSuggestedCategory);
+        Assert.Equal(0.0, transactions[1].Metadata.AiConfidenceScore);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.EndsWith("/chat/completions", request.Uri, StringComparison.Ordinal);
+        Assert.Equal("Bearer", request.AuthorizationScheme);
+        Assert.Equal("test-api-key", request.AuthorizationParameter);
+
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("test-model", body.RootElement.GetProperty("model").GetString());
+        Assert.Equal("user", body.RootElement.GetProperty("messages")[0].GetProperty("role").GetString());
+        Assert.False(body.RootElement.TryGetProperty("temperature", out _));
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_SplitsRequestsIntoBatchesOfFifty()
+    {
+        var transactions = Enumerable.Range(0, 51)
+            .Select(index => new Transaction
+            {
+                Id = Guid.NewGuid(),
+                Amount = -index,
+                Metadata = new TransactionMetadata { RawDescription = $"Transaction {index}" }
+            })
+            .ToList();
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transactions[0].Id}\",\"Category\":\"Groceries\",\"Confidence\":0.7}}]"));
+        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
+        var sut = CreateService(handler);
+
+        await sut.CategorizeTransactionsAsync(transactions);
+
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal("Groceries", transactions[0].Category);
+        Assert.Equal("Transport", transactions[50].Category);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_LeavesTransactionsUnchangedWhenProviderReturnsInvalidJson()
+    {
+        var transaction = new Transaction
+        {
+            Category = "Uncategorized",
+            Metadata = new TransactionMetadata { RawDescription = "Unknown merchant" }
+        };
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse("this is not json"));
+        var sut = CreateService(handler);
+
+        await sut.CategorizeTransactionsAsync([transaction]);
+
+        Assert.Equal("Uncategorized", transaction.Category);
+        Assert.Null(transaction.Metadata.AiSuggestedCategory);
+        Assert.Null(transaction.Metadata.AiConfidenceScore);
+    }
+
+    [Fact]
+    public async Task GetSavingTipsAsync_DoesNotCallProviderForEmptyInput()
+    {
+        var handler = new StubHttpMessageHandler();
+        var sut = CreateService(handler);
+
+        var tips = await sut.GetSavingTipsAsync([]);
+
+        Assert.Empty(tips);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task GetSavingTipsAsync_NormalizesProviderTipsAndFiltersBlankDescriptions()
+    {
+        var longTitle = new string('A', 75);
+        var providerTips = JsonSerializer.Serialize(new object[]
+        {
+            new
+            {
+                Title = "  Use a local transport pass  ",
+                Description = "  Buy a monthly pass when commuting regularly.  ",
+                Impact = "HIGH",
+                Category = "transport"
+            },
+            new
+            {
+                Title = "",
+                Description = "Cancel subscriptions that were not used this month.",
+                Impact = "unexpected",
+                Category = "unknown"
+            },
+            new
+            {
+                Title = longTitle,
+                Description = "Move recurring grocery purchases to a planned weekly shop.",
+                Impact = "low",
+                Category = "Groceries"
+            },
+            new
+            {
+                Title = "Blank description",
+                Description = "   ",
+                Impact = "High",
+                Category = "Energy"
+            }
+        });
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse($"```json\n{providerTips}\n```"));
+        var sut = CreateService(handler);
+        var transactions = new[]
+        {
+            new Transaction { Amount = -30m, Category = "Transport" },
+            new Transaction { Amount = -15m, Category = "Subscriptions" },
+            new Transaction { Amount = 2500m, Category = "Income" }
+        };
+
+        var tips = await sut.GetSavingTipsAsync(transactions);
+
+        Assert.Collection(
+            tips,
+            first =>
+            {
+                Assert.Equal("tip-1", first.Id);
+                Assert.Equal("Use a local transport pass", first.Title);
+                Assert.Equal("Buy a monthly pass when commuting regularly.", first.Description);
+                Assert.Equal("High", first.Impact);
+                Assert.Equal("Transport", first.Category);
+            },
+            second =>
+            {
+                Assert.Equal("tip-2", second.Id);
+                Assert.Equal("Savings Tip 2", second.Title);
+                Assert.Equal("Medium", second.Impact);
+                Assert.Equal("Lifestyle", second.Category);
+            },
+            third =>
+            {
+                Assert.Equal("tip-3", third.Id);
+                Assert.True(third.Title.Length <= 60);
+                Assert.Equal("Low", third.Impact);
+                Assert.Equal("Groceries", third.Category);
+            });
+
+        var request = Assert.Single(handler.Requests);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal(0.7, body.RootElement.GetProperty("temperature").GetDouble());
+    }
+
+    [Fact]
+    public async Task GetSavingTipsAsync_ThrowsExternalServiceExceptionForInvalidProviderJson()
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(OpenRouterResponse("not json"));
+        var sut = CreateService(handler);
+
+        await Assert.ThrowsAsync<ExternalServiceException>(() =>
+            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Groceries" }]));
+    }
+
+    [Fact]
+    public async Task GetSavingTipsAsync_ThrowsExternalServiceExceptionForUpstreamFailure()
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("upstream failed")
+        });
+        var sut = CreateService(handler);
+
+        var exception = await Assert.ThrowsAsync<ExternalServiceException>(() =>
+            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Groceries" }]));
+
+        Assert.Contains("unavailable", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static OpenRouterAiAdvisorService CreateService(StubHttpMessageHandler handler)
+    {
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://openrouter.test/api/v1/")
+        };
+
+        return new OpenRouterAiAdvisorService(
+            httpClient,
+            CreateConfig(
+                ("OpenRouter:ApiKey", "test-api-key"),
+                ("OpenRouter:Model", "test-model")),
+            NullLogger<OpenRouterAiAdvisorService>.Instance);
+    }
+
+    private static IConfiguration CreateConfig(params (string Key, string? Value)[] values)
+    {
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(values.ToDictionary(value => value.Key, value => value.Value))
+            .Build();
+    }
+
+    private static HttpResponseMessage OpenRouterResponse(string content)
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            choices = new[]
+            {
+                new
+                {
+                    message = new
+                    {
+                        content
+                    }
+                }
+            }
+        });
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+    }
+
+    private sealed class StubHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<HttpResponseMessage> _responses = new();
+
+        public List<CapturedRequest> Requests { get; } = [];
+
+        public void Enqueue(HttpResponseMessage response)
+        {
+            _responses.Enqueue(response);
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (_responses.Count == 0)
+            {
+                throw new InvalidOperationException("No HTTP response was queued for the test.");
+            }
+
+            var body = request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            Requests.Add(new CapturedRequest(
+                request.Method,
+                request.RequestUri?.ToString() ?? string.Empty,
+                request.Headers.Authorization?.Scheme,
+                request.Headers.Authorization?.Parameter,
+                body));
+
+            return _responses.Dequeue();
+        }
+    }
+
+    private sealed record CapturedRequest(
+        HttpMethod Method,
+        string Uri,
+        string? AuthorizationScheme,
+        string? AuthorizationParameter,
+        string Body);
+}

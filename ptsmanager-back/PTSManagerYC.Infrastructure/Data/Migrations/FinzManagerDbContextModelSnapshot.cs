@@ -170,6 +170,10 @@ namespace PTSManagerYC.Infrastructure.Data.Migrations
                     b.Property<DateTime>("Date")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ImportFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("UserId")
                         .HasMaxLength(450)
                         .HasColumnType("character varying(450)");
@@ -177,6 +181,11 @@ namespace PTSManagerYC.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId", "Date");
+
+                    b.HasIndex("UserId", "ImportFingerprint")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Transactions_UserId_ImportFingerprint")
+                        .HasFilter("\"ImportFingerprint\" IS NOT NULL");
 
                     b.ToTable("Transactions");
                 });

@@ -10,6 +10,7 @@ namespace PTSManagerYC.Core.Interfaces
     public interface ITransactionRepository
     {
         Task AddRangeAsync(IEnumerable<Transaction> transactions);
+        Task<int> AddImportedTransactionsAsync(IEnumerable<Transaction> transactions);
         Task SaveChangesAsync();
         Task<IEnumerable<Transaction>> GetAllAsync(string userId);
         Task<List<Transaction>> GetUncategorizedAsync(string userId);

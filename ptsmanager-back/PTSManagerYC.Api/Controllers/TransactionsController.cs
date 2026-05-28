@@ -192,7 +192,11 @@ public class TransactionsController : ControllerBase
 
         using var stream = file.OpenReadStream();
         var parsedTransactions = _csvReader.ParseTransactions(stream).ToList();
-        parsedTransactions.ForEach(transaction => transaction.UserId = userId);
+        parsedTransactions.ForEach(transaction =>
+        {
+            transaction.UserId = userId;
+            transaction.ImportFingerprint = TransactionImportFingerprint.Create(transaction);
+        });
 
         if (!parsedTransactions.Any())
         {
@@ -202,26 +206,14 @@ public class TransactionsController : ControllerBase
                 errors => errors.AddModelError(nameof(file), "The uploaded CSV file does not contain any valid transaction rows."));
         }
 
-        var existingTransactions = await _repository.GetAllAsync(userId);
-        var existingSignatures = existingTransactions
-            .Select(t => $"{t.Date:yyyyMMdd}_{t.Amount}_{t.Metadata.RawDescription}")
-            .ToHashSet();
-
-        var newTransactions = parsedTransactions
-            .Where(t => !existingSignatures.Contains($"{t.Date:yyyyMMdd}_{t.Amount}_{t.Metadata.RawDescription}"))
-            .ToList();
-
-        if (newTransactions.Any())
-        {
-            await _repository.AddRangeAsync(newTransactions);
-        }
+        var importedCount = await _repository.AddImportedTransactionsAsync(parsedTransactions);
 
         return Ok(new
         {
             Message = "Import successful",
             TotalParsed = parsedTransactions.Count,
-            Imported = newTransactions.Count,
-            DuplicatesSkipped = parsedTransactions.Count - newTransactions.Count
+            Imported = importedCount,
+            DuplicatesSkipped = parsedTransactions.Count - importedCount
         });
     }
 

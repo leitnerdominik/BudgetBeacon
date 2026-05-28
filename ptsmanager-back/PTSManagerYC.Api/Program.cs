@@ -319,6 +319,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "API application terminated unexpectedly.");
+    throw;
 }
 finally
 {

@@ -13,6 +13,7 @@ namespace PTSManagerYC.Core.Entities
         public DateTime Date { get; set; }
         public decimal Amount { get; set; }
         public string Category { get; set; } = "Uncategorized";
+        public string? ImportFingerprint { get; set; }
 
         public TransactionMetadata Metadata { get; set; } = new();
     }
