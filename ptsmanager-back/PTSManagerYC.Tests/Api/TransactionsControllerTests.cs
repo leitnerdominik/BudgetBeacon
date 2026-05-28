@@ -217,6 +217,40 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task Delete_RemovesCurrentUsersTransaction()
+    {
+        var transactionId = Guid.NewGuid();
+        var repository = new FakeTransactionRepository
+        {
+            TransactionToDelete = new Transaction
+            {
+                Id = transactionId,
+                UserId = "user-1"
+            }
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.Delete(transactionId);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.True(repository.DeleteCalled);
+        Assert.Equal("user-1", repository.LastDeleteUserId);
+        Assert.Equal(transactionId, repository.LastDeleteTransactionId);
+    }
+
+    [Fact]
+    public async Task Delete_ReturnsNotFoundWhenTransactionIsNotOwnedByCurrentUser()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Delete(Guid.NewGuid());
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+    }
+
+    [Fact]
     public async Task TriggerCategorization_ReturnsNoOpWhenThereAreNoUncategorizedTransactions()
     {
         var aiService = new FakeAiAdvisorService();
@@ -391,7 +425,11 @@ public sealed class TransactionsControllerTests
         public int PagedTotalCount { get; init; }
         public int ImportedCount { get; init; }
         public bool SaveChangesCalled { get; private set; }
+        public bool DeleteCalled { get; private set; }
+        public Transaction? TransactionToDelete { get; init; }
         public Transaction? TransactionToUpdate { get; init; }
+        public string? LastDeleteUserId { get; private set; }
+        public Guid? LastDeleteTransactionId { get; private set; }
         public string? LastUpdateCategoryUserId { get; private set; }
         public Guid? LastUpdateCategoryTransactionId { get; private set; }
 
@@ -405,6 +443,22 @@ public sealed class TransactionsControllerTests
         {
             ImportAttemptedTransactions.AddRange(transactions);
             return Task.FromResult(ImportedCount);
+        }
+
+        public Task<bool> DeleteAsync(string userId, Guid transactionId)
+        {
+            LastDeleteUserId = userId;
+            LastDeleteTransactionId = transactionId;
+
+            if (TransactionToDelete is null ||
+                TransactionToDelete.Id != transactionId ||
+                TransactionToDelete.UserId != userId)
+            {
+                return Task.FromResult(false);
+            }
+
+            DeleteCalled = true;
+            return Task.FromResult(true);
         }
 
         public Task SaveChangesAsync()

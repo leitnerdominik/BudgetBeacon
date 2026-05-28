@@ -254,6 +254,28 @@ public class TransactionsController : ControllerBase
         return Ok(transaction);
     }
 
+    [HttpDelete("{transactionId:guid}")]
+    public async Task<IActionResult> Delete(Guid transactionId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to delete transactions.");
+        }
+
+        var deleted = await _repository.DeleteAsync(userId, transactionId);
+        if (!deleted)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status404NotFound,
+                "Transaction not found",
+                "The requested transaction could not be found for the current user.",
+                "urn:ptsmanager:transaction-not-found");
+        }
+
+        return NoContent();
+    }
+
     [HttpPost("ai/categorize")]
     public async Task<IActionResult> TriggerCategorization()
     {

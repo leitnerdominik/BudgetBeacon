@@ -76,6 +76,10 @@ export const updateTransactionCategory = async (
   return mapTransaction(response);
 };
 
+export const deleteTransaction = async (transactionId: string): Promise<void> => {
+  await apiClient.delete(`/transactions/${transactionId}`);
+};
+
 export const getMonthlySummary = async (
   year: number,
   month: number,

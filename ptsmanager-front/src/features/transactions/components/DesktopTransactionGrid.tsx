@@ -1,6 +1,7 @@
 import EditIcon from "@mui/icons-material/Edit";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { Box, IconButton, Tooltip, Typography } from "@mui/material";
 import {
   DataGrid,
@@ -33,10 +34,12 @@ type DesktopTransactionGridProps = {
   onCategoryDraftChange: (category: string) => void;
   onCategoryEditStart: (transactionId: string) => void;
   onCategorySave: (transactionId: string) => void;
+  onDeleteRequest: (transactionId: string) => void;
   paginationModel: GridPaginationModel;
   setPaginationModel: (model: GridPaginationModel) => void;
   totalCount: number;
   transactions: PaginatedTransactions["data"];
+  deletingTransactionId?: string;
   updatingCategoryId?: string;
 };
 
@@ -48,10 +51,12 @@ export const DesktopTransactionGrid = ({
   onCategoryDraftChange,
   onCategoryEditStart,
   onCategorySave,
+  onDeleteRequest,
   paginationModel,
   setPaginationModel,
   totalCount,
   transactions,
+  deletingTransactionId,
   updatingCategoryId,
 }: DesktopTransactionGridProps) => {
   const columns: GridColDef[] = [
@@ -99,16 +104,18 @@ export const DesktopTransactionGrid = ({
         const amount = params.value as number;
         const color = amount < 0 ? "error.main" : "success.main";
         return (
-          <Typography sx={{ color, fontWeight: "bold" }}>
-            {currencyFormatter.format(amount)}
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+            <Typography sx={{ color, fontWeight: "bold" }}>
+              {currencyFormatter.format(amount)}
+            </Typography>
+          </Box>
         );
       },
     },
     {
       field: "actions",
       headerName: "",
-      width: 72,
+      width: 96,
       align: "center",
       sortable: false,
       filterable: false,
@@ -143,18 +150,33 @@ export const DesktopTransactionGrid = ({
             </Tooltip>
           </Box>
         ) : (
-          <Tooltip title="Edit category">
-            <span>
-              <IconButton
-                aria-label="Edit transaction category"
-                size="small"
-                disabled={Boolean(updatingCategoryId)}
-                onClick={() => onCategoryEditStart(params.row.id)}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
+          <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 0.5 }}>
+            <Tooltip title="Edit category">
+              <span>
+                <IconButton
+                  aria-label="Edit transaction category"
+                  size="small"
+                  disabled={Boolean(updatingCategoryId) || Boolean(deletingTransactionId)}
+                  onClick={() => onCategoryEditStart(params.row.id)}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Delete transaction">
+              <span>
+                <IconButton
+                  aria-label="Delete transaction"
+                  color="error"
+                  size="small"
+                  disabled={Boolean(updatingCategoryId) || Boolean(deletingTransactionId)}
+                  onClick={() => onDeleteRequest(params.row.id)}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
         )
       ),
     },

@@ -58,3 +58,7 @@ export const updateTransactionCategory = async (
 
   return mapTransaction(response);
 };
+
+export const deleteTransaction = async (transactionId: string) => {
+  await apiClient.delete(`/transactions/${transactionId}`);
+};

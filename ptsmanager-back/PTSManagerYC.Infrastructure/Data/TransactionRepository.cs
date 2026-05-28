@@ -79,6 +79,20 @@ public class TransactionRepository : ITransactionRepository
         return await _context.Database.ExecuteSqlRawAsync(sql, parameter);
     }
 
+    public async Task<bool> DeleteAsync(string userId, Guid transactionId)
+    {
+        var transaction = await _context.Transactions
+            .SingleOrDefaultAsync(candidate => candidate.Id == transactionId && candidate.UserId == userId);
+
+        if (transaction is null)
+            return false;
+
+        _context.Transactions.Remove(transaction);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
+
     public async Task SaveChangesAsync()
     {
         await _context.SaveChangesAsync();
