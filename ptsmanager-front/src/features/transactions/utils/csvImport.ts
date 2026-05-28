@@ -3,6 +3,8 @@ export interface ParsedCsvFile {
   delimiter: string;
 }
 
+export type CsvDelimiterOption = "auto" | "semicolon" | "comma" | "tab";
+
 export interface CsvImportColumn {
   key: string;
   index: number;
@@ -62,16 +64,32 @@ const normalizeHeaderValue = (value: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const escapeCsvCell = (value: string) => {
-  if (/[;"\r\n]/.test(value)) {
+const resolveDelimiterOption = (delimiterOption: CsvDelimiterOption) => {
+  switch (delimiterOption) {
+    case "comma":
+      return ",";
+    case "tab":
+      return "\t";
+    case "semicolon":
+      return ";";
+    case "auto":
+    default:
+      return null;
+  }
+};
+
+const escapeCsvCell = (value: string, delimiter: string) => {
+  if (value.includes(delimiter) || /["\r\n]/.test(value)) {
     return `"${value.replace(/"/g, '""')}"`;
   }
 
   return value;
 };
 
-const serializeCsvRows = (rows: string[][]) =>
-  rows.map((row) => row.map((cell) => escapeCsvCell(cell)).join(";")).join("\r\n");
+const serializeCsvRows = (rows: string[][], delimiter: string) =>
+  rows
+    .map((row) => row.map((cell) => escapeCsvCell(cell, delimiter)).join(delimiter))
+    .join("\r\n");
 
 const detectDelimiter = (csvText: string) => {
   const firstLine = stripBom(csvText).split(/\r?\n/, 1)[0] ?? "";
@@ -193,9 +211,12 @@ export const storeCsvImportMapping = (mapping: CsvImportMapping) => {
   );
 };
 
-export const parseCsvFile = async (file: File): Promise<ParsedCsvFile> => {
+export const parseCsvFile = async (
+  file: File,
+  delimiterOption: CsvDelimiterOption = "auto",
+): Promise<ParsedCsvFile> => {
   const csvText = await file.text();
-  const delimiter = detectDelimiter(csvText);
+  const delimiter = resolveDelimiterOption(delimiterOption) ?? detectDelimiter(csvText);
   const rows = parseCsvRows(csvText, delimiter);
 
   if (rows.length === 0) {
@@ -407,10 +428,13 @@ export const createMappedCsvFile = (
     throw new Error("The selected mapping did not produce any importable rows.");
   }
 
-  const remappedCsv = serializeCsvRows([
-    ["Datum", "Betrag", "Verwendungszweck"],
-    ...mappedRows,
-  ]);
+  const remappedCsv = serializeCsvRows(
+    [
+      ["Datum", "Betrag", "Verwendungszweck"],
+      ...mappedRows,
+    ],
+    parsedCsv.delimiter,
+  );
   const outputFileName = originalFile.name.replace(/\.csv$/i, "") || "transactions";
 
   return new File([remappedCsv], `${outputFileName}.mapped.csv`, {

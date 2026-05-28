@@ -64,6 +64,22 @@ public sealed class TransactionsControllerTests
         Assert.Equal(3, GetValue<int>(ok.Value, "TransactionCount"));
     }
 
+    [Fact]
+    public async Task GetMonthlySummary_ReturnsEmptySummaryWhenMonthHasNoTransactions()
+    {
+        var controller = CreateController(new FakeTransactionRepository());
+
+        var result = await controller.GetMonthlySummary(2026, 5);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(0m, GetValue<decimal>(ok.Value, "TotalIncome"));
+        Assert.Equal(0m, GetValue<decimal>(ok.Value, "TotalExpense"));
+        Assert.Equal(0m, GetValue<decimal>(ok.Value, "NetBalance"));
+        Assert.Equal(0m, GetValue<decimal>(ok.Value, "AverageExpense"));
+        Assert.Equal(0m, GetValue<decimal>(ok.Value, "MedianExpense"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "TransactionCount"));
+    }
+
     [Theory]
     [InlineData(1999, 4, "year")]
     [InlineData(2026, 0, "month")]
@@ -103,7 +119,7 @@ public sealed class TransactionsControllerTests
         var controller = CreateController(csvReader: csvReader);
         var file = CreateFormFile("transactions.txt", "text/csv");
 
-        var result = await controller.UploadCsv(file);
+        var result = await controller.UploadCsv(file, delimiter: "comma");
 
         Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(0, csvReader.ParseCalls);
@@ -137,7 +153,7 @@ public sealed class TransactionsControllerTests
         var controller = CreateController(repository, csvReader: csvReader);
         var file = CreateFormFile("transactions.csv", "text/csv");
 
-        var result = await controller.UploadCsv(file);
+        var result = await controller.UploadCsv(file, delimiter: "comma");
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(2, GetValue<int>(ok.Value, "TotalParsed"));
@@ -145,6 +161,7 @@ public sealed class TransactionsControllerTests
         Assert.Equal(1, GetValue<int>(ok.Value, "DuplicatesSkipped"));
 
         Assert.Equal(2, repository.ImportAttemptedTransactions.Count);
+        Assert.Equal("comma", csvReader.LastDelimiter);
         Assert.All(repository.ImportAttemptedTransactions, transaction =>
         {
             Assert.Equal("user-1", transaction.UserId);
@@ -651,11 +668,13 @@ public sealed class TransactionsControllerTests
     private sealed class FakeCsvReaderService : ICsvReaderService
     {
         public int ParseCalls { get; private set; }
+        public string? LastDelimiter { get; private set; }
         public IEnumerable<Transaction> ParsedTransactions { get; init; } = [];
 
-        public IEnumerable<Transaction> ParseTransactions(Stream fileStream)
+        public IEnumerable<Transaction> ParseTransactions(Stream fileStream, string? delimiter = null)
         {
             ParseCalls++;
+            LastDelimiter = delimiter;
             return ParsedTransactions;
         }
     }

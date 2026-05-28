@@ -2,12 +2,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNotification } from "../../../components/notifications/NotificationProvider";
 import { uploadCsv } from "../api/uploadCsv";
 
+type UploadCsvInput = {
+  file: File;
+  delimiter: string;
+};
+
 export const useUploadCsv = () => {
   const queryClient = useQueryClient();
   const { showNotification } = useNotification();
 
   return useMutation({
-    mutationFn: (file: File) => uploadCsv(file),
+    mutationFn: ({ file, delimiter }: UploadCsvInput) => uploadCsv(file, delimiter),
     onSuccess: (data) => {
       // Magic happens here: Invalidate the transactions cache.
       // This tells React Query to immediately refetch any active queries

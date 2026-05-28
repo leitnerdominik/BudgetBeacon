@@ -37,9 +37,17 @@ import {
   readStoredCsvImportMapping,
   storeCsvImportMapping,
   suggestCsvImportMapping,
+  type CsvDelimiterOption,
   type CsvImportMapping,
   type ParsedCsvFile,
 } from "../utils/csvImport";
+
+const delimiterOptions: { value: CsvDelimiterOption; label: string }[] = [
+  { value: "auto", label: "Auto-detect" },
+  { value: "semicolon", label: "Semicolon (;)" },
+  { value: "comma", label: "Comma (,)" },
+  { value: "tab", label: "Tab" },
+];
 
 export const CsvUploadButton = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -47,6 +55,8 @@ export const CsvUploadButton = () => {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedDelimiter, setSelectedDelimiter] =
+    useState<CsvDelimiterOption>("auto");
   const [parsedCsv, setParsedCsv] = useState<ParsedCsvFile | null>(null);
   const [mapping, setMapping] = useState<CsvImportMapping>(() =>
     readStoredCsvImportMapping(),
@@ -87,7 +97,7 @@ export const CsvUploadButton = () => {
 
     try {
       const storedMapping = readStoredCsvImportMapping();
-      const parsedFile = await parseCsvFile(file);
+      const parsedFile = await parseCsvFile(file, selectedDelimiter);
       const initialPreview = getCsvImportPreview(parsedFile, storedMapping.hasHeaderRow);
       const suggestedMapping = suggestCsvImportMapping(
         initialPreview.columns,
@@ -131,6 +141,39 @@ export const CsvUploadButton = () => {
     );
   };
 
+  const handleDelimiterChange = async (delimiter: CsvDelimiterOption) => {
+    setSelectedDelimiter(delimiter);
+
+    if (!selectedFile) {
+      return;
+    }
+
+    setIsParsingFile(true);
+
+    try {
+      const parsedFile = await parseCsvFile(selectedFile, delimiter);
+      const previewForDelimiter = getCsvImportPreview(
+        parsedFile,
+        mapping.hasHeaderRow,
+      );
+      const suggestedMapping = suggestCsvImportMapping(previewForDelimiter.columns, {
+        ...mapping,
+        hasHeaderRow: mapping.hasHeaderRow,
+      });
+
+      setParsedCsv(parsedFile);
+      setMapping(suggestedMapping);
+    } catch (error) {
+      showNotification({
+        severity: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to read the CSV file.",
+      });
+    } finally {
+      setIsParsingFile(false);
+    }
+  };
+
   const handleMappingChange = (
     field: "dateColumnKey" | "amountColumnKey" | "descriptionColumnKey",
     value: string,
@@ -149,7 +192,7 @@ export const CsvUploadButton = () => {
     try {
       const preparedFile = createMappedCsvFile(selectedFile, parsedCsv, mapping);
       storeCsvImportMapping(mapping);
-      await mutateAsync(preparedFile);
+      await mutateAsync({ file: preparedFile, delimiter: selectedDelimiter });
       closeWizard();
     } catch (error) {
       showNotification({
@@ -212,18 +255,46 @@ export const CsvUploadButton = () => {
                     be ignored.
                   </Typography>
                 </Stack>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={mapping.hasHeaderRow}
-                      onChange={(event) =>
-                        handleHeaderRowChange(event.target.checked)
-                      }
-                      disabled={isPending}
-                    />
-                  }
-                  label="First row contains headers"
-                />
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1.5}
+                  alignItems={{ xs: "stretch", sm: "center" }}
+                >
+                  <FormControl size="small" sx={{ minWidth: 180 }}>
+                    <InputLabel id="csv-import-delimiter-label">
+                      Delimiter
+                    </InputLabel>
+                    <Select
+                      labelId="csv-import-delimiter-label"
+                      value={selectedDelimiter}
+                      label="Delimiter"
+                      onChange={(event) => {
+                        void handleDelimiterChange(
+                          event.target.value as CsvDelimiterOption,
+                        );
+                      }}
+                      disabled={isPending || isParsingFile}
+                    >
+                      {delimiterOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={mapping.hasHeaderRow}
+                        onChange={(event) =>
+                          handleHeaderRowChange(event.target.checked)
+                        }
+                        disabled={isPending}
+                      />
+                    }
+                    label="First row contains headers"
+                  />
+                </Stack>
               </Stack>
 
               <Alert severity="info" icon={<TuneIcon />}>

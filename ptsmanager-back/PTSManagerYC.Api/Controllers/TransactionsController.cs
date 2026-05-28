@@ -122,15 +122,6 @@ public class TransactionsController : ControllerBase
         _logger.LogInformation("API requested monthly summary for {Month}/{Year}", month, year);
         var transactions = (await _repository.GetByMonthAsync(userId, year, month)).ToList();
 
-        if (!transactions.Any())
-        {
-            return this.ApiProblem(
-                StatusCodes.Status404NotFound,
-                "Monthly summary not found",
-                $"No transactions were found for {month}/{year}.",
-                "urn:ptsmanager:summary-not-found");
-        }
-
         var incomes = transactions.Where(t => t.Amount > 0).ToList();
         var expenses = transactions.Where(t => t.Amount < 0).ToList();
 
@@ -150,7 +141,9 @@ public class TransactionsController : ControllerBase
     [HttpPost("import")]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxCsvUploadSizeBytes)]
     [RequestSizeLimit(MaxCsvUploadSizeBytes)]
-    public async Task<IActionResult> UploadCsv([FromForm] IFormFile? file)
+    public async Task<IActionResult> UploadCsv(
+        [FromForm] IFormFile? file,
+        [FromForm] string? delimiter = null)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -195,7 +188,7 @@ public class TransactionsController : ControllerBase
         _logger.LogInformation("API processing CSV upload: {FileName}", file.FileName);
 
         using var stream = file.OpenReadStream();
-        var parsedTransactions = _csvReader.ParseTransactions(stream).ToList();
+        var parsedTransactions = _csvReader.ParseTransactions(stream, delimiter).ToList();
         parsedTransactions.ForEach(transaction =>
         {
             transaction.UserId = userId;

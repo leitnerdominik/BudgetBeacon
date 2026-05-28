@@ -7,9 +7,13 @@ export interface CsvUploadResponse {
   duplicatesSkipped: number;
 }
 
-export const uploadCsv = async (file: File): Promise<CsvUploadResponse> => {
+export const uploadCsv = async (
+  file: File,
+  delimiter = "auto",
+): Promise<CsvUploadResponse> => {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("delimiter", delimiter);
 
   return apiClient.post<CsvUploadResponse, CsvUploadResponse>(
     "/transactions/import",

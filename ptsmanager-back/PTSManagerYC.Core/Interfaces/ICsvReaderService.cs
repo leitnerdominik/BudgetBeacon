@@ -10,6 +10,6 @@ namespace PTSManagerYC.Core.Interfaces
 {
     public interface ICsvReaderService
     {
-        IEnumerable<Transaction> ParseTransactions(Stream fileStream);
+        IEnumerable<Transaction> ParseTransactions(Stream fileStream, string? delimiter = null);
     }
 }
