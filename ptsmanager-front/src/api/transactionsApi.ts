@@ -2,10 +2,15 @@ import { apiClient } from "./httpClient";
 import type {
   MonthlySummary,
   PaginatedTransactions,
+  Transaction,
 } from "../types/api";
 
 interface TransactionsApiResponse {
-  data: Array<{
+  data: TransactionApiResponse[];
+  totalCount: number;
+}
+
+interface TransactionApiResponse {
     id: string;
     date: string;
     amount: number;
@@ -14,9 +19,17 @@ interface TransactionsApiResponse {
       rawDescription?: string;
       aiConfidenceScore?: number | null;
     };
-  }>;
-  totalCount: number;
 }
+
+const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
+  id: transaction.id,
+  date: transaction.date,
+  amount: transaction.amount,
+  category: transaction.category,
+  aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
+  description:
+    transaction.metadata?.rawDescription?.trim() || "No description",
+});
 
 export interface CategorizeUncategorizedTransactionsResponse {
   message: string;
@@ -47,16 +60,20 @@ export const getTransactions = async (
 
   return {
     totalCount: response.totalCount,
-    data: response.data.map((transaction) => ({
-      id: transaction.id,
-      date: transaction.date,
-      amount: transaction.amount,
-      category: transaction.category,
-      aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
-      description:
-        transaction.metadata?.rawDescription?.trim() || "No description",
-    })),
+    data: response.data.map(mapTransaction),
   };
+};
+
+export const updateTransactionCategory = async (
+  transactionId: string,
+  category: string,
+): Promise<Transaction> => {
+  const response = await apiClient.patch<
+    TransactionApiResponse,
+    TransactionApiResponse
+  >(`/transactions/${transactionId}/category`, { category });
+
+  return mapTransaction(response);
 };
 
 export const getMonthlySummary = async (

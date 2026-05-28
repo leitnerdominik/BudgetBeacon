@@ -1,5 +1,8 @@
 import { lazy, Suspense, useState } from "react";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import EditIcon from "@mui/icons-material/Edit";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
 import {
   Box,
   Button,
@@ -8,9 +11,11 @@ import {
   Chip,
   CircularProgress,
   FormControl,
+  IconButton,
   MenuItem,
   Select,
   Stack,
+  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
@@ -21,8 +26,10 @@ import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
 import { useCategorizeUncategorizedTransactions } from "./useCategorizeUncategorizedTransactions";
+import { useUpdateTransactionCategory } from "./useUpdateTransactionCategory";
 import { useTransactions } from "./useTransactions";
 import { CsvUploadButton } from "./CsvUploadButton";
+import { TransactionCategorySelect } from "./TransactionCategorySelect";
 import type { PaginatedTransactions } from "./types";
 
 type GridPaginationModel = {
@@ -59,12 +66,15 @@ export const TransactionList = () => {
     page: 0,
     pageSize: 10,
   });
+  const [editingCategoryId, setEditingCategoryId] = useState<string>();
+  const [draftCategory, setDraftCategory] = useState("");
 
   const { data, isError, isFetching, isLoading, refetch } = useTransactions(
     paginationModel.page + 1,
     paginationModel.pageSize,
   );
   const categorizeMutation = useCategorizeUncategorizedTransactions();
+  const updateCategoryMutation = useUpdateTransactionCategory();
   const isSlowLoading = useSlowLoading(isLoading);
 
   const transactions: PaginatedTransactions["data"] = data?.data ?? [];
@@ -92,6 +102,30 @@ export const TransactionList = () => {
       page: 0,
       pageSize,
     });
+  };
+
+  const handleCategoryEditStart = (transactionId: string, category: string) => {
+    setEditingCategoryId(transactionId);
+    setDraftCategory(category);
+  };
+
+  const handleCategoryCancel = () => {
+    setEditingCategoryId(undefined);
+    setDraftCategory("");
+  };
+
+  const handleCategorySave = (transactionId: string) => {
+    if (!draftCategory) {
+      handleCategoryCancel();
+      return;
+    }
+
+    updateCategoryMutation.mutate(
+      { transactionId, category: draftCategory },
+      {
+        onSuccess: () => handleCategoryCancel(),
+      },
+    );
   };
 
   return (
@@ -258,11 +292,24 @@ export const TransactionList = () => {
                       </Stack>
 
                       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        <Chip
-                          label={transaction.category}
-                          size="medium"
-                          variant="outlined"
-                        />
+                        {editingCategoryId === transaction.id ? (
+                          <TransactionCategorySelect
+                            autoFocus
+                            category={draftCategory}
+                            disabled={
+                              updateCategoryMutation.isPending &&
+                              updateCategoryMutation.variables?.transactionId ===
+                                transaction.id
+                            }
+                            onChange={setDraftCategory}
+                          />
+                        ) : (
+                          <Chip
+                            label={transaction.category}
+                            size="medium"
+                            variant="outlined"
+                          />
+                        )}
                         <Chip
                           label={`Confidence ${formatConfidenceScore(transaction.aiConfidenceScore)}`}
                           size="medium"
@@ -271,6 +318,54 @@ export const TransactionList = () => {
                             bgcolor: "action.hover",
                           }}
                         />
+                        <Box sx={{ flexGrow: 1 }} />
+                        {editingCategoryId === transaction.id ? (
+                          <>
+                            <Tooltip title="Save category">
+                              <span>
+                                <IconButton
+                                  aria-label="Save transaction category"
+                                  color="primary"
+                                  size="small"
+                                  disabled={updateCategoryMutation.isPending}
+                                  onClick={() => handleCategorySave(transaction.id)}
+                                >
+                                  <CheckIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Cancel category edit">
+                              <span>
+                                <IconButton
+                                  aria-label="Cancel category edit"
+                                  size="small"
+                                  disabled={updateCategoryMutation.isPending}
+                                  onClick={handleCategoryCancel}
+                                >
+                                  <CloseIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </>
+                        ) : (
+                          <Tooltip title="Edit category">
+                            <span>
+                              <IconButton
+                                aria-label="Edit transaction category"
+                                size="small"
+                                disabled={updateCategoryMutation.isPending}
+                                onClick={() =>
+                                  handleCategoryEditStart(
+                                    transaction.id,
+                                    transaction.category,
+                                  )
+                                }
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
                       </Stack>
                     </Stack>
                   </CardContent>
@@ -315,9 +410,27 @@ export const TransactionList = () => {
           <DesktopTransactionGrid
             transactions={transactions}
             totalCount={totalCount}
+            draftCategory={draftCategory}
+            editingCategoryId={editingCategoryId}
             isLoading={isLoading}
+            onCategoryCancel={handleCategoryCancel}
+            onCategoryDraftChange={setDraftCategory}
+            onCategoryEditStart={(transactionId) => {
+              const transaction = transactions.find(
+                (candidate) => candidate.id === transactionId,
+              );
+              if (transaction) {
+                handleCategoryEditStart(transaction.id, transaction.category);
+              }
+            }}
+            onCategorySave={handleCategorySave}
             paginationModel={paginationModel}
             setPaginationModel={setPaginationModel}
+            updatingCategoryId={
+              updateCategoryMutation.isPending
+                ? updateCategoryMutation.variables?.transactionId
+                : undefined
+            }
           />
         </Suspense>
       )}

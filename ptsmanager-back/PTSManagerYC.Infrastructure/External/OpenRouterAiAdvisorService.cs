@@ -19,20 +19,6 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
         PropertyNameCaseInsensitive = true
     };
 
-    private static readonly string[] AllowedCategories =
-    [
-        "Transport",
-        "Energy",
-        "Groceries",
-        "Lifestyle",
-        "Housing",
-        "Utilities",
-        "Entertainment",
-        "Health",
-        "Subscriptions",
-        "Income"
-    ];
-
     private const int MaxLocationContextLength = 120;
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
@@ -340,10 +326,7 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
         if (string.IsNullOrWhiteSpace(normalized))
             return "Lifestyle";
 
-        var match = AllowedCategories.FirstOrDefault(allowed =>
-            string.Equals(allowed, normalized, StringComparison.OrdinalIgnoreCase));
-
-        return match ?? "Lifestyle";
+        return TransactionCategories.Normalize(normalized) ?? "Lifestyle";
     }
 
     private static string NormalizeJsonText(string text)

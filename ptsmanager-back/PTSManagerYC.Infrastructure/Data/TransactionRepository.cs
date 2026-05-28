@@ -84,6 +84,23 @@ public class TransactionRepository : ITransactionRepository
         await _context.SaveChangesAsync();
     }
 
+    public async Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category)
+    {
+        var transaction = await _context.Transactions
+            .SingleOrDefaultAsync(candidate => candidate.Id == transactionId && candidate.UserId == userId);
+
+        if (transaction is null)
+            return null;
+
+        transaction.Category = category;
+        transaction.Metadata.AiSuggestedCategory = null;
+        transaction.Metadata.AiConfidenceScore = null;
+
+        await _context.SaveChangesAsync();
+
+        return transaction;
+    }
+
     public async Task<IEnumerable<Transaction>> GetAllAsync(string userId)
     {
         return await _context.Transactions

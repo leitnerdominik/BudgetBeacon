@@ -2,7 +2,11 @@ import { apiClient } from "../../../lib/api-client";
 import type { PaginatedTransactions } from "../types";
 
 interface TransactionsApiResponse {
-  data: Array<{
+  data: TransactionApiResponse[];
+  totalCount: number;
+}
+
+interface TransactionApiResponse {
     id: string;
     date: string;
     amount: number;
@@ -11,9 +15,17 @@ interface TransactionsApiResponse {
       rawDescription?: string;
       aiConfidenceScore?: number | null;
     };
-  }>;
-  totalCount: number;
 }
+
+const mapTransaction = (transaction: TransactionApiResponse) => ({
+  id: transaction.id,
+  date: transaction.date,
+  amount: transaction.amount,
+  category: transaction.category,
+  aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
+  description:
+    transaction.metadata?.rawDescription?.trim() || "No description",
+});
 
 export const getTransactions = async (
   page: number,
@@ -31,14 +43,18 @@ export const getTransactions = async (
 
   return {
     totalCount: response.totalCount,
-    data: response.data.map((transaction) => ({
-      id: transaction.id,
-      date: transaction.date,
-      amount: transaction.amount,
-      category: transaction.category,
-      aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
-      description:
-        transaction.metadata?.rawDescription?.trim() || "No description",
-    })),
+    data: response.data.map(mapTransaction),
   };
+};
+
+export const updateTransactionCategory = async (
+  transactionId: string,
+  category: string,
+) => {
+  const response = await apiClient.patch<
+    TransactionApiResponse,
+    TransactionApiResponse
+  >(`/transactions/${transactionId}/category`, { category });
+
+  return mapTransaction(response);
 };

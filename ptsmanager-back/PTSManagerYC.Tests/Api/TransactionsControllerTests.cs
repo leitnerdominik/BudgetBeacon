@@ -154,6 +154,69 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task UpdateCategory_UpdatesCurrentUsersTransaction()
+    {
+        var transactionId = Guid.NewGuid();
+        var transaction = new Transaction
+        {
+            Id = transactionId,
+            UserId = "user-1",
+            Category = "Uncategorized",
+            Metadata = new TransactionMetadata
+            {
+                RawDescription = "Test",
+                AiSuggestedCategory = "Groceries",
+                AiConfidenceScore = 0.91
+            }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionToUpdate = transaction
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.UpdateCategory(
+            transactionId,
+            new TransactionsController.UpdateTransactionCategoryRequest("transport"));
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        Assert.Equal("Transport", updatedTransaction.Category);
+        Assert.Null(updatedTransaction.Metadata.AiSuggestedCategory);
+        Assert.Null(updatedTransaction.Metadata.AiConfidenceScore);
+        Assert.Equal("user-1", repository.LastUpdateCategoryUserId);
+        Assert.Equal(transactionId, repository.LastUpdateCategoryTransactionId);
+    }
+
+    [Fact]
+    public async Task UpdateCategory_ReturnsValidationProblemForUnsupportedCategory()
+    {
+        var controller = CreateController();
+
+        var result = await controller.UpdateCategory(
+            Guid.NewGuid(),
+            new TransactionsController.UpdateTransactionCategoryRequest("Not real"));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Category", problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task UpdateCategory_ReturnsNotFoundWhenTransactionIsNotOwnedByCurrentUser()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.UpdateCategory(
+            Guid.NewGuid(),
+            new TransactionsController.UpdateTransactionCategoryRequest("Groceries"));
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+    }
+
+    [Fact]
     public async Task TriggerCategorization_ReturnsNoOpWhenThereAreNoUncategorizedTransactions()
     {
         var aiService = new FakeAiAdvisorService();
@@ -328,6 +391,9 @@ public sealed class TransactionsControllerTests
         public int PagedTotalCount { get; init; }
         public int ImportedCount { get; init; }
         public bool SaveChangesCalled { get; private set; }
+        public Transaction? TransactionToUpdate { get; init; }
+        public string? LastUpdateCategoryUserId { get; private set; }
+        public Guid? LastUpdateCategoryTransactionId { get; private set; }
 
         public Task AddRangeAsync(IEnumerable<Transaction> transactions)
         {
@@ -345,6 +411,25 @@ public sealed class TransactionsControllerTests
         {
             SaveChangesCalled = true;
             return Task.CompletedTask;
+        }
+
+        public Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category)
+        {
+            LastUpdateCategoryUserId = userId;
+            LastUpdateCategoryTransactionId = transactionId;
+
+            if (TransactionToUpdate is null ||
+                TransactionToUpdate.Id != transactionId ||
+                TransactionToUpdate.UserId != userId)
+            {
+                return Task.FromResult<Transaction?>(null);
+            }
+
+            TransactionToUpdate.Category = category;
+            TransactionToUpdate.Metadata.AiSuggestedCategory = null;
+            TransactionToUpdate.Metadata.AiConfidenceScore = null;
+
+            return Task.FromResult<Transaction?>(TransactionToUpdate);
         }
 
         public Task<IEnumerable<Transaction>> GetAllAsync(string userId)

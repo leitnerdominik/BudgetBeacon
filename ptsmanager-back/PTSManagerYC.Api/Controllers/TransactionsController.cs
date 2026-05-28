@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PTSManagerYC.Core.Entities;
 using PTSManagerYC.Core.Interfaces;
+using PTSManagerYC.Core.Models;
 using PTSManagerYC.Core.Services;
 
 namespace PTSManagerWeb.Api.Controllers;
@@ -220,6 +221,39 @@ public class TransactionsController : ControllerBase
         });
     }
 
+    [HttpPatch("{transactionId:guid}/category")]
+    public async Task<IActionResult> UpdateCategory(
+        Guid transactionId,
+        [FromBody] UpdateTransactionCategoryRequest request)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to update transactions.");
+        }
+
+        var category = TransactionCategories.Normalize(request.Category);
+        if (category is null)
+        {
+            return this.ApiValidationProblem(
+                "Invalid transaction category",
+                "Choose one of the supported transaction categories.",
+                errors => errors.AddModelError(nameof(request.Category), "Unsupported transaction category."));
+        }
+
+        var transaction = await _repository.UpdateCategoryAsync(userId, transactionId, category);
+        if (transaction is null)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status404NotFound,
+                "Transaction not found",
+                "The requested transaction could not be found for the current user.",
+                "urn:ptsmanager:transaction-not-found");
+        }
+
+        return Ok(transaction);
+    }
+
     [HttpPost("ai/categorize")]
     public async Task<IActionResult> TriggerCategorization()
     {
@@ -309,4 +343,6 @@ public class TransactionsController : ControllerBase
     {
         return User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
+
+    public sealed record UpdateTransactionCategoryRequest(string? Category);
 }
