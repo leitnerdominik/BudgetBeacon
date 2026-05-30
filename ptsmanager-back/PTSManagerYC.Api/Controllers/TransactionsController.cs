@@ -335,7 +335,9 @@ public class TransactionsController : ControllerBase
     }
 
     [HttpGet("ai/tips")]
-    public async Task<IActionResult> GetAiSavingsTips([FromQuery] int monthsBack = 3)
+    public async Task<IActionResult> GetAiSavingsTips(
+        [FromQuery] int monthsBack = 3,
+        [FromQuery] bool allTime = false)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -343,7 +345,7 @@ public class TransactionsController : ControllerBase
             return UnauthorizedProblem("A valid authenticated user is required to generate AI tips.");
         }
 
-        if (monthsBack < 1 || monthsBack > 24)
+        if (!allTime && (monthsBack < 1 || monthsBack > 24))
         {
             return this.ApiValidationProblem(
                 "Invalid tips query",
@@ -351,10 +353,22 @@ public class TransactionsController : ControllerBase
                 errors => errors.AddModelError(nameof(monthsBack), "Months back must be between 1 and 24."));
         }
 
-        _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
+        IEnumerable<Transaction> transactions;
+        string timeframe;
 
-        var startDate = DateTime.Now.AddMonths(-monthsBack);
-        var (transactions, _) = await _repository.GetTransactionsPagedAsync(userId, startDate, 1, 10000);
+        if (allTime)
+        {
+            _logger.LogInformation("API requested AI savings tips for all available transactions.");
+            transactions = await _repository.GetAllAsync(userId);
+            timeframe = "All time";
+        }
+        else
+        {
+            _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
+            var startDate = DateTime.Now.AddMonths(-monthsBack);
+            (transactions, _) = await _repository.GetTransactionsPagedAsync(userId, startDate, 1, 10000);
+            timeframe = FormatTipsTimeframe(monthsBack);
+        }
 
         if (!transactions.Any())
         {
@@ -368,7 +382,7 @@ public class TransactionsController : ControllerBase
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
         var tips = await _aiService.GetSavingTipsAsync(transactions, aiLocationContext);
 
-        return Ok(new { Timeframe = $"Last {monthsBack} months", Tips = tips });
+        return Ok(new { Timeframe = timeframe, Tips = tips });
     }
 
     private IActionResult UnauthorizedProblem(string detail)
@@ -384,6 +398,14 @@ public class TransactionsController : ControllerBase
     {
         return User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
+
+    private static string FormatTipsTimeframe(int monthsBack) =>
+        monthsBack switch
+        {
+            1 => "Last 1 month",
+            12 => "Last 1 year",
+            _ => $"Last {monthsBack} months"
+        };
 
     public sealed record UpdateTransactionCategoryRequest(string? Category);
 }

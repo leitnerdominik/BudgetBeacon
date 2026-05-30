@@ -396,6 +396,53 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task GetAiSavingsTips_ReturnsSourceDataNotFoundProblemWhenNoTransactionsExist()
+    {
+        var aiService = new FakeAiAdvisorService();
+        var controller = CreateController(aiService: aiService);
+
+        var result = await controller.GetAiSavingsTips(3);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal("urn:ptsmanager:tips-source-data-not-found", problem.Type);
+        Assert.Equal(0, aiService.GetSavingTipsCalls);
+    }
+
+    [Fact]
+    public async Task GetAiSavingsTips_ReturnsTipsForAllTransactionsWhenAllTimeRequested()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            AllTransactions = [new Transaction { Amount = -45m, Category = "Dining" }]
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            SavingTips =
+            [
+                new SavingsTip
+                {
+                    Id = "tip-1",
+                    Title = "Review dining",
+                    Description = "Compare restaurant spending over the full history.",
+                    Impact = "Low",
+                    Category = "Dining"
+                }
+            ]
+        };
+        var controller = CreateController(repository, aiService: aiService);
+
+        var result = await controller.GetAiSavingsTips(allTime: true);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("All time", GetValue<string>(ok.Value, "Timeframe"));
+        Assert.Equal(1, repository.GetAllCalls);
+        Assert.Equal(0, repository.PagedCalls);
+        Assert.Equal(1, aiService.GetSavingTipsCalls);
+    }
+
+    [Fact]
     public async Task GetAiSavingsTips_ReturnsTipsForPagedTransactions()
     {
         var repository = new FakeTransactionRepository
@@ -502,6 +549,8 @@ public sealed class TransactionsControllerTests
         public IEnumerable<Transaction> MonthlyTransactions { get; init; } = [];
         public IEnumerable<Transaction> PagedTransactions { get; init; } = [];
         public int PagedTotalCount { get; init; }
+        public int GetAllCalls { get; private set; }
+        public int PagedCalls { get; private set; }
         public int ImportedCount { get; init; }
         public bool SaveChangesCalled { get; private set; }
         public bool DeleteCalled { get; private set; }
@@ -585,6 +634,7 @@ public sealed class TransactionsControllerTests
 
         public Task<IEnumerable<Transaction>> GetAllAsync(string userId)
         {
+            GetAllCalls++;
             return Task.FromResult(AllTransactions);
         }
 
@@ -609,6 +659,7 @@ public sealed class TransactionsControllerTests
             int pageNumber,
             int pageSize)
         {
+            PagedCalls++;
             return Task.FromResult((PagedTransactions, PagedTotalCount));
         }
     }

@@ -26,6 +26,28 @@ type CsrfResponse = {
   token: string;
 };
 
+type ApiErrorOptions = {
+  data?: unknown;
+  status?: number;
+  type?: string;
+};
+
+export class ApiError extends Error {
+  data?: unknown;
+  status?: number;
+  type?: string;
+
+  constructor(message: string, options: ApiErrorOptions = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.data = options.data;
+    this.status = options.status;
+    this.type = options.type;
+  }
+}
+
+export const INVALID_CSRF_TOKEN_TYPE = "urn:ptsmanager:invalid-csrf-token";
+
 let csrfToken: string | null = null;
 let csrfTokenRequest: Promise<string> | null = null;
 
@@ -78,9 +100,18 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (error instanceof AxiosError) {
+      const responseData = error.response?.data;
+      const responseType =
+        responseData &&
+        typeof responseData === "object" &&
+        "type" in responseData &&
+        typeof responseData.type === "string"
+          ? responseData.type
+          : undefined;
+
       if (
         error.response?.status === 400 &&
-        error.response?.data?.type === "urn:ptsmanager:invalid-csrf-token"
+        responseType === INVALID_CSRF_TOKEN_TYPE
       ) {
         clearCsrfToken();
       }
@@ -90,22 +121,47 @@ apiClient.interceptors.response.use(
         notifyUnauthorized();
       }
 
-      const validationErrors = error.response?.data?.errors;
+      const validationErrors =
+        responseData && typeof responseData === "object" && "errors" in responseData
+          ? responseData.errors
+          : undefined;
       const validationMessage =
         validationErrors && typeof validationErrors === "object"
           ? Object.values(validationErrors)
               .flatMap((value) => (Array.isArray(value) ? value : [String(value)]))
               .find(Boolean)
           : undefined;
+      const responseDetail =
+        responseData && typeof responseData === "object" && "detail" in responseData
+          ? responseData.detail
+          : undefined;
+      const responseTitle =
+        responseData && typeof responseData === "object" && "title" in responseData
+          ? responseData.title
+          : undefined;
+      const responseMessage =
+        responseData && typeof responseData === "object" && "message" in responseData
+          ? responseData.message
+          : undefined;
+      const legacyResponseMessage =
+        responseData && typeof responseData === "object" && "Message" in responseData
+          ? responseData.Message
+          : undefined;
       const message =
         validationMessage ??
-        error.response?.data?.detail ??
-        error.response?.data?.title ??
-        error.response?.data?.message ??
-        error.response?.data?.Message ??
+        responseDetail ??
+        responseTitle ??
+        responseMessage ??
+        legacyResponseMessage ??
         error.message;
 
-      return Promise.reject(new Error(message));
+      return Promise.reject(
+        new ApiError(String(message), {
+          data: responseData,
+          status: error.response?.status,
+          type: responseType,
+        }),
+      );
     }
 
     return Promise.reject(error);

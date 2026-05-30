@@ -22,6 +22,7 @@ import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../../hooks/useSlowLoading";
 import { useMonthlySummary } from "../../transactions/hooks/useMonthlySummary";
 import { useTransactions } from "../../transactions/hooks/useTransactions";
+import { isTipsSourceDataNotFound } from "../../tips/tipErrors";
 import { useTips } from "../../tips/hooks/useTips";
 
 const MOBILE_TIP_PREVIEW_LINES = 4;
@@ -67,6 +68,7 @@ export const Dashboard = () => {
   } = useTransactions(1, 5);
   const {
     data: tips,
+    error: tipsError,
     isError: isTipsError,
     isLoading: isLoadingTips,
     refetch: refetchTips,
@@ -75,6 +77,7 @@ export const Dashboard = () => {
   const isTipsSlow = useSlowLoading(isLoadingTips);
 
   const tipOfTheDay = tips?.[0];
+  const hasNoTransactionsForTips = isTipsSourceDataNotFound(tipsError);
   const summaryCards = [
     {
       label: "Income",
@@ -330,6 +333,13 @@ export const Dashboard = () => {
                     }}
                   />
                 </>
+              ) : isTipsError && hasNoTransactionsForTips ? (
+                <StatusMessage
+                  title="No transactions for tips yet"
+                  description="Import transactions first to generate an AI savings tip."
+                  minHeight={220}
+                  inverted
+                />
               ) : isTipsError ? (
                 <StatusMessage
                   title={isOnline ? "Tip of the day is unavailable" : "You're offline"}

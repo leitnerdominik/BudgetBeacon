@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import {
   Box,
   Button,
@@ -8,6 +8,8 @@ import {
   Grid,
   Skeleton,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
   useMediaQuery,
   useTheme,
@@ -17,17 +19,39 @@ import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
+import { isTipsSourceDataNotFound } from "./tipErrors";
+import { TIPS_TIMEFRAMES, type TipsTimeframeValue } from "./tipsTimeframes";
 import { useTips } from "./useTips";
 
 const MOBILE_DESCRIPTION_LINES = 5;
 
-export const TipList = () => {
+type TipListProps = {
+  onSelectedTimeframeChange: (value: TipsTimeframeValue) => void;
+  selectedTimeframe: TipsTimeframeValue;
+};
+
+export const TipList = ({
+  onSelectedTimeframeChange,
+  selectedTimeframe,
+}: TipListProps) => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
   const [expandedTips, setExpandedTips] = useState<Record<string, boolean>>({});
-  const { data: tips, isLoading, isError, refetch } = useTips();
+  const { data: tips, error: tipsError, isLoading, isError, refetch } = useTips({
+    timeframe: selectedTimeframe,
+  });
   const isSlowLoading = useSlowLoading(isLoading);
+  const hasNoTransactionsForTips = isTipsSourceDataNotFound(tipsError);
+
+  const handleTimeframeChange = (
+    _: MouseEvent<HTMLElement>,
+    value: TipsTimeframeValue | null,
+  ) => {
+    if (value) {
+      onSelectedTimeframeChange(value);
+    }
+  };
 
   const toggleExpanded = (tipId: string) => {
     setExpandedTips((current) => ({
@@ -36,12 +60,64 @@ export const TipList = () => {
     }));
   };
 
+  const renderHeader = () => (
+    <Stack
+      direction={{ xs: "column", sm: "row" }}
+      spacing={1.5}
+      alignItems={{ xs: "stretch", sm: "center" }}
+      justifyContent="space-between"
+      sx={{ mb: 2 }}
+    >
+      <Typography
+        variant={isSmallScreen ? "h5" : "h4"}
+        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+      >
+        <LightbulbOutlinedIcon fontSize={isSmallScreen ? "medium" : "large"} color="primary" />
+        AI Financial Tips
+      </Typography>
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        value={selectedTimeframe}
+        onChange={handleTimeframeChange}
+        aria-label="AI tips timeframe"
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 0.75,
+          justifyContent: { xs: "flex-start", sm: "flex-end" },
+          "& .MuiToggleButtonGroup-grouped": {
+            m: 0,
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 1,
+            px: { xs: 1, sm: 1.25 },
+            py: 0.75,
+            whiteSpace: "nowrap",
+            "&:not(:first-of-type)": {
+              borderLeft: "1px solid",
+              borderColor: "divider",
+            },
+          },
+        }}
+      >
+        {TIPS_TIMEFRAMES.map((timeframe) => (
+          <ToggleButton
+            key={timeframe.value}
+            value={timeframe.value}
+            aria-label={timeframe.label}
+          >
+            {timeframe.label}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+    </Stack>
+  );
+
   if (isLoading) {
     return (
       <Box sx={{ flexGrow: 1 }}>
-        <Typography variant={isSmallScreen ? "h5" : "h4"} gutterBottom>
-          AI Financial Tips
-        </Typography>
+        {renderHeader()}
         <LoadingState
           label="Loading AI financial tips..."
           isOffline={!isOnline}
@@ -69,12 +145,22 @@ export const TipList = () => {
     );
   }
 
+  if (isError && hasNoTransactionsForTips) {
+    return (
+      <Box sx={{ flexGrow: 1 }}>
+        {renderHeader()}
+        <StatusMessage
+          title="No transactions found for AI tips"
+          description="Import transactions first, then AI tips can analyze your recent spending."
+        />
+      </Box>
+    );
+  }
+
   if (isError) {
     return (
       <Box sx={{ flexGrow: 1 }}>
-        <Typography variant={isSmallScreen ? "h5" : "h4"} gutterBottom>
-          AI Financial Tips
-        </Typography>
+        {renderHeader()}
         <StatusMessage
           title={isOnline ? "AI tips are currently unavailable" : "You're offline"}
           description={
@@ -94,9 +180,7 @@ export const TipList = () => {
   if (!tips || tips.length === 0) {
     return (
       <Box sx={{ flexGrow: 1 }}>
-        <Typography variant={isSmallScreen ? "h5" : "h4"} gutterBottom>
-          AI Financial Tips
-        </Typography>
+        {renderHeader()}
         <StatusMessage
           title="No AI tips available yet"
           description="Upload fresh transaction data or check back later for new savings recommendations."
@@ -107,14 +191,7 @@ export const TipList = () => {
 
   return (
     <Box sx={{ flexGrow: 1 }}>
-      <Typography
-        variant={isSmallScreen ? "h5" : "h4"}
-        gutterBottom
-        sx={{ display: "flex", alignItems: "center", gap: 1 }}
-      >
-        <LightbulbOutlinedIcon fontSize={isSmallScreen ? "medium" : "large"} color="primary" />
-        AI Financial Tips
-      </Typography>
+      {renderHeader()}
 
       <Grid container spacing={{ xs: 1.5, sm: 3 }}>
         {tips.map((tip) => {
