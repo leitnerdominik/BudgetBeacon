@@ -5,6 +5,7 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Grid,
   Skeleton,
   Stack,
@@ -15,6 +16,7 @@ import {
   useTheme,
 } from "@mui/material";
 import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
@@ -38,7 +40,14 @@ export const TipList = ({
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
   const [expandedTips, setExpandedTips] = useState<Record<string, boolean>>({});
-  const { data: tips, error: tipsError, isLoading, isError, refetch } = useTips({
+  const {
+    data: tips,
+    error: tipsError,
+    isFetching,
+    isLoading,
+    isError,
+    refreshTips,
+  } = useTips({
     timeframe: selectedTimeframe,
   });
   const isSlowLoading = useSlowLoading(isLoading);
@@ -75,42 +84,66 @@ export const TipList = ({
         <LightbulbOutlinedIcon fontSize={isSmallScreen ? "medium" : "large"} color="primary" />
         AI Financial Tips
       </Typography>
-      <ToggleButtonGroup
-        exclusive
-        size="small"
-        value={selectedTimeframe}
-        onChange={handleTimeframeChange}
-        aria-label="AI tips timeframe"
-        sx={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 0.75,
-          justifyContent: { xs: "flex-start", sm: "flex-end" },
-          "& .MuiToggleButtonGroup-grouped": {
-            m: 0,
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: 1,
-            px: { xs: 1, sm: 1.25 },
-            py: 0.75,
-            whiteSpace: "nowrap",
-            "&:not(:first-of-type)": {
-              borderLeft: "1px solid",
-              borderColor: "divider",
-            },
-          },
-        }}
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1}
+        alignItems={{ xs: "stretch", md: "center" }}
+        justifyContent={{ xs: "flex-start", sm: "flex-end" }}
       >
-        {TIPS_TIMEFRAMES.map((timeframe) => (
-          <ToggleButton
-            key={timeframe.value}
-            value={timeframe.value}
-            aria-label={timeframe.label}
-          >
-            {timeframe.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={selectedTimeframe}
+          onChange={handleTimeframeChange}
+          aria-label="AI tips timeframe"
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 0.75,
+            justifyContent: { xs: "flex-start", sm: "flex-end" },
+            "& .MuiToggleButtonGroup-grouped": {
+              m: 0,
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: 1,
+              px: { xs: 1, sm: 1.25 },
+              py: 0.75,
+              whiteSpace: "nowrap",
+              "&:not(:first-of-type)": {
+                borderLeft: "1px solid",
+                borderColor: "divider",
+              },
+            },
+          }}
+        >
+          {TIPS_TIMEFRAMES.map((timeframe) => (
+            <ToggleButton
+              key={timeframe.value}
+              value={timeframe.value}
+              aria-label={timeframe.label}
+            >
+              {timeframe.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        <Button
+          variant="outlined"
+          onClick={() => {
+            void refreshTips();
+          }}
+          disabled={!isOnline || isFetching}
+          startIcon={
+            isFetching && !isLoading ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <RefreshIcon />
+            )
+          }
+          sx={{ whiteSpace: "nowrap" }}
+        >
+          {isFetching && !isLoading ? "Refreshing..." : "Refresh tips"}
+        </Button>
+      </Stack>
     </Stack>
   );
 
@@ -170,7 +203,7 @@ export const TipList = ({
           }
           actionLabel="Retry"
           onAction={() => {
-            void refetch();
+            void refreshTips();
           }}
         />
       </Box>
