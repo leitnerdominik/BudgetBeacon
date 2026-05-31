@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNotification } from "../../../components/notifications/NotificationProvider";
-import { uploadCsv } from "../api/uploadCsv";
+import { uploadCsv } from "../../../api/transactionsApi";
+import { useNotification } from "../../../components/NotificationProvider";
 
 type UploadCsvInput = {
   file: File;

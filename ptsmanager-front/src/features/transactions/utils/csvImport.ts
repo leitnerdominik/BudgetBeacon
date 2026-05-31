@@ -29,6 +29,8 @@ export interface CsvImportMapping {
 
 const csvImportMappingStorageKey = "transactions.csvImportMapping.v2";
 const previewRowLimit = 5;
+export const maxCsvFileSizeBytes = 5 * 1024 * 1024;
+export const maxCsvRowCount = 10_000;
 
 const fieldHeaderAliases = {
   date: ["datum", "buchungstag", "date", "wertstellung", "valuta"],
@@ -105,6 +107,28 @@ const detectDelimiter = (csvText: string) => {
   return bestDelimiter?.occurrences ? bestDelimiter.delimiter : ";";
 };
 
+const isNonEmptyRow = (row: string[]) =>
+  row.some((cell) => cell.trim().length > 0);
+
+const assertCsvRowLimit = (rows: string[][]) => {
+  if (rows.length > maxCsvRowCount) {
+    throw new Error(
+      `The selected CSV file contains more than ${maxCsvRowCount.toLocaleString(
+        "en-US",
+      )} data row(s). Split the file and import it in smaller batches.`,
+    );
+  }
+};
+
+const pushParsedRow = (rows: string[][], row: string[]) => {
+  if (!isNonEmptyRow(row)) {
+    return;
+  }
+
+  rows.push(row);
+  assertCsvRowLimit(rows);
+};
+
 const parseCsvRows = (csvText: string, delimiter: string) => {
   const rows: string[][] = [];
   const normalizedText = stripBom(csvText);
@@ -139,7 +163,7 @@ const parseCsvRows = (csvText: string, delimiter: string) => {
       }
 
       currentRow.push(currentField);
-      rows.push(currentRow);
+      pushParsedRow(rows, currentRow);
       currentField = "";
       currentRow = [];
       continue;
@@ -150,10 +174,14 @@ const parseCsvRows = (csvText: string, delimiter: string) => {
 
   if (currentField.length > 0 || currentRow.length > 0) {
     currentRow.push(currentField);
-    rows.push(currentRow);
+    pushParsedRow(rows, currentRow);
   }
 
-  return rows.filter((row) => row.some((cell) => cell.trim().length > 0));
+  if (insideQuotes) {
+    throw new Error("The selected CSV file contains an unterminated quoted field.");
+  }
+
+  return rows;
 };
 
 const toColumnLetter = (index: number) => {
@@ -211,11 +239,10 @@ export const storeCsvImportMapping = (mapping: CsvImportMapping) => {
   );
 };
 
-export const parseCsvFile = async (
-  file: File,
+export const parseCsvText = (
+  csvText: string,
   delimiterOption: CsvDelimiterOption = "auto",
-): Promise<ParsedCsvFile> => {
-  const csvText = await file.text();
+): ParsedCsvFile => {
   const delimiter = resolveDelimiterOption(delimiterOption) ?? detectDelimiter(csvText);
   const rows = parseCsvRows(csvText, delimiter);
 
@@ -227,6 +254,21 @@ export const parseCsvFile = async (
     rows,
     delimiter,
   };
+};
+
+export const parseCsvFile = async (
+  file: File,
+  delimiterOption: CsvDelimiterOption = "auto",
+): Promise<ParsedCsvFile> => {
+  if (file.size > maxCsvFileSizeBytes) {
+    throw new Error(
+      `The selected CSV file is too large. The maximum size is ${Math.floor(
+        maxCsvFileSizeBytes / 1024 / 1024,
+      )} MB.`,
+    );
+  }
+
+  return parseCsvText(await file.text(), delimiterOption);
 };
 
 export const getCsvImportPreview = (

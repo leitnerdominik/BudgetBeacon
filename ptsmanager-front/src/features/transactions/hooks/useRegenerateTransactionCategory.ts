@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { regenerateTransactionCategory } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
-import { regenerateTransactionCategory } from "../api/getTransactions";
 
 export const useRegenerateTransactionCategory = () => {
   const queryClient = useQueryClient();

@@ -91,6 +91,74 @@ public class TransactionsController : ControllerBase
         });
     }
 
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateTransactionRequest request)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to create transactions.");
+        }
+
+        var category = TransactionCategories.Normalize(request.Category);
+        var description = request.Description?.Trim();
+
+        if (request.Date.Year < 2000 ||
+            request.Date.Year > 2100 ||
+            request.Amount == 0 ||
+            string.IsNullOrWhiteSpace(description) ||
+            description.Length > 200 ||
+            category is null)
+        {
+            return this.ApiValidationProblem(
+                "Invalid transaction",
+                "Check the provided transaction details and try again.",
+                errors =>
+                {
+                    if (request.Date.Year < 2000 || request.Date.Year > 2100)
+                    {
+                        errors.AddModelError(nameof(request.Date), "Date must be between years 2000 and 2100.");
+                    }
+
+                    if (request.Amount == 0)
+                    {
+                        errors.AddModelError(nameof(request.Amount), "Amount must not be zero.");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(description))
+                    {
+                        errors.AddModelError(nameof(request.Description), "Description is required.");
+                    }
+
+                    if (description?.Length > 200)
+                    {
+                        errors.AddModelError(nameof(request.Description), "Description must be 200 characters or fewer.");
+                    }
+
+                    if (category is null)
+                    {
+                        errors.AddModelError(nameof(request.Category), "Unsupported transaction category.");
+                    }
+                });
+        }
+
+        var transaction = new Transaction
+        {
+            UserId = userId,
+            Date = request.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            Amount = request.Amount,
+            Category = category,
+            Metadata = new TransactionMetadata
+            {
+                RawDescription = description
+            }
+        };
+
+        await _repository.AddRangeAsync([transaction]);
+
+        return Created($"/api/transactions/{transaction.Id}", transaction);
+    }
+
     [HttpGet("summary")]
     public async Task<IActionResult> GetMonthlySummary([FromQuery] int year, [FromQuery] int month)
     {
@@ -408,4 +476,9 @@ public class TransactionsController : ControllerBase
         };
 
     public sealed record UpdateTransactionCategoryRequest(string? Category);
+    public sealed record CreateTransactionRequest(
+        DateOnly Date,
+        decimal Amount,
+        string? Description,
+        string? Category);
 }

@@ -5,7 +5,7 @@ import {
   type SelectChangeEvent,
 } from "@mui/material";
 
-import { transactionCategories } from "./transactionCategories";
+import { transactionCategories } from "../transactionCategories";
 
 type TransactionCategorySelectProps = {
   autoFocus?: boolean;

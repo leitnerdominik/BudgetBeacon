@@ -1,21 +1,23 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { regenerateTransactionCategory } from "../../api/transactionsApi";
-import { useNotification } from "../../components/NotificationProvider";
+import {
+  createTransaction,
+  type CreateTransactionRequest,
+} from "../../../api/transactionsApi";
+import { useNotification } from "../../../components/NotificationProvider";
 
-export const useRegenerateTransactionCategory = () => {
+export const useCreateTransaction = () => {
   const queryClient = useQueryClient();
   const { showNotification } = useNotification();
 
   return useMutation({
-    mutationFn: (transactionId: string) =>
-      regenerateTransactionCategory(transactionId),
+    mutationFn: (request: CreateTransactionRequest) => createTransaction(request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["tips"] });
       showNotification({
         severity: "success",
-        message: "Transaction category regenerated.",
+        message: "Transaction created.",
       });
     },
     onError: (error) => {
@@ -24,7 +26,7 @@ export const useRegenerateTransactionCategory = () => {
         message:
           error instanceof Error
             ? error.message
-            : "Transaction category could not be regenerated.",
+            : "Transaction could not be created.",
       });
     },
   });

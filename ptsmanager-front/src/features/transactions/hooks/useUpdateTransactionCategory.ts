@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { updateTransactionCategory } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
-import { updateTransactionCategory } from "../api/getTransactions";
 
 type UpdateTransactionCategoryInput = {
   transactionId: string;

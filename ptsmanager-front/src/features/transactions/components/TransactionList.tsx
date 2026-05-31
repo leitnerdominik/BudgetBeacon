@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from "react";
+import AddIcon from "@mui/icons-material/Add";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckIcon from "@mui/icons-material/Check";
@@ -16,8 +17,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Fab,
   FormControl,
   IconButton,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
@@ -27,28 +30,19 @@ import {
   useTheme,
 } from "@mui/material";
 
-import { LoadingState, StatusMessage } from "../../../components/feedback/AsyncState";
+import { LoadingState, StatusMessage } from "../../../components/AsyncState";
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../../hooks/useSlowLoading";
+import { formatCurrency, formatDate } from "../../../utils/formatDate";
 import { useCategorizeUncategorizedTransactions } from "../hooks/useCategorizeUncategorizedTransactions";
 import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
 import { useUpdateTransactionCategory } from "../hooks/useUpdateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
-import { TransactionCategorySelect } from "../TransactionCategorySelect";
+import { CreateTransactionDialog } from "./CreateTransactionDialog";
 import { CsvUploadButton } from "./CsvUploadButton";
+import { TransactionCategorySelect } from "./TransactionCategorySelect";
 import type { PaginatedTransactions, Transaction } from "../types";
-
-const currencyFormatter = new Intl.NumberFormat("de-DE", {
-  style: "currency",
-  currency: "EUR",
-});
-
-const dateFormatter = new Intl.DateTimeFormat("de-DE", {
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-});
 
 type GridPaginationModel = {
   page: number;
@@ -87,6 +81,8 @@ export const TransactionList = () => {
   const [editingCategoryId, setEditingCategoryId] = useState<string>();
   const [draftCategory, setDraftCategory] = useState("");
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction>();
+  const [isCategorizeDialogOpen, setIsCategorizeDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   const { data, isError, isFetching, isLoading, refetch } = useTransactions(
     paginationModel.page + 1,
@@ -154,6 +150,18 @@ export const TransactionList = () => {
     regenerateCategoryMutation.mutate(transactionId);
   };
 
+  const handleCategorizeUncategorized = () => {
+    setIsCategorizeDialogOpen(true);
+    categorizeMutation.reset();
+    categorizeMutation.mutate();
+  };
+
+  const handleCategorizeDialogClose = () => {
+    if (!categorizeMutation.isPending) {
+      setIsCategorizeDialogOpen(false);
+    }
+  };
+
   const handleDeleteRequest = (transactionId: string) => {
     const transaction = transactions.find((candidate) => candidate.id === transactionId);
 
@@ -178,6 +186,23 @@ export const TransactionList = () => {
     });
   };
 
+  const categorizeProgressValue =
+    categorizeMutation.isSuccess || categorizeMutation.isError ? 100 : 0;
+  const categorizeStatusLabel = categorizeMutation.isPending
+    ? "Categorizing uncategorized transactions..."
+    : categorizeMutation.isSuccess
+      ? "Categorization completed"
+      : categorizeMutation.isError
+        ? "Categorization failed"
+        : "Ready to categorize";
+  const categorizeProgressLabel = categorizeMutation.isPending
+    ? "In progress"
+    : categorizeMutation.isSuccess
+      ? "100%"
+      : categorizeMutation.isError
+        ? "Failed"
+        : "Waiting";
+
   return (
     <Box sx={{ width: "100%" }}>
       <Box
@@ -200,9 +225,7 @@ export const TransactionList = () => {
         >
           <Button
             variant="outlined"
-            onClick={() => {
-              categorizeMutation.mutate();
-            }}
+            onClick={handleCategorizeUncategorized}
             disabled={
               !isOnline ||
               !hasTransactions ||
@@ -326,7 +349,7 @@ export const TransactionList = () => {
                             {transaction.description}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            {dateFormatter.format(new Date(transaction.date))}
+                            {formatDate(transaction.date)}
                           </Typography>
                         </Box>
                         <Typography
@@ -337,7 +360,7 @@ export const TransactionList = () => {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {currencyFormatter.format(transaction.amount)}
+                          {formatCurrency(transaction.amount)}
                         </Typography>
                       </Stack>
 
@@ -543,6 +566,90 @@ export const TransactionList = () => {
         </Suspense>
       )}
       <Dialog
+        open={isCategorizeDialogOpen}
+        onClose={handleCategorizeDialogClose}
+        aria-labelledby="categorize-transactions-title"
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle id="categorize-transactions-title">
+          Categorize uncategorized transactions
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2.5}>
+            <Box>
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={2}
+                sx={{ mb: 1 }}
+              >
+                <Typography variant="body2" fontWeight={700}>
+                  {categorizeStatusLabel}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {categorizeProgressLabel}
+                </Typography>
+              </Stack>
+              <LinearProgress
+                variant={categorizeMutation.isPending ? "indeterminate" : "determinate"}
+                value={categorizeProgressValue}
+                color={categorizeMutation.isError ? "error" : "primary"}
+                aria-label="Categorization progress"
+              />
+            </Box>
+
+            {categorizeMutation.isPending ? (
+              <DialogContentText>
+                Transactions without a category are being analyzed. This can take a
+                moment depending on the number of entries.
+              </DialogContentText>
+            ) : null}
+
+            {categorizeMutation.isSuccess ? (
+              <Stack spacing={1}>
+                <Typography variant="body2">
+                  {categorizeMutation.data.message}
+                </Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <Chip
+                    label={`${categorizeMutation.data.processedCount} processed`}
+                    color="primary"
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`${categorizeMutation.data.categorizedCount} categorized`}
+                    color={
+                      categorizeMutation.data.categorizedCount > 0
+                        ? "success"
+                        : "default"
+                    }
+                    variant="outlined"
+                  />
+                </Stack>
+              </Stack>
+            ) : null}
+
+            {categorizeMutation.isError ? (
+              <Typography variant="body2" color="error">
+                {categorizeMutation.error instanceof Error
+                  ? categorizeMutation.error.message
+                  : "Transactions could not be categorized."}
+              </Typography>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleCategorizeDialogClose}
+            disabled={categorizeMutation.isPending}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
         open={Boolean(transactionToDelete)}
         onClose={handleDeleteCancel}
         aria-labelledby="delete-transaction-title"
@@ -554,7 +661,7 @@ export const TransactionList = () => {
           </DialogContentText>
           {transactionToDelete ? (
             <Typography variant="body2" sx={{ mt: 2, fontWeight: 700 }}>
-              {transactionToDelete.description} | {currencyFormatter.format(transactionToDelete.amount)}
+              {transactionToDelete.description} | {formatCurrency(transactionToDelete.amount)}
             </Typography>
           ) : null}
         </DialogContent>
@@ -575,6 +682,26 @@ export const TransactionList = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <CreateTransactionDialog
+        open={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+      />
+      <Tooltip title="Add transaction">
+        <Fab
+          color="primary"
+          aria-label="Add transaction"
+          onClick={() => setIsCreateDialogOpen(true)}
+          disabled={!isOnline}
+          sx={{
+            position: "fixed",
+            right: { xs: 16, sm: 24 },
+            bottom: { xs: 16, sm: 24 },
+            zIndex: (currentTheme) => currentTheme.zIndex.speedDial,
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      </Tooltip>
     </Box>
   );
 };

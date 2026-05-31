@@ -37,6 +37,13 @@ export interface CategorizeUncategorizedTransactionsResponse {
   categorizedCount: number;
 }
 
+export interface CreateTransactionRequest {
+  date: string;
+  amount: number;
+  description: string;
+  category: string;
+}
+
 export interface CsvUploadResponse {
   message: string;
   totalParsed: number;
@@ -62,6 +69,17 @@ export const getTransactions = async (
     totalCount: response.totalCount,
     data: response.data.map(mapTransaction),
   };
+};
+
+export const createTransaction = async (
+  request: CreateTransactionRequest,
+): Promise<Transaction> => {
+  const response = await apiClient.post<
+    TransactionApiResponse,
+    TransactionApiResponse
+  >("/transactions", request);
+
+  return mapTransaction(response);
 };
 
 export const updateTransactionCategory = async (

@@ -23,8 +23,8 @@ import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
 import { isTipsSourceDataNotFound } from "../tips/tipErrors";
 import { useTips } from "../tips/useTips";
-import { useMonthlySummary } from "../transactions/useMonthlySummary";
-import { useTransactions } from "../transactions/useTransactions";
+import { useMonthlySummary } from "../transactions/hooks/useMonthlySummary";
+import { useTransactions } from "../transactions/hooks/useTransactions";
 
 const MOBILE_TIP_PREVIEW_LINES = 4;
 

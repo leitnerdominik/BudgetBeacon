@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getMonthlySummary } from "../api/getMonthlySummary";
+import { getMonthlySummary } from "../../../api/transactionsApi";
 
 export const useMonthlySummary = (year: number, month: number) => {
   return useQuery({

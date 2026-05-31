@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { deleteTransaction } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
-import { deleteTransaction } from "../api/getTransactions";
 
 export const useDeleteTransaction = () => {
   const queryClient = useQueryClient();

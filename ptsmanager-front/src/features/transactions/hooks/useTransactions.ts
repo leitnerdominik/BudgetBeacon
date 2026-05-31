@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getTransactions } from "../api/getTransactions";
+import { getTransactions } from "../../../api/transactionsApi";
 
 export const useTransactions = (page: number, pageSize: number) => {
   return useQuery({

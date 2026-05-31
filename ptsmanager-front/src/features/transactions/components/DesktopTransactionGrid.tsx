@@ -10,19 +10,9 @@ import {
   type GridPaginationModel,
 } from "@mui/x-data-grid";
 
-import { TransactionCategorySelect } from "../TransactionCategorySelect";
+import { formatCurrency, formatDate } from "../../../utils/formatDate";
+import { TransactionCategorySelect } from "./TransactionCategorySelect";
 import type { PaginatedTransactions } from "../types";
-
-const currencyFormatter = new Intl.NumberFormat("de-DE", {
-  style: "currency",
-  currency: "EUR",
-});
-
-const dateFormatter = new Intl.DateTimeFormat("de-DE", {
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-});
 
 const formatConfidenceScore = (value: number | null | undefined) =>
   typeof value === "number" ? `${Math.round(value * 100)}%` : "N/A";
@@ -69,7 +59,7 @@ export const DesktopTransactionGrid = ({
       field: "date",
       headerName: "Date",
       width: 150,
-      valueFormatter: (value) => dateFormatter.format(new Date(value)),
+      valueFormatter: (value) => formatDate(value),
     },
     { field: "description", headerName: "Description", flex: 1 },
     {
@@ -111,7 +101,7 @@ export const DesktopTransactionGrid = ({
         return (
           <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
             <Typography sx={{ color, fontWeight: "bold" }}>
-              {currencyFormatter.format(amount)}
+              {formatCurrency(amount)}
             </Typography>
           </Box>
         );

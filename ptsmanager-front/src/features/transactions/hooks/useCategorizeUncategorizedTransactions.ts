@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNotification } from "../../../components/notifications/NotificationProvider";
-import { categorizeUncategorizedTransactions } from "../api/categorizeUncategorizedTransactions";
+import { categorizeUncategorizedTransactions } from "../../../api/transactionsApi";
+import { useNotification } from "../../../components/NotificationProvider";
 
 export const useCategorizeUncategorizedTransactions = () => {
   const queryClient = useQueryClient();

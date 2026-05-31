@@ -27,7 +27,7 @@ import {
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TuneIcon from "@mui/icons-material/Tune";
 
-import { useNotification } from "../../../components/notifications/NotificationProvider";
+import { useNotification } from "../../../components/NotificationProvider";
 import { useUploadCsv } from "../hooks/useUploadCsv";
 import {
   createMappedCsvFile,
