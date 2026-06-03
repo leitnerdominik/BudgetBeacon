@@ -1,7 +1,11 @@
 import { apiClient } from "./httpClient";
 import type {
+  CategoryExpenseSummary,
   MonthlySummary,
+  MonthlySummaryWithPeriod,
   PaginatedTransactions,
+  RecurringExpenseCandidate,
+  TopExpense,
   Transaction,
 } from "../types/api";
 
@@ -117,6 +121,73 @@ export const getMonthlySummary = async (
     params: {
       year,
       month,
+    },
+  });
+};
+
+export const getMonthlySummaries = async (
+  startYear: number,
+  startMonth: number,
+  endYear: number,
+  endMonth: number,
+): Promise<MonthlySummaryWithPeriod[]> => {
+  return apiClient.get<MonthlySummaryWithPeriod[], MonthlySummaryWithPeriod[]>(
+    "/transactions/summaries",
+    {
+      params: {
+        startYear,
+        startMonth,
+        endYear,
+        endMonth,
+      },
+    },
+  );
+};
+
+export const getMonthlyCategorySummary = async (
+  year: number,
+  month: number,
+): Promise<CategoryExpenseSummary[]> => {
+  return apiClient.get<CategoryExpenseSummary[], CategoryExpenseSummary[]>(
+    "/transactions/category-summary",
+    {
+      params: {
+        year,
+        month,
+      },
+    },
+  );
+};
+
+export const getMonthlyTopExpenses = async (
+  year: number,
+  month: number,
+  limit = 5,
+): Promise<TopExpense[]> => {
+  return apiClient.get<TopExpense[], TopExpense[]>("/transactions/top-expenses", {
+    params: {
+      year,
+      month,
+      limit,
+    },
+  });
+};
+
+export const getRecurringExpenseCandidates = async (
+  endYear: number,
+  endMonth: number,
+  monthsBack = 6,
+  limit = 10,
+): Promise<RecurringExpenseCandidate[]> => {
+  return apiClient.get<
+    RecurringExpenseCandidate[],
+    RecurringExpenseCandidate[]
+  >("/transactions/recurring-expenses", {
+    params: {
+      endYear,
+      endMonth,
+      monthsBack,
+      limit,
     },
   });
 };

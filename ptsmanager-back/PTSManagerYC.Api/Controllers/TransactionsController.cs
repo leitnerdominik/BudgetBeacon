@@ -190,20 +190,297 @@ public class TransactionsController : ControllerBase
         _logger.LogInformation("API requested monthly summary for {Month}/{Year}", month, year);
         var transactions = (await _repository.GetByMonthAsync(userId, year, month)).ToList();
 
+        return Ok(BuildMonthlySummary(year, month, transactions));
+    }
+
+    [HttpGet("summaries")]
+    public async Task<IActionResult> GetMonthlySummaries(
+        [FromQuery] int startYear,
+        [FromQuery] int startMonth,
+        [FromQuery] int endYear,
+        [FromQuery] int endMonth)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access summaries.");
+        }
+
+        var validationError = ValidateMonthlySummaryRange(startYear, startMonth, endYear, endMonth);
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        _logger.LogInformation(
+            "API requested monthly summaries from {StartMonth}/{StartYear} to {EndMonth}/{EndYear}",
+            startMonth,
+            startYear,
+            endMonth,
+            endYear);
+
+        var startDate = new DateTime(startYear, startMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endExclusive = new DateTime(endYear, endMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        var transactions = (await _repository.GetByDateRangeAsync(
+                userId,
+                startDate,
+                endExclusive.AddTicks(-1)))
+            .ToList();
+        var transactionsByMonth = transactions
+            .GroupBy(transaction => new { transaction.Date.Year, transaction.Date.Month })
+            .ToDictionary(group => (group.Key.Year, group.Key.Month), group => group.ToList());
+
+        var summaries = EnumerateMonths(startYear, startMonth, endYear, endMonth)
+            .Select(monthRef =>
+            {
+                transactionsByMonth.TryGetValue((monthRef.Year, monthRef.Month), out var monthlyTransactions);
+
+                return BuildMonthlySummary(
+                    monthRef.Year,
+                    monthRef.Month,
+                    monthlyTransactions ?? []);
+            })
+            .ToList();
+
+        return Ok(summaries);
+    }
+
+    [HttpGet("category-summary")]
+    public async Task<IActionResult> GetMonthlyCategorySummary([FromQuery] int year, [FromQuery] int month)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access category summaries.");
+        }
+
+        if (year < 2000 || year > 2100 || month < 1 || month > 12)
+        {
+            return this.ApiValidationProblem(
+                "Invalid category summary query",
+                "Year must be between 2000 and 2100, and month must be between 1 and 12.",
+                errors =>
+                {
+                    if (year < 2000 || year > 2100)
+                    {
+                        errors.AddModelError(nameof(year), "Year must be between 2000 and 2100.");
+                    }
+
+                    if (month < 1 || month > 12)
+                    {
+                        errors.AddModelError(nameof(month), "Month must be between 1 and 12.");
+                    }
+                });
+        }
+
+        _logger.LogInformation("API requested category summary for {Month}/{Year}", month, year);
+        var transactions = (await _repository.GetByMonthAsync(userId, year, month)).ToList();
+        var expenses = transactions.Where(transaction => transaction.Amount < 0).ToList();
+        var totalExpense = Math.Abs(_aggregationService.CalculateTotal(expenses));
+
+        var categorySummaries = expenses
+            .GroupBy(transaction =>
+                string.IsNullOrWhiteSpace(transaction.Category)
+                    ? "Uncategorized"
+                    : transaction.Category)
+            .Select(group =>
+            {
+                var categoryTotal = Math.Abs(_aggregationService.CalculateTotal(group));
+
+                return new CategorySummaryResponse(
+                    group.Key,
+                    categoryTotal,
+                    totalExpense > 0 ? categoryTotal / totalExpense * 100 : 0,
+                    group.Count());
+            })
+            .OrderByDescending(summary => summary.TotalExpense)
+            .ThenBy(summary => summary.Category)
+            .ToList();
+
+        return Ok(categorySummaries);
+    }
+
+    [HttpGet("top-expenses")]
+    public async Task<IActionResult> GetMonthlyTopExpenses(
+        [FromQuery] int year,
+        [FromQuery] int month,
+        [FromQuery] int limit = 5)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access top expenses.");
+        }
+
+        if (year < 2000 || year > 2100 || month < 1 || month > 12 || limit < 1 || limit > 20)
+        {
+            return this.ApiValidationProblem(
+                "Invalid top expenses query",
+                "Year must be between 2000 and 2100, month must be between 1 and 12, and limit must be between 1 and 20.",
+                errors =>
+                {
+                    if (year < 2000 || year > 2100)
+                    {
+                        errors.AddModelError(nameof(year), "Year must be between 2000 and 2100.");
+                    }
+
+                    if (month < 1 || month > 12)
+                    {
+                        errors.AddModelError(nameof(month), "Month must be between 1 and 12.");
+                    }
+
+                    if (limit < 1 || limit > 20)
+                    {
+                        errors.AddModelError(nameof(limit), "Limit must be between 1 and 20.");
+                    }
+                });
+        }
+
+        _logger.LogInformation("API requested top expenses for {Month}/{Year}", month, year);
+        var transactions = await _repository.GetByMonthAsync(userId, year, month);
+        var topExpenses = transactions
+            .Where(transaction => transaction.Amount < 0)
+            .OrderBy(transaction => transaction.Amount)
+            .ThenByDescending(transaction => transaction.Date)
+            .Take(limit)
+            .Select(transaction => new TopExpenseResponse(
+                transaction.Id,
+                transaction.Date,
+                Math.Abs(transaction.Amount),
+                transaction.Category,
+                transaction.Metadata.RawDescription?.Trim() ?? "No description"))
+            .ToList();
+
+        return Ok(topExpenses);
+    }
+
+    [HttpGet("recurring-expenses")]
+    public async Task<IActionResult> GetRecurringExpenseCandidates(
+        [FromQuery] int endYear,
+        [FromQuery] int endMonth,
+        [FromQuery] int monthsBack = 6,
+        [FromQuery] int limit = 10)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access recurring expenses.");
+        }
+
+        if (endYear < 2000 ||
+            endYear > 2100 ||
+            endMonth < 1 ||
+            endMonth > 12 ||
+            monthsBack < 2 ||
+            monthsBack > 24 ||
+            limit < 1 ||
+            limit > 20)
+        {
+            return this.ApiValidationProblem(
+                "Invalid recurring expenses query",
+                "End year must be between 2000 and 2100, end month must be between 1 and 12, months back must be between 2 and 24, and limit must be between 1 and 20.",
+                errors =>
+                {
+                    if (endYear < 2000 || endYear > 2100)
+                    {
+                        errors.AddModelError(nameof(endYear), "End year must be between 2000 and 2100.");
+                    }
+
+                    if (endMonth < 1 || endMonth > 12)
+                    {
+                        errors.AddModelError(nameof(endMonth), "End month must be between 1 and 12.");
+                    }
+
+                    if (monthsBack < 2 || monthsBack > 24)
+                    {
+                        errors.AddModelError(nameof(monthsBack), "Months back must be between 2 and 24.");
+                    }
+
+                    if (limit < 1 || limit > 20)
+                    {
+                        errors.AddModelError(nameof(limit), "Limit must be between 1 and 20.");
+                    }
+                });
+        }
+
+        _logger.LogInformation(
+            "API requested recurring expense candidates ending {EndMonth}/{EndYear}",
+            endMonth,
+            endYear);
+
+        var endExclusive = new DateTime(endYear, endMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        var startDate = endExclusive.AddMonths(-monthsBack);
+        var transactions = await _repository.GetByDateRangeAsync(
+            userId,
+            startDate,
+            endExclusive.AddTicks(-1));
+
+        var recurringExpenses = transactions
+            .Where(transaction => transaction.Amount < 0)
+            .Select(transaction => new
+            {
+                Transaction = transaction,
+                Description = NormalizeDescription(transaction.Metadata.RawDescription)
+            })
+            .Where(item => item.Description.Length > 0)
+            .GroupBy(item => new
+            {
+                item.Transaction.Category,
+                item.Description
+            })
+            .Select(group =>
+            {
+                var expenses = group
+                    .Select(item => item.Transaction)
+                    .OrderByDescending(transaction => transaction.Date)
+                    .ToList();
+                var monthCount = expenses
+                    .Select(transaction => new { transaction.Date.Year, transaction.Date.Month })
+                    .Distinct()
+                    .Count();
+                var amounts = expenses.Select(transaction => Math.Abs(transaction.Amount)).ToList();
+
+                return new
+                {
+                    Candidate = new RecurringExpenseCandidateResponse(
+                        group.Key.Description,
+                        group.Key.Category,
+                        amounts.Average(),
+                        amounts.Min(),
+                        amounts.Max(),
+                        expenses.Count,
+                        monthCount,
+                        expenses[0].Date),
+                    MonthCount = monthCount
+                };
+            })
+            .Where(item => item.MonthCount >= 2)
+            .OrderByDescending(item => item.Candidate.AverageAmount)
+            .ThenBy(item => item.Candidate.Description)
+            .Take(limit)
+            .Select(item => item.Candidate)
+            .ToList();
+
+        return Ok(recurringExpenses);
+    }
+
+    private MonthlySummaryResponse BuildMonthlySummary(
+        int year,
+        int month,
+        IReadOnlyCollection<Transaction> transactions)
+    {
         var incomes = transactions.Where(t => t.Amount > 0).ToList();
         var expenses = transactions.Where(t => t.Amount < 0).ToList();
 
-        var summary = new
-        {
-            TotalIncome = _aggregationService.CalculateTotal(incomes),
-            TotalExpense = _aggregationService.CalculateTotal(expenses),
-            NetBalance = _aggregationService.CalculateTotal(transactions),
-            AverageExpense = _aggregationService.CalculateAverage(expenses),
-            MedianExpense = _aggregationService.CalculateMedian(expenses),
-            TransactionCount = transactions.Count
-        };
-
-        return Ok(summary);
+        return new MonthlySummaryResponse(
+            year,
+            month,
+            _aggregationService.CalculateTotal(incomes),
+            _aggregationService.CalculateTotal(expenses),
+            _aggregationService.CalculateTotal(transactions),
+            _aggregationService.CalculateAverage(expenses),
+            _aggregationService.CalculateMedian(expenses),
+            transactions.Count);
     }
 
     [HttpPost("import")]
@@ -467,6 +744,96 @@ public class TransactionsController : ControllerBase
         return User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 
+    private IActionResult? ValidateMonthlySummaryRange(
+        int startYear,
+        int startMonth,
+        int endYear,
+        int endMonth)
+    {
+        var hasInvalidDatePart = startYear < 2000 ||
+            startYear > 2100 ||
+            endYear < 2000 ||
+            endYear > 2100 ||
+            startMonth < 1 ||
+            startMonth > 12 ||
+            endMonth < 1 ||
+            endMonth > 12;
+
+        if (hasInvalidDatePart)
+        {
+            return this.ApiValidationProblem(
+                "Invalid summary range",
+                "Years must be between 2000 and 2100, and months must be between 1 and 12.",
+                errors =>
+                {
+                    if (startYear < 2000 || startYear > 2100)
+                    {
+                        errors.AddModelError(nameof(startYear), "Start year must be between 2000 and 2100.");
+                    }
+
+                    if (endYear < 2000 || endYear > 2100)
+                    {
+                        errors.AddModelError(nameof(endYear), "End year must be between 2000 and 2100.");
+                    }
+
+                    if (startMonth < 1 || startMonth > 12)
+                    {
+                        errors.AddModelError(nameof(startMonth), "Start month must be between 1 and 12.");
+                    }
+
+                    if (endMonth < 1 || endMonth > 12)
+                    {
+                        errors.AddModelError(nameof(endMonth), "End month must be between 1 and 12.");
+                    }
+                });
+        }
+
+        var monthCount = GetInclusiveMonthCount(startYear, startMonth, endYear, endMonth);
+        if (monthCount < 1 || monthCount > 24)
+        {
+            return this.ApiValidationProblem(
+                "Invalid summary range",
+                "Choose a summary range between 1 and 24 months.",
+                errors =>
+                {
+                    if (monthCount < 1)
+                    {
+                        errors.AddModelError(nameof(startMonth), "Start month must not be after end month.");
+                    }
+
+                    if (monthCount > 24)
+                    {
+                        errors.AddModelError(nameof(endMonth), "Summary range must not exceed 24 months.");
+                    }
+                });
+        }
+
+        return null;
+    }
+
+    private static int GetInclusiveMonthCount(
+        int startYear,
+        int startMonth,
+        int endYear,
+        int endMonth) =>
+        ((endYear - startYear) * 12) + endMonth - startMonth + 1;
+
+    private static IEnumerable<(int Year, int Month)> EnumerateMonths(
+        int startYear,
+        int startMonth,
+        int endYear,
+        int endMonth)
+    {
+        var monthCount = GetInclusiveMonthCount(startYear, startMonth, endYear, endMonth);
+        var current = new DateTime(startYear, startMonth, 1);
+
+        for (var index = 0; index < monthCount; index++)
+        {
+            yield return (current.Year, current.Month);
+            current = current.AddMonths(1);
+        }
+    }
+
     private static string FormatTipsTimeframe(int monthsBack) =>
         monthsBack switch
         {
@@ -475,10 +842,51 @@ public class TransactionsController : ControllerBase
             _ => $"Last {monthsBack} months"
         };
 
+    private static string NormalizeDescription(string? description) =>
+        string.Join(
+            " ",
+            (description ?? string.Empty)
+                .Trim()
+                .ToLowerInvariant()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
     public sealed record UpdateTransactionCategoryRequest(string? Category);
     public sealed record CreateTransactionRequest(
         DateOnly Date,
         decimal Amount,
         string? Description,
         string? Category);
+
+    private sealed record MonthlySummaryResponse(
+        int Year,
+        int Month,
+        decimal TotalIncome,
+        decimal TotalExpense,
+        decimal NetBalance,
+        decimal AverageExpense,
+        decimal MedianExpense,
+        int TransactionCount);
+
+    private sealed record CategorySummaryResponse(
+        string Category,
+        decimal TotalExpense,
+        decimal Percentage,
+        int TransactionCount);
+
+    private sealed record TopExpenseResponse(
+        Guid Id,
+        DateTime Date,
+        decimal Amount,
+        string Category,
+        string Description);
+
+    private sealed record RecurringExpenseCandidateResponse(
+        string Description,
+        string Category,
+        decimal AverageAmount,
+        decimal MinAmount,
+        decimal MaxAmount,
+        int OccurrenceCount,
+        int MonthCount,
+        DateTime LastDate);
 }

@@ -15,6 +15,9 @@ const DashboardPage = lazy(async () => ({
 const TransactionsPage = lazy(async () => ({
   default: (await import("./pages/TransactionsPage")).TransactionsPage,
 }));
+const StatisticsPage = lazy(async () => ({
+  default: (await import("./pages/StatisticsPage")).StatisticsPage,
+}));
 const TipsPage = lazy(async () => ({
   default: (await import("./pages/TipsPage")).TipsPage,
 }));
@@ -62,6 +65,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: withSuspense(<DashboardPage />) },
           { path: "transactions", element: withSuspense(<TransactionsPage />) },
+          { path: "statistics", element: withSuspense(<StatisticsPage />) },
           { path: "tips", element: withSuspense(<TipsPage />) },
           { path: "settings", element: withSuspense(<SettingsPage />) },
           { path: "*", element: <NotFound /> },

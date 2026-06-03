@@ -49,6 +49,37 @@ export interface MonthlySummary {
   transactionCount: number;
 }
 
+export interface MonthlySummaryWithPeriod extends MonthlySummary {
+  month: number;
+  year: number;
+}
+
+export interface CategoryExpenseSummary {
+  category: string;
+  totalExpense: number;
+  percentage: number;
+  transactionCount: number;
+}
+
+export interface TopExpense {
+  id: string;
+  date: string;
+  amount: number;
+  category: string;
+  description: string;
+}
+
+export interface RecurringExpenseCandidate {
+  description: string;
+  category: string;
+  averageAmount: number;
+  minAmount: number;
+  maxAmount: number;
+  occurrenceCount: number;
+  monthCount: number;
+  lastDate: string;
+}
+
 export type RegionalTipCategory =
   | "Transport"
   | "Energy"

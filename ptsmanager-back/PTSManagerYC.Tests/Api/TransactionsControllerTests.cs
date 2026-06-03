@@ -99,6 +99,306 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task GetMonthlySummaries_ReturnsContinuousSummariesForRequestedRange()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            RangeTransactions =
+            [
+                new Transaction { Amount = 1000m, Date = new DateTime(2026, 1, 1), UserId = "user-1" },
+                new Transaction { Amount = -50m, Date = new DateTime(2026, 1, 12), UserId = "user-1" },
+                new Transaction { Amount = -25m, Date = new DateTime(2026, 3, 4), UserId = "user-1" }
+            ]
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.GetMonthlySummaries(2026, 1, 2026, 3);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var summaries = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value).ToList();
+        Assert.Equal(3, summaries.Count);
+
+        Assert.Equal(2026, GetValue<int>(summaries[0], "Year"));
+        Assert.Equal(1, GetValue<int>(summaries[0], "Month"));
+        Assert.Equal(1000m, GetValue<decimal>(summaries[0], "TotalIncome"));
+        Assert.Equal(-50m, GetValue<decimal>(summaries[0], "TotalExpense"));
+        Assert.Equal(950m, GetValue<decimal>(summaries[0], "NetBalance"));
+        Assert.Equal(2, GetValue<int>(summaries[0], "TransactionCount"));
+
+        Assert.Equal(2, GetValue<int>(summaries[1], "Month"));
+        Assert.Equal(0m, GetValue<decimal>(summaries[1], "NetBalance"));
+        Assert.Equal(0, GetValue<int>(summaries[1], "TransactionCount"));
+
+        Assert.Equal(3, GetValue<int>(summaries[2], "Month"));
+        Assert.Equal(-25m, GetValue<decimal>(summaries[2], "TotalExpense"));
+        Assert.Equal(-25m, GetValue<decimal>(summaries[2], "NetBalance"));
+        Assert.Equal(1, GetValue<int>(summaries[2], "TransactionCount"));
+
+        Assert.Equal("user-1", repository.LastDateRangeUserId);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), repository.LastDateRangeStartDate);
+        Assert.Equal(
+            new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc).AddTicks(-1),
+            repository.LastDateRangeEndDate);
+    }
+
+    [Theory]
+    [InlineData(1999, 1, 2026, 3, "startYear")]
+    [InlineData(2026, 0, 2026, 3, "startMonth")]
+    [InlineData(2026, 4, 2026, 3, "startMonth")]
+    [InlineData(2024, 1, 2026, 2, "endMonth")]
+    public async Task GetMonthlySummaries_ReturnsValidationProblemForInvalidRange(
+        int startYear,
+        int startMonth,
+        int endYear,
+        int endMonth,
+        string expectedErrorKey)
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetMonthlySummaries(startYear, startMonth, endYear, endMonth);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains(expectedErrorKey, problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task GetMonthlyCategorySummary_ReturnsExpensesGroupedByCategory()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            MonthlyTransactions =
+            [
+                new Transaction { Amount = 1000m, Category = "Income", Date = new DateTime(2026, 4, 1), UserId = "user-1" },
+                new Transaction { Amount = -75m, Category = "Groceries", Date = new DateTime(2026, 4, 2), UserId = "user-1" },
+                new Transaction { Amount = -25m, Category = "Groceries", Date = new DateTime(2026, 4, 3), UserId = "user-1" },
+                new Transaction { Amount = -50m, Category = "Transport", Date = new DateTime(2026, 4, 4), UserId = "user-1" },
+                new Transaction { Amount = -25m, Category = "", Date = new DateTime(2026, 4, 5), UserId = "user-1" }
+            ]
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.GetMonthlyCategorySummary(2026, 4);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var summaries = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value).ToList();
+        Assert.Equal(3, summaries.Count);
+
+        Assert.Equal("Groceries", GetValue<string>(summaries[0], "Category"));
+        Assert.Equal(100m, GetValue<decimal>(summaries[0], "TotalExpense"));
+        Assert.Equal(57.14m, GetValue<decimal>(summaries[0], "Percentage"), precision: 2);
+        Assert.Equal(2, GetValue<int>(summaries[0], "TransactionCount"));
+
+        Assert.Equal("Transport", GetValue<string>(summaries[1], "Category"));
+        Assert.Equal(50m, GetValue<decimal>(summaries[1], "TotalExpense"));
+        Assert.Equal(1, GetValue<int>(summaries[1], "TransactionCount"));
+
+        Assert.Equal("Uncategorized", GetValue<string>(summaries[2], "Category"));
+        Assert.Equal(25m, GetValue<decimal>(summaries[2], "TotalExpense"));
+        Assert.Equal(1, GetValue<int>(summaries[2], "TransactionCount"));
+    }
+
+    [Theory]
+    [InlineData(1999, 4, "year")]
+    [InlineData(2026, 0, "month")]
+    [InlineData(2026, 13, "month")]
+    public async Task GetMonthlyCategorySummary_ReturnsValidationProblemForInvalidDateParts(
+        int year,
+        int month,
+        string expectedErrorKey)
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetMonthlyCategorySummary(year, month);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains(expectedErrorKey, problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task GetMonthlyTopExpenses_ReturnsLargestExpensesForRequestedMonth()
+    {
+        var largestExpenseId = Guid.NewGuid();
+        var secondLargestExpenseId = Guid.NewGuid();
+        var repository = new FakeTransactionRepository
+        {
+            MonthlyTransactions =
+            [
+                new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    Amount = 1000m,
+                    Category = "Income",
+                    Date = new DateTime(2026, 4, 1),
+                    Metadata = new TransactionMetadata { RawDescription = "Salary" },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Id = secondLargestExpenseId,
+                    Amount = -75m,
+                    Category = "Groceries",
+                    Date = new DateTime(2026, 4, 2),
+                    Metadata = new TransactionMetadata { RawDescription = "Market" },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Id = largestExpenseId,
+                    Amount = -150m,
+                    Category = "Housing",
+                    Date = new DateTime(2026, 4, 3),
+                    Metadata = new TransactionMetadata { RawDescription = "Rent" },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    Amount = -20m,
+                    Category = "Transport",
+                    Date = new DateTime(2026, 4, 4),
+                    Metadata = new TransactionMetadata { RawDescription = "Bus" },
+                    UserId = "user-1"
+                }
+            ]
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.GetMonthlyTopExpenses(2026, 4, limit: 2);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var expenses = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value).ToList();
+        Assert.Equal(2, expenses.Count);
+
+        Assert.Equal(largestExpenseId, GetValue<Guid>(expenses[0], "Id"));
+        Assert.Equal(150m, GetValue<decimal>(expenses[0], "Amount"));
+        Assert.Equal("Housing", GetValue<string>(expenses[0], "Category"));
+        Assert.Equal("Rent", GetValue<string>(expenses[0], "Description"));
+
+        Assert.Equal(secondLargestExpenseId, GetValue<Guid>(expenses[1], "Id"));
+        Assert.Equal(75m, GetValue<decimal>(expenses[1], "Amount"));
+    }
+
+    [Theory]
+    [InlineData(1999, 4, 5, "year")]
+    [InlineData(2026, 0, 5, "month")]
+    [InlineData(2026, 13, 5, "month")]
+    [InlineData(2026, 4, 0, "limit")]
+    [InlineData(2026, 4, 21, "limit")]
+    public async Task GetMonthlyTopExpenses_ReturnsValidationProblemForInvalidQuery(
+        int year,
+        int month,
+        int limit,
+        string expectedErrorKey)
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetMonthlyTopExpenses(year, month, limit);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains(expectedErrorKey, problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task GetRecurringExpenseCandidates_ReturnsRepeatedExpensesAcrossMonths()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            RangeTransactions =
+            [
+                new Transaction
+                {
+                    Amount = -50m,
+                    Category = "Subscriptions",
+                    Date = new DateTime(2026, 1, 5),
+                    Metadata = new TransactionMetadata { RawDescription = "Music Stream" },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Amount = -52m,
+                    Category = "Subscriptions",
+                    Date = new DateTime(2026, 2, 5),
+                    Metadata = new TransactionMetadata { RawDescription = "  MUSIC   STREAM " },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Amount = -90m,
+                    Category = "Energy",
+                    Date = new DateTime(2026, 2, 10),
+                    Metadata = new TransactionMetadata { RawDescription = "Power Co" },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Amount = -20m,
+                    Category = "Transport",
+                    Date = new DateTime(2026, 3, 4),
+                    Metadata = new TransactionMetadata { RawDescription = "Bus Ticket" },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Amount = 1000m,
+                    Category = "Income",
+                    Date = new DateTime(2026, 3, 20),
+                    Metadata = new TransactionMetadata { RawDescription = "Salary" },
+                    UserId = "user-1"
+                }
+            ]
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.GetRecurringExpenseCandidates(2026, 3, monthsBack: 3, limit: 10);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var candidates = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value).ToList();
+        var candidate = Assert.Single(candidates);
+
+        Assert.Equal("music stream", GetValue<string>(candidate, "Description"));
+        Assert.Equal("Subscriptions", GetValue<string>(candidate, "Category"));
+        Assert.Equal(51m, GetValue<decimal>(candidate, "AverageAmount"));
+        Assert.Equal(50m, GetValue<decimal>(candidate, "MinAmount"));
+        Assert.Equal(52m, GetValue<decimal>(candidate, "MaxAmount"));
+        Assert.Equal(2, GetValue<int>(candidate, "OccurrenceCount"));
+        Assert.Equal(2, GetValue<int>(candidate, "MonthCount"));
+        Assert.Equal(new DateTime(2026, 2, 5), GetValue<DateTime>(candidate, "LastDate"));
+
+        Assert.Equal("user-1", repository.LastDateRangeUserId);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), repository.LastDateRangeStartDate);
+        Assert.Equal(
+            new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc).AddTicks(-1),
+            repository.LastDateRangeEndDate);
+    }
+
+    [Theory]
+    [InlineData(1999, 4, 6, 10, "endYear")]
+    [InlineData(2026, 0, 6, 10, "endMonth")]
+    [InlineData(2026, 13, 6, 10, "endMonth")]
+    [InlineData(2026, 4, 1, 10, "monthsBack")]
+    [InlineData(2026, 4, 25, 10, "monthsBack")]
+    [InlineData(2026, 4, 6, 0, "limit")]
+    [InlineData(2026, 4, 6, 21, "limit")]
+    public async Task GetRecurringExpenseCandidates_ReturnsValidationProblemForInvalidQuery(
+        int endYear,
+        int endMonth,
+        int monthsBack,
+        int limit,
+        string expectedErrorKey)
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetRecurringExpenseCandidates(endYear, endMonth, monthsBack, limit);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains(expectedErrorKey, problem.Errors.Keys);
+    }
+
+    [Fact]
     public async Task UploadCsv_ReturnsValidationProblemForNullFile()
     {
         var csvReader = new FakeCsvReaderService();
@@ -547,6 +847,7 @@ public sealed class TransactionsControllerTests
         public IEnumerable<Transaction> AllTransactions { get; init; } = [];
         public List<Transaction> UncategorizedTransactions { get; init; } = [];
         public IEnumerable<Transaction> MonthlyTransactions { get; init; } = [];
+        public IEnumerable<Transaction> RangeTransactions { get; init; } = [];
         public IEnumerable<Transaction> PagedTransactions { get; init; } = [];
         public int PagedTotalCount { get; init; }
         public int GetAllCalls { get; private set; }
@@ -563,6 +864,9 @@ public sealed class TransactionsControllerTests
         public Guid? LastGetByIdTransactionId { get; private set; }
         public string? LastUpdateCategoryUserId { get; private set; }
         public Guid? LastUpdateCategoryTransactionId { get; private set; }
+        public string? LastDateRangeUserId { get; private set; }
+        public DateTime? LastDateRangeStartDate { get; private set; }
+        public DateTime? LastDateRangeEndDate { get; private set; }
 
         public Task AddRangeAsync(IEnumerable<Transaction> transactions)
         {
@@ -650,7 +954,11 @@ public sealed class TransactionsControllerTests
 
         public Task<IEnumerable<Transaction>> GetByDateRangeAsync(string userId, DateTime startDate, DateTime endDate)
         {
-            return Task.FromResult(Enumerable.Empty<Transaction>());
+            LastDateRangeUserId = userId;
+            LastDateRangeStartDate = startDate;
+            LastDateRangeEndDate = endDate;
+
+            return Task.FromResult(RangeTransactions);
         }
 
         public Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(
