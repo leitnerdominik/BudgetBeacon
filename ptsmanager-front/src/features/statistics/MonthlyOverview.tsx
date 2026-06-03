@@ -178,17 +178,33 @@ export const MonthlyOverview = () => {
   };
 
   return (
-    <Box sx={{ flexGrow: 1 }}>
+    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
       <Stack
         direction={{ xs: "column", md: "row" }}
-        spacing={2}
+        spacing={{ xs: 1.75, sm: 2 }}
         justifyContent="space-between"
         alignItems={{ xs: "stretch", md: "flex-start" }}
-        sx={{ mb: 3 }}
+        sx={{ mb: { xs: 2, sm: 3 } }}
       >
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" spacing={1.25} alignItems="center">
-            <BarChartIcon color="primary" />
+            <Box
+              aria-hidden="true"
+              sx={{
+                width: { xs: 34, sm: 38 },
+                height: { xs: 34, sm: 38 },
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+                borderRadius: 1,
+                color: "primary.dark",
+                bgcolor: "primary.light",
+                border: "1px solid",
+                borderColor: "divider",
+              }}
+            >
+              <BarChartIcon fontSize={isSmallScreen ? "small" : "medium"} />
+            </Box>
             <Typography variant={isSmallScreen ? "h5" : "h4"} fontWeight={700}>
               Statistics
             </Typography>
@@ -200,17 +216,33 @@ export const MonthlyOverview = () => {
 
         <Stack
           direction={{ xs: "column", sm: "row" }}
-          spacing={1}
+          spacing={{ xs: 1, sm: 1 }}
           alignItems={{ xs: "stretch", sm: "center" }}
+          sx={{
+            width: { xs: "100%", md: "auto" },
+            p: { xs: 1, sm: 0 },
+            border: { xs: "1px solid", sm: "none" },
+            borderColor: "divider",
+            borderRadius: { xs: 1, sm: 0 },
+            bgcolor: { xs: "background.paper", sm: "transparent" },
+          }}
         >
-          <Stack direction="row" spacing={0.5}>
+          <Stack direction="row" spacing={0.75}>
             <Tooltip title="Previous month">
-              <IconButton aria-label="Previous month" onClick={handlePreviousMonth}>
+              <IconButton
+                aria-label="Previous month"
+                onClick={handlePreviousMonth}
+                sx={{ flex: { xs: 1, sm: "initial" } }}
+              >
                 <ChevronLeftIcon />
               </IconButton>
             </Tooltip>
             <Tooltip title="Next month">
-              <IconButton aria-label="Next month" onClick={handleNextMonth}>
+              <IconButton
+                aria-label="Next month"
+                onClick={handleNextMonth}
+                sx={{ flex: { xs: 1, sm: "initial" } }}
+              >
                 <ChevronRightIcon />
               </IconButton>
             </Tooltip>
@@ -226,11 +258,13 @@ export const MonthlyOverview = () => {
               max: "2100-12",
             }}
             InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: { sm: 170 } }}
           />
           <Button
             variant="outlined"
             startIcon={<CalendarMonthIcon />}
             onClick={handleCurrentMonth}
+            sx={{ whiteSpace: "nowrap" }}
           >
             Current
           </Button>
@@ -270,9 +304,9 @@ export const MonthlyOverview = () => {
             </Typography>
           ) : null}
 
-          <Grid container spacing={{ xs: 1.5, sm: 2 }}>
+          <Grid container spacing={{ xs: 1.25, sm: 2 }}>
             {metrics.map((metric) => (
-              <Grid size={{ xs: 12, sm: 6, lg: 2.4 }} key={metric.label}>
+              <Grid size={{ xs: 6, sm: 6, lg: 2.4 }} key={metric.label}>
                 <Card
                   elevation={1}
                   sx={{
@@ -280,10 +314,11 @@ export const MonthlyOverview = () => {
                     borderRadius: 1,
                     border: "1px solid",
                     borderColor: "divider",
+                    overflow: "hidden",
                   }}
                 >
-                  <CardContent sx={{ p: { xs: 2, sm: 2.25 } }}>
-                    <Stack spacing={1.5}>
+                  <CardContent sx={{ p: { xs: 1.5, sm: 2.25 } }}>
+                    <Stack spacing={{ xs: 1, sm: 1.5 }}>
                       <Stack
                         direction="row"
                         spacing={1}
@@ -301,6 +336,11 @@ export const MonthlyOverview = () => {
                         variant={isSmallScreen ? "h6" : "h5"}
                         fontWeight={700}
                         color={metric.color}
+                        sx={{
+                          fontSize: { xs: "1rem", sm: "1.5rem" },
+                          lineHeight: 1.2,
+                          overflowWrap: "anywhere",
+                        }}
                       >
                         {metric.value}
                       </Typography>
@@ -346,8 +386,8 @@ export const MonthlyOverview = () => {
 
               <Divider sx={{ my: 2 }} />
 
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 4 }}>
+              <Grid container spacing={{ xs: 1.5, sm: 2 }}>
+                <Grid size={{ xs: 12, sm: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     Average Expense
                   </Typography>
@@ -355,7 +395,7 @@ export const MonthlyOverview = () => {
                     {formatCurrency(Math.abs(summary?.averageExpense ?? 0))}
                   </Typography>
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid size={{ xs: 12, sm: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     Median Expense
                   </Typography>
@@ -363,7 +403,7 @@ export const MonthlyOverview = () => {
                     {formatCurrency(Math.abs(summary?.medianExpense ?? 0))}
                   </Typography>
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid size={{ xs: 12, sm: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     Expense Ratio
                   </Typography>

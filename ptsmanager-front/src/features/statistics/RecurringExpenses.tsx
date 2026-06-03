@@ -130,21 +130,35 @@ export const RecurringExpenses = ({ month }: RecurringExpensesProps) => {
                   key={`${candidate.category}-${candidate.description}`}
                   disableGutters
                   divider
-                  sx={{ py: { xs: 1.25, sm: 1.5 } }}
+                  sx={{
+                    py: { xs: 1.25, sm: 1.5 },
+                    alignItems: { xs: "flex-start", sm: "center" },
+                    flexDirection: { xs: "column", sm: "row" },
+                    gap: { xs: 0.75, sm: 0 },
+                  }}
                 >
                   <ListItemText
                     primary={candidate.description}
                     secondary={`${candidate.category} - ${candidate.occurrenceCount} occurrences across ${candidate.monthCount} months - Last ${formatDate(candidate.lastDate)}`}
+                    sx={{ minWidth: 0, width: "100%" }}
                     primaryTypographyProps={{
                       fontWeight: 700,
                       fontSize: { xs: "0.95rem", sm: "1rem" },
                       textTransform: "capitalize",
+                      sx: { overflowWrap: "anywhere" },
                     }}
                     secondaryTypographyProps={{
                       fontSize: { xs: "0.75rem", sm: "0.875rem" },
                     }}
                   />
-                  <Stack alignItems="flex-end" sx={{ ml: 2, flexShrink: 0 }}>
+                  <Stack
+                    alignItems="flex-end"
+                    sx={{
+                      alignSelf: { xs: "flex-end", sm: "center" },
+                      ml: { xs: 0, sm: 2 },
+                      flexShrink: 0,
+                    }}
+                  >
                     <Typography variant="subtitle1" fontWeight={700}>
                       {formatCurrency(candidate.averageAmount)}
                     </Typography>

@@ -120,14 +120,21 @@ export const TopExpenses = ({ month }: TopExpensesProps) => {
                   key={expense.id}
                   disableGutters
                   divider
-                  sx={{ py: { xs: 1.25, sm: 1.5 } }}
+                  sx={{
+                    py: { xs: 1.25, sm: 1.5 },
+                    alignItems: { xs: "flex-start", sm: "center" },
+                    flexDirection: { xs: "column", sm: "row" },
+                    gap: { xs: 0.75, sm: 0 },
+                  }}
                 >
                   <ListItemText
                     primary={expense.description}
                     secondary={`${expense.category} • ${formatDate(expense.date)}`}
+                    sx={{ minWidth: 0, width: "100%" }}
                     primaryTypographyProps={{
                       fontWeight: 700,
                       fontSize: { xs: "0.95rem", sm: "1rem" },
+                      sx: { overflowWrap: "anywhere" },
                     }}
                     secondaryTypographyProps={{
                       fontSize: { xs: "0.75rem", sm: "0.875rem" },
@@ -137,7 +144,11 @@ export const TopExpenses = ({ month }: TopExpensesProps) => {
                     variant="subtitle1"
                     fontWeight={700}
                     color="error.main"
-                    sx={{ ml: 2, whiteSpace: "nowrap" }}
+                    sx={{
+                      alignSelf: { xs: "flex-end", sm: "center" },
+                      ml: { xs: 0, sm: 2 },
+                      whiteSpace: "nowrap",
+                    }}
                   >
                     {formatCurrency(expense.amount)}
                   </Typography>

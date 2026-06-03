@@ -117,7 +117,11 @@ export const CategoryBreakdown = ({ month }: CategoryBreakdownProps) => {
                   sx={{ mb: 0.75 }}
                 >
                   <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="subtitle2" fontWeight={700} noWrap>
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={700}
+                      sx={{ overflowWrap: "anywhere" }}
+                    >
                       {category.category}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">

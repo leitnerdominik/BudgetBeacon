@@ -190,7 +190,7 @@ export const MonthComparison = ({ month }: MonthComparisonProps) => {
 
             <Grid container spacing={1.5}>
               {metrics.map((metric) => (
-                <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={metric.label}>
+                <Grid size={{ xs: 6, sm: 6, lg: 3 }} key={metric.label}>
                   <Box
                     sx={{
                       height: "100%",
@@ -203,14 +203,21 @@ export const MonthComparison = ({ month }: MonthComparisonProps) => {
                     <Typography variant="overline" color="text.secondary">
                       {metric.label}
                     </Typography>
-                    <Typography variant="h6" fontWeight={700}>
+                    <Typography
+                      variant="h6"
+                      fontWeight={700}
+                      sx={{
+                        fontSize: { xs: "1rem", sm: "1.25rem" },
+                        overflowWrap: "anywhere",
+                      }}
+                    >
                       {metric.currentValue}
                     </Typography>
                     <Stack
-                      direction="row"
-                      spacing={1}
-                      alignItems="center"
-                      justifyContent="space-between"
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={{ xs: 0.25, sm: 1 }}
+                      alignItems={{ xs: "flex-start", sm: "center" }}
+                      justifyContent={{ sm: "space-between" }}
                       sx={{ mt: 1 }}
                     >
                       <Typography variant="caption" color="text.secondary">

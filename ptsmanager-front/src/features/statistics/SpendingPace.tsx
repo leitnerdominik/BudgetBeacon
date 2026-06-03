@@ -142,7 +142,7 @@ export const SpendingPace = ({ month, summary }: SpendingPaceProps) => {
 
             <Grid container spacing={1.5}>
               {metrics.map((metric) => (
-                <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={metric.label}>
+                <Grid size={{ xs: 6, sm: 6, lg: 3 }} key={metric.label}>
                   <Box
                     sx={{
                       height: "100%",
@@ -155,7 +155,15 @@ export const SpendingPace = ({ month, summary }: SpendingPaceProps) => {
                     <Typography variant="overline" color="text.secondary">
                       {metric.label}
                     </Typography>
-                    <Typography variant="h6" fontWeight={700} color={metric.color}>
+                    <Typography
+                      variant="h6"
+                      fontWeight={700}
+                      color={metric.color}
+                      sx={{
+                        fontSize: { xs: "1rem", sm: "1.25rem" },
+                        overflowWrap: "anywhere",
+                      }}
+                    >
                       {metric.value}
                     </Typography>
                   </Box>
