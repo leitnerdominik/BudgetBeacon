@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Avatar,
   Box,
+  ButtonBase,
   CssBaseline,
   Divider,
   Drawer,
@@ -27,6 +28,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
+import SavingsIcon from "@mui/icons-material/Savings";
 
 import { ApiError } from "../api/httpClient";
 import { logoutCurrentSession } from "../api/authApi";
@@ -270,9 +272,65 @@ export const RootLayout = () => {
             <MenuIcon />
           </IconButton>
 
-          <Typography variant="h6" noWrap component="div">
-            Personal Finance Manager
-          </Typography>
+          <ButtonBase
+            aria-label="Go to BudgetBeacon home"
+            onClick={() => handleNavigate("/")}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.25,
+              minWidth: 0,
+              borderRadius: 1,
+              textAlign: "left",
+              color: "inherit",
+              px: 0.5,
+              py: 0.25,
+              "&:hover": {
+                bgcolor: "action.hover",
+              },
+              "&:focus-visible": {
+                outline: "2px solid",
+                outlineColor: "primary.main",
+                outlineOffset: 2,
+              },
+            }}
+          >
+            <Box
+              aria-hidden="true"
+              sx={{
+                width: 36,
+                height: 36,
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+                borderRadius: 1,
+                color: "primary.dark",
+                bgcolor: "primary.light",
+                border: "1px solid",
+                borderColor: "divider",
+              }}
+            >
+              <SavingsIcon fontSize="small" />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                variant="h6"
+                noWrap
+                component="div"
+                sx={{ fontSize: "1.05rem", lineHeight: 1.15 }}
+              >
+                BudgetBeacon
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                sx={{ display: { xs: "none", sm: "block" }, lineHeight: 1.2 }}
+              >
+                Personal finance workspace
+              </Typography>
+            </Box>
+          </ButtonBase>
 
           <Box sx={{ flexGrow: 1 }} />
 
