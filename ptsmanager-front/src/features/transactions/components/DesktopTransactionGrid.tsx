@@ -215,7 +215,7 @@ export const DesktopTransactionGrid = ({
         onPaginationModelChange={setPaginationModel}
         disableRowSelectionOnClick
         sx={{
-          borderRadius: 3,
+          borderRadius: 1,
           "& .MuiDataGrid-cell": {
             alignItems: "center",
           },

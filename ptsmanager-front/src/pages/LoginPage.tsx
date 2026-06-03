@@ -113,17 +113,30 @@ export const LoginPage = () => {
     <Container component="main" maxWidth="xs">
       <Box
         sx={{
-          marginTop: 8,
+          minHeight: "100vh",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
+          justifyContent: "center",
+          py: 4,
         }}
       >
         <Typography component="h1" variant="h4" gutterBottom>
           Finance Manager
         </Typography>
+        <Typography variant="body2" color="text.secondary" align="center">
+          Secure access to your personal finance workspace.
+        </Typography>
 
-        <Paper elevation={3} sx={{ p: 4, width: "100%", mt: 2 }}>
+        <Paper
+          sx={{
+            p: 4,
+            width: "100%",
+            mt: 3,
+            border: "1px solid",
+            borderColor: "divider",
+          }}
+        >
           <Typography component="h2" variant="h5" align="center" gutterBottom>
             {isRegisterMode ? "Create Account" : "Sign In"}
           </Typography>

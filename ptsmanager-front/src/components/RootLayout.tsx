@@ -134,9 +134,10 @@ export const RootLayout = () => {
           display: { xs: "block", md: "none" },
           px: 2,
           py: 2,
-          color: "primary.contrastText",
-          background:
-            "linear-gradient(135deg, rgba(25,118,210,1) 0%, rgba(66,165,245,1) 100%)",
+          color: "text.primary",
+          backgroundColor: "background.paper",
+          borderBottom: "1px solid",
+          borderColor: "divider",
         }}
       >
         <Box
@@ -150,8 +151,8 @@ export const RootLayout = () => {
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
             <Avatar
               sx={{
-                bgcolor: "rgba(255,255,255,0.18)",
-                color: "inherit",
+                bgcolor: "primary.light",
+                color: "primary.dark",
                 fontWeight: 700,
                 width: 42,
                 height: 42,
@@ -172,10 +173,11 @@ export const RootLayout = () => {
             aria-label="Close navigation menu"
             onClick={handleCloseMobileDrawer}
             sx={{
-              color: "inherit",
-              bgcolor: "rgba(255,255,255,0.14)",
+              color: "text.secondary",
+              border: "1px solid",
+              borderColor: "divider",
               "&:hover": {
-                bgcolor: "rgba(255,255,255,0.22)",
+                bgcolor: "action.hover",
               },
             }}
           >
@@ -184,7 +186,8 @@ export const RootLayout = () => {
         </Box>
         <Typography
           variant="caption"
-          sx={{ display: "block", mt: 1.5, opacity: 0.8, letterSpacing: 0.5 }}
+          color="text.secondary"
+          sx={{ display: "block", mt: 1.5 }}
         >
           Quick navigation
         </Typography>
@@ -202,21 +205,21 @@ export const RootLayout = () => {
                   sx={{
                     minHeight: { xs: 56, md: 50 },
                     px: 1.5,
-                    borderRadius: 2.5,
-                    transition: "all 0.2s ease",
+                    borderRadius: 1,
+                    transition:
+                      "background-color 0.2s ease, color 0.2s ease",
                     "&.Mui-selected": {
-                      backgroundColor: "primary.main",
-                      color: "primary.contrastText",
-                      boxShadow: "0 8px 20px rgba(25, 118, 210, 0.22)",
+                      backgroundColor: "primary.light",
+                      color: "primary.dark",
                       "& .MuiListItemIcon-root": {
-                        color: "primary.contrastText",
+                        color: "primary.dark",
                       },
                     },
                     "&.Mui-selected:hover": {
-                      backgroundColor: "primary.main",
+                      backgroundColor: "primary.light",
                     },
                     "&:hover": {
-                      backgroundColor: isActive ? "primary.main" : "action.hover",
+                      backgroundColor: isActive ? "primary.light" : "action.hover",
                     },
                   }}
                 >
@@ -250,11 +253,15 @@ export const RootLayout = () => {
 
       <AppBar
         position="fixed"
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        color="default"
+        sx={{
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          bgcolor: "background.paper",
+          color: "text.primary",
+        }}
       >
         <Toolbar>
           <IconButton
-            color="inherit"
             edge="start"
             onClick={handleToggleMobileDrawer}
             aria-label="Open navigation menu"
@@ -270,7 +277,6 @@ export const RootLayout = () => {
           <Box sx={{ flexGrow: 1 }} />
 
           <IconButton
-            color="inherit"
             onClick={handleOpenMenu}
             aria-label="Open account menu"
             aria-controls={menuOpen ? ACCOUNT_MENU_ID : undefined}
@@ -282,8 +288,8 @@ export const RootLayout = () => {
               sx={{
                 width: 34,
                 height: 34,
-                bgcolor: "rgba(255,255,255,0.2)",
-                color: "inherit",
+                bgcolor: "primary.light",
+                color: "primary.dark",
                 fontSize: 14,
                 fontWeight: 700,
               }}
@@ -302,8 +308,7 @@ export const RootLayout = () => {
               </Typography>
               <Typography
                 variant="caption"
-                color="inherit"
-                sx={{ opacity: 0.8 }}
+                color="text.secondary"
               >
                 {user?.email}
               </Typography>
@@ -346,6 +351,7 @@ export const RootLayout = () => {
           [`& .MuiDrawer-paper`]: {
             width: DRAWER_WIDTH,
             boxSizing: "border-box",
+            bgcolor: "background.paper",
           },
         }}
       >
@@ -361,13 +367,22 @@ export const RootLayout = () => {
           [`& .MuiDrawer-paper`]: {
             width: DRAWER_WIDTH,
             boxSizing: "border-box",
+            bgcolor: "background.paper",
           },
         }}
       >
         {drawerContent}
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 } }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          minHeight: "100vh",
+          p: { xs: 2, sm: 3 },
+          bgcolor: "background.default",
+        }}
+      >
         <Toolbar />
         <Outlet />
       </Box>

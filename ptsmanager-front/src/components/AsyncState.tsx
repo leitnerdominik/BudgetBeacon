@@ -64,7 +64,7 @@ export const LoadingState = ({
           maxWidth: 420,
           px: 2.5,
           py: 3,
-          borderRadius: 3,
+          borderRadius: 1,
           border: "1px solid",
           ...surfaceStyles,
         }}
@@ -121,7 +121,7 @@ export const StatusMessage = ({
           maxWidth: 460,
           px: 2.5,
           py: 3,
-          borderRadius: 3,
+          borderRadius: 1,
           border: "1px solid",
           ...surfaceStyles,
         }}

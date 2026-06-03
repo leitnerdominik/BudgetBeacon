@@ -91,15 +91,26 @@ export const Dashboard = () => {
 
   return (
     <Box sx={{ flexGrow: 1 }}>
-      <Typography variant={isSmallScreen ? "h5" : "h4"} gutterBottom>
-        Welcome back!
-      </Typography>
+      <Box sx={{ mb: { xs: 2, sm: 3 } }}>
+        <Typography variant={isSmallScreen ? "h5" : "h4"} gutterBottom>
+          Dashboard
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Monthly overview and recent account activity.
+        </Typography>
+      </Box>
 
-      <Grid container spacing={{ xs: 1.5, sm: 3 }} mt={{ xs: 1, sm: 2 }}>
+      <Grid container spacing={{ xs: 1.5, sm: 2.5 }}>
         {summaryCards.map((card) => (
           <Grid size={{ xs: 6, sm: 6, lg: 3 }} key={card.label}>
-            <Card elevation={2} sx={{ borderRadius: { xs: 2.5, sm: 3 } }}>
-              <CardContent sx={{ p: { xs: 1.75, sm: 2.5 } }}>
+            <Card
+              sx={{
+                height: "100%",
+                borderTop: "3px solid",
+                borderTopColor: card.color,
+              }}
+            >
+              <CardContent sx={{ p: { xs: 1.75, sm: 2.25 } }}>
                 <Typography
                   variant="overline"
                   color="text.secondary"
@@ -148,8 +159,8 @@ export const Dashboard = () => {
         ) : null}
 
         <Grid size={{ xs: 12, md: 8 }}>
-          <Card elevation={2} sx={{ height: "100%", borderRadius: { xs: 2.5, sm: 3 } }}>
-            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
               <Typography variant="h6" gutterBottom>
                 Recent Transactions
               </Typography>
@@ -240,15 +251,13 @@ export const Dashboard = () => {
 
         <Grid size={{ xs: 12, md: 4 }}>
           <Card
-            elevation={2}
             sx={{
               height: "100%",
-              borderRadius: { xs: 2.5, sm: 3 },
-              backgroundColor: "primary.light",
+              backgroundColor: "primary.dark",
               color: "primary.contrastText",
             }}
           >
-            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
               <Box
                 sx={{ display: "flex", alignItems: "center", mb: 1.5, gap: 1 }}
               >
@@ -312,8 +321,9 @@ export const Dashboard = () => {
                     label={tipOfTheDay.category}
                     size="small"
                     sx={{
-                      backgroundColor: "rgba(255,255,255,0.2)",
+                      backgroundColor: "rgba(255,255,255,0.14)",
                       color: "inherit",
+                      border: "1px solid rgba(255,255,255,0.24)",
                     }}
                   />
                 </>

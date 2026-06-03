@@ -160,13 +160,13 @@ export const TipList = ({
         <Grid container spacing={{ xs: 1.5, sm: 3 }}>
           {[1, 2, 3].map((item) => (
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item}>
-              <Card elevation={2} sx={{ borderRadius: { xs: 2.5, sm: 3 } }}>
+              <Card>
                 <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                   <Skeleton variant="text" height={36} width="70%" />
                   <Skeleton
                     variant="rectangular"
                     height={72}
-                    sx={{ my: 1.5, borderRadius: 1.5 }}
+                    sx={{ my: 1.5, borderRadius: 1 }}
                   />
                   <Skeleton variant="text" width="42%" />
                 </CardContent>
@@ -234,16 +234,14 @@ export const TipList = ({
           return (
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={tip.id}>
               <Card
-                elevation={2}
                 sx={{
                   height: "100%",
-                  borderRadius: { xs: 2.5, sm: 3 },
                   display: "flex",
                   flexDirection: "column",
-                  transition: "transform 0.2s",
+                  transition: "border-color 0.2s ease, transform 0.2s ease",
                   "&:hover": {
                     transform: isSmallScreen ? "none" : "translateY(-4px)",
-                    boxShadow: isSmallScreen ? 2 : 4,
+                    borderColor: "primary.main",
                   },
                 }}
               >

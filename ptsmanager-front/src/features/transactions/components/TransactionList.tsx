@@ -215,9 +215,14 @@ export const TransactionList = () => {
           mb: 2,
         }}
       >
-        <Typography variant="h4" component="h1">
-          Transactions
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Transactions
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Review, categorize and maintain imported financial activity.
+          </Typography>
+        </Box>
         <Stack
           direction={{ xs: "column", sm: "row" }}
           spacing={1}
@@ -327,9 +332,9 @@ export const TransactionList = () => {
               return (
                 <Card
                   key={transaction.id}
-                  elevation={2}
                   sx={{
-                    borderRadius: 3,
+                    borderLeft: "3px solid",
+                    borderLeftColor: amountColor,
                   }}
                 >
                   <CardContent sx={{ p: 2.25 }}>

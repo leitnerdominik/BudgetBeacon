@@ -36,7 +36,7 @@ export const GlobalError = () => {
             p: 3,
             backgroundColor: "error.light",
             color: "error.contrastText",
-            borderRadius: 2,
+            borderRadius: 1,
             maxWidth: "100%",
           }}
         >

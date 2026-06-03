@@ -1,7 +1,8 @@
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEvent } from "react";
 import SaveIcon from "@mui/icons-material/Save";
 import {
+  Box,
   Button,
   CircularProgress,
   Dialog,
@@ -14,6 +15,9 @@ import {
   Select,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
   type SelectChangeEvent,
 } from "@mui/material";
 
@@ -71,8 +75,13 @@ export const CreateTransactionDialog = ({
     setCategory(event.target.value);
   };
 
-  const handleDirectionChange = (event: SelectChangeEvent<TransactionDirection>) => {
-    setDirection(event.target.value as TransactionDirection);
+  const handleDirectionChange = (
+    _: MouseEvent<HTMLElement>,
+    value: TransactionDirection | null,
+  ) => {
+    if (value) {
+      setDirection(value);
+    }
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -100,47 +109,91 @@ export const CreateTransactionDialog = ({
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-      <DialogTitle>Add transaction</DialogTitle>
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="h6" component="span">
+          Add transaction
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          Record one income or expense entry.
+        </Typography>
+      </DialogTitle>
       <DialogContent>
-        <Stack component="form" id="create-transaction-form" spacing={2.25} onSubmit={handleSubmit} sx={{ pt: 1 }}>
-          <TextField
-            label="Date"
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            disabled={createTransactionMutation.isPending}
-            InputLabelProps={{ shrink: true }}
-            required
-            fullWidth
-          />
-
-          <FormControl fullWidth>
-            <InputLabel id="create-transaction-direction-label">
-              Transaction type
-            </InputLabel>
-            <Select<TransactionDirection>
-              labelId="create-transaction-direction-label"
-              value={direction}
-              label="Transaction type"
-              onChange={handleDirectionChange}
-              disabled={createTransactionMutation.isPending}
+        <Stack
+          component="form"
+          id="create-transaction-form"
+          spacing={2}
+          onSubmit={handleSubmit}
+          sx={{ pt: 1 }}
+        >
+          <Box>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mb: 0.75, display: "block" }}
             >
-              <MenuItem value="expense">Expense</MenuItem>
-              <MenuItem value="income">Income</MenuItem>
-            </Select>
-          </FormControl>
+              Transaction type
+            </Typography>
+            <ToggleButtonGroup
+              exclusive
+              fullWidth
+              size="small"
+              value={direction}
+              onChange={handleDirectionChange}
+              aria-label="Transaction type"
+              sx={{
+                "& .MuiToggleButtonGroup-grouped": {
+                  flex: 1,
+                  py: 1,
+                  borderColor: "divider",
+                  fontWeight: 700,
+                  "&.Mui-selected": {
+                    color: "primary.dark",
+                    backgroundColor: "primary.light",
+                  },
+                },
+              }}
+            >
+              <ToggleButton
+                value="expense"
+                aria-label="Expense"
+                disabled={createTransactionMutation.isPending}
+              >
+                Expense
+              </ToggleButton>
+              <ToggleButton
+                value="income"
+                aria-label="Income"
+                disabled={createTransactionMutation.isPending}
+              >
+                Income
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
 
-          <TextField
-            label="Amount"
-            type="number"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            disabled={createTransactionMutation.isPending}
-            inputProps={{ step: "0.01", min: "0.01" }}
-            error={amount.trim().length > 0 && !isAmountValid}
-            required
-            fullWidth
-          />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <TextField
+              label="Date"
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              disabled={createTransactionMutation.isPending}
+              InputLabelProps={{ shrink: true }}
+              required
+              fullWidth
+            />
+
+            <TextField
+              label="Amount"
+              type="number"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              disabled={createTransactionMutation.isPending}
+              inputProps={{ step: "0.01", min: "0.01" }}
+              error={amount.trim().length > 0 && !isAmountValid}
+              required
+              fullWidth
+            />
+          </Stack>
 
           <TextField
             label="Description"
@@ -170,7 +223,9 @@ export const CreateTransactionDialog = ({
           </FormControl>
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogActions
+        sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: "divider" }}
+      >
         <Button onClick={handleClose} disabled={createTransactionMutation.isPending}>
           Cancel
         </Button>
