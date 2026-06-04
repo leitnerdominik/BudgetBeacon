@@ -33,6 +33,9 @@ public class FinzManagerDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(transaction => transaction.ImportFingerprint)
                 .HasMaxLength(64);
 
+            entity.Property(transaction => transaction.Notes)
+                .HasMaxLength(500);
+
             entity.Property(transaction => transaction.Date)
                 .HasConversion(
                     value => value.ToUniversalTime(),

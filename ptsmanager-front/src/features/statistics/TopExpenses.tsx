@@ -16,6 +16,7 @@ import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
+import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 import {
   useMonthlyTopExpenses,
   type MonthReference,
@@ -127,19 +128,32 @@ export const TopExpenses = ({ month }: TopExpensesProps) => {
                     gap: { xs: 0.75, sm: 0 },
                   }}
                 >
-                  <ListItemText
-                    primary={expense.description}
-                    secondary={`${expense.category} • ${formatDate(expense.date)}`}
+                  <Stack
+                    direction="row"
+                    spacing={1}
                     sx={{ minWidth: 0, width: "100%" }}
-                    primaryTypographyProps={{
-                      fontWeight: 700,
-                      fontSize: { xs: "0.95rem", sm: "1rem" },
-                      sx: { overflowWrap: "anywhere" },
-                    }}
-                    secondaryTypographyProps={{
-                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                    }}
-                  />
+                  >
+                    <Box sx={{ pt: 0.25, flexShrink: 0 }}>
+                      <TransactionCategoryIcon
+                        category={expense.category}
+                        fontSize="small"
+                        color="action"
+                      />
+                    </Box>
+                    <ListItemText
+                      primary={expense.description}
+                    secondary={`${expense.category} • ${formatDate(expense.date)}`}
+                      sx={{ minWidth: 0, width: "100%", m: 0 }}
+                      primaryTypographyProps={{
+                        fontWeight: 700,
+                        fontSize: { xs: "0.95rem", sm: "1rem" },
+                        sx: { overflowWrap: "anywhere" },
+                      }}
+                      secondaryTypographyProps={{
+                        fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                      }}
+                    />
+                  </Stack>
                   <Typography
                     variant="subtitle1"
                     fontWeight={700}

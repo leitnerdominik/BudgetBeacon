@@ -39,6 +39,7 @@ public class TransactionRepository : ITransactionRepository
                     Date = transaction.Date.ToUniversalTime(),
                     Amount = transaction.Amount,
                     Category = transaction.Category,
+                    Notes = transaction.Notes,
                     ImportFingerprint = transaction.ImportFingerprint,
                     Metadata = transaction.Metadata
                 };
@@ -55,13 +56,14 @@ public class TransactionRepository : ITransactionRepository
         };
 
         const string sql = """
-            INSERT INTO "Transactions" ("Id", "UserId", "Date", "Amount", "Category", "ImportFingerprint", "Metadata")
+            INSERT INTO "Transactions" ("Id", "UserId", "Date", "Amount", "Category", "Notes", "ImportFingerprint", "Metadata")
             SELECT
                 input."Id",
                 input."UserId",
                 input."Date",
                 input."Amount",
                 input."Category",
+                input."Notes",
                 input."ImportFingerprint",
                 input."Metadata"
             FROM jsonb_to_recordset(@transactions) AS input(
@@ -70,6 +72,7 @@ public class TransactionRepository : ITransactionRepository
                 "Date" timestamp with time zone,
                 "Amount" numeric,
                 "Category" text,
+                "Notes" character varying(500),
                 "ImportFingerprint" character varying(64),
                 "Metadata" jsonb
             )
@@ -186,6 +189,7 @@ public class TransactionRepository : ITransactionRepository
         public DateTime Date { get; init; }
         public decimal Amount { get; init; }
         public string Category { get; init; } = string.Empty;
+        public string? Notes { get; init; }
         public string? ImportFingerprint { get; init; }
         public TransactionMetadata Metadata { get; init; } = new();
     }

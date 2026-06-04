@@ -40,6 +40,65 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task Create_StoresTrimmedNotesForCurrentUser()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(2026, 6, 4),
+            -12.34m,
+            "  Grocery store  ",
+            "groceries",
+            "  Weekly shopping  "));
+
+        var created = Assert.IsType<CreatedResult>(result);
+        var transaction = Assert.IsType<Transaction>(created.Value);
+        Assert.Equal("user-1", transaction.UserId);
+        Assert.Equal("Groceries", transaction.Category);
+        Assert.Equal("Weekly shopping", transaction.Notes);
+        Assert.Equal("Grocery store", transaction.Metadata.RawDescription);
+        Assert.Same(transaction, Assert.Single(repository.AddedTransactions));
+    }
+
+    [Fact]
+    public async Task Create_StoresWhitespaceOnlyNotesAsNull()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(2026, 6, 4),
+            2500m,
+            "Salary",
+            "Income",
+            "   "));
+
+        var created = Assert.IsType<CreatedResult>(result);
+        var transaction = Assert.IsType<Transaction>(created.Value);
+        Assert.Null(transaction.Notes);
+    }
+
+    [Fact]
+    public async Task Create_ReturnsValidationProblemWhenNotesAreTooLong()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(2026, 6, 4),
+            -12.34m,
+            "Grocery store",
+            "Groceries",
+            new string('a', 501)));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Notes", problem.Errors.Keys);
+        Assert.Empty(repository.AddedTransactions);
+    }
+
+    [Fact]
     public async Task GetMonthlySummary_ReturnsSummaryForRequestedMonth()
     {
         var repository = new FakeTransactionRepository

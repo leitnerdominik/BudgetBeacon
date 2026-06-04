@@ -19,6 +19,7 @@ interface TransactionApiResponse {
     date: string;
     amount: number;
     category: string;
+    notes?: string | null;
     metadata?: {
       rawDescription?: string;
       aiConfidenceScore?: number | null;
@@ -30,6 +31,7 @@ const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
   date: transaction.date,
   amount: transaction.amount,
   category: transaction.category,
+  notes: transaction.notes?.trim() || null,
   aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
   description:
     transaction.metadata?.rawDescription?.trim() || "No description",
@@ -46,6 +48,7 @@ export interface CreateTransactionRequest {
   amount: number;
   description: string;
   category: string;
+  notes: string | null;
 }
 
 export interface CsvUploadResponse {

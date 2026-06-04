@@ -15,6 +15,8 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+
+import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
@@ -184,7 +186,7 @@ export const TipList = ({
         {renderHeader()}
         <StatusMessage
           title="No transactions found for AI tips"
-          description="Import transactions first, then AI tips can analyze your recent spending."
+          description="Add or import transactions first, then AI tips can analyze your recent spending."
         />
       </Box>
     );
@@ -216,7 +218,7 @@ export const TipList = ({
         {renderHeader()}
         <StatusMessage
           title="No AI tips available yet"
-          description="Upload fresh transaction data or check back later for new savings recommendations."
+          description="Add fresh transaction data or check back later for new savings recommendations."
         />
       </Box>
     );
@@ -298,7 +300,17 @@ export const TipList = ({
                     flexWrap="wrap"
                     useFlexGap
                   >
-                    <Chip label={tip.category} size="small" variant="outlined" />
+                    <Chip
+                      label={tip.category}
+                      icon={
+                        <TransactionCategoryIcon
+                          category={tip.category}
+                          fontSize="small"
+                        />
+                      }
+                      size="small"
+                      variant="outlined"
+                    />
                     <Chip
                       label={`${tip.impact} Impact`}
                       size="small"

@@ -197,7 +197,10 @@ export const RootLayout = () => {
       <Box sx={{ overflow: "auto", px: 1.25, py: 1.5 }}>
         <List aria-label="Primary navigation">
           {NAV_ITEMS.map((item) => {
-            const isActive = location.pathname === item.path;
+            const isActive =
+              item.path === "/"
+                ? location.pathname === item.path
+                : location.pathname.startsWith(item.path);
             return (
               <ListItem key={item.title} disablePadding sx={{ mb: 0.75 }}>
                 <ListItemButton

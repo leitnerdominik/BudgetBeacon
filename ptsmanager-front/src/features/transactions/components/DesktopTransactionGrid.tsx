@@ -12,6 +12,7 @@ import {
 
 import { formatCurrency, formatDate } from "../../../utils/formatDate";
 import { TransactionCategorySelect } from "./TransactionCategorySelect";
+import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import type { PaginatedTransactions } from "../types";
 
 const formatConfidenceScore = (value: number | null | undefined) =>
@@ -61,7 +62,15 @@ export const DesktopTransactionGrid = ({
       width: 150,
       valueFormatter: (value) => formatDate(value),
     },
-    { field: "description", headerName: "Description", flex: 1 },
+    { field: "description", headerName: "Description", flex: 1, minWidth: 170 },
+    {
+      field: "notes",
+      headerName: "Notes",
+      flex: 1,
+      minWidth: 180,
+      valueFormatter: (value: string | null | undefined) =>
+        value && value.length > 0 ? value : "-",
+    },
     {
       field: "category",
       headerName: "Category",
@@ -77,7 +86,12 @@ export const DesktopTransactionGrid = ({
             />
           </Box>
         ) : (
-          <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+          <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 1 }}>
+            <TransactionCategoryIcon
+              category={params.row.category}
+              fontSize="small"
+              color="action"
+            />
             <Typography variant="body2">{params.row.category}</Typography>
           </Box>
         ),

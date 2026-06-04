@@ -16,6 +16,7 @@ import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
+import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 import {
   useRecurringExpenseCandidates,
   type MonthReference,
@@ -137,20 +138,33 @@ export const RecurringExpenses = ({ month }: RecurringExpensesProps) => {
                     gap: { xs: 0.75, sm: 0 },
                   }}
                 >
-                  <ListItemText
-                    primary={candidate.description}
-                    secondary={`${candidate.category} - ${candidate.occurrenceCount} occurrences across ${candidate.monthCount} months - Last ${formatDate(candidate.lastDate)}`}
+                  <Stack
+                    direction="row"
+                    spacing={1}
                     sx={{ minWidth: 0, width: "100%" }}
-                    primaryTypographyProps={{
-                      fontWeight: 700,
-                      fontSize: { xs: "0.95rem", sm: "1rem" },
-                      textTransform: "capitalize",
-                      sx: { overflowWrap: "anywhere" },
-                    }}
-                    secondaryTypographyProps={{
-                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                    }}
-                  />
+                  >
+                    <Box sx={{ pt: 0.25, flexShrink: 0 }}>
+                      <TransactionCategoryIcon
+                        category={candidate.category}
+                        fontSize="small"
+                        color="action"
+                      />
+                    </Box>
+                    <ListItemText
+                      primary={candidate.description}
+                      secondary={`${candidate.category} - ${candidate.occurrenceCount} occurrences across ${candidate.monthCount} months - Last ${formatDate(candidate.lastDate)}`}
+                      sx={{ minWidth: 0, width: "100%", m: 0 }}
+                      primaryTypographyProps={{
+                        fontWeight: 700,
+                        fontSize: { xs: "0.95rem", sm: "1rem" },
+                        textTransform: "capitalize",
+                        sx: { overflowWrap: "anywhere" },
+                      }}
+                      secondaryTypographyProps={{
+                        fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                      }}
+                    />
+                  </Stack>
                   <Stack
                     alignItems="flex-end"
                     sx={{

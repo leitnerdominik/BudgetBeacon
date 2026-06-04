@@ -102,12 +102,16 @@ public class TransactionsController : ControllerBase
 
         var category = TransactionCategories.Normalize(request.Category);
         var description = request.Description?.Trim();
+        var notes = string.IsNullOrWhiteSpace(request.Notes)
+            ? null
+            : request.Notes.Trim();
 
         if (request.Date.Year < 2000 ||
             request.Date.Year > 2100 ||
             request.Amount == 0 ||
             string.IsNullOrWhiteSpace(description) ||
             description.Length > 200 ||
+            notes?.Length > 500 ||
             category is null)
         {
             return this.ApiValidationProblem(
@@ -135,6 +139,11 @@ public class TransactionsController : ControllerBase
                         errors.AddModelError(nameof(request.Description), "Description must be 200 characters or fewer.");
                     }
 
+                    if (notes?.Length > 500)
+                    {
+                        errors.AddModelError(nameof(request.Notes), "Notes must be 500 characters or fewer.");
+                    }
+
                     if (category is null)
                     {
                         errors.AddModelError(nameof(request.Category), "Unsupported transaction category.");
@@ -148,6 +157,7 @@ public class TransactionsController : ControllerBase
             Date = request.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             Amount = request.Amount,
             Category = category,
+            Notes = notes,
             Metadata = new TransactionMetadata
             {
                 RawDescription = description
@@ -855,7 +865,8 @@ public class TransactionsController : ControllerBase
         DateOnly Date,
         decimal Amount,
         string? Description,
-        string? Category);
+        string? Category,
+        string? Notes);
 
     private sealed record MonthlySummaryResponse(
         int Year,

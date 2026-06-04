@@ -32,6 +32,7 @@ export interface Transaction {
   amount: number;
   description: string;
   category: string;
+  notes: string | null;
   aiConfidenceScore: number | null;
 }
 

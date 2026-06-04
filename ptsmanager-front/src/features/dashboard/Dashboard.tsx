@@ -25,6 +25,7 @@ import { isTipsSourceDataNotFound } from "../tips/tipErrors";
 import { useTips } from "../tips/useTips";
 import { useMonthlySummary } from "../transactions/hooks/useMonthlySummary";
 import { useTransactions } from "../transactions/hooks/useTransactions";
+import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 
 const MOBILE_TIP_PREVIEW_LINES = 4;
 
@@ -241,7 +242,7 @@ export const Dashboard = () => {
               ) : (
                 <StatusMessage
                   title="No recent transactions yet"
-                  description="Import a CSV file to populate your dashboard with recent activity."
+                  description="Add a transaction manually or import a CSV file to populate your dashboard."
                   minHeight={220}
                 />
               )}
@@ -319,6 +320,12 @@ export const Dashboard = () => {
                   ) : null}
                   <Chip
                     label={tipOfTheDay.category}
+                    icon={
+                      <TransactionCategoryIcon
+                        category={tipOfTheDay.category}
+                        fontSize="small"
+                      />
+                    }
                     size="small"
                     sx={{
                       backgroundColor: "rgba(255,255,255,0.14)",
@@ -330,7 +337,7 @@ export const Dashboard = () => {
               ) : isTipsError && hasNoTransactionsForTips ? (
                 <StatusMessage
                   title="No transactions for tips yet"
-                  description="Import transactions first to generate an AI savings tip."
+                  description="Add or import transactions first to generate an AI savings tip."
                   minHeight={220}
                   inverted
                 />

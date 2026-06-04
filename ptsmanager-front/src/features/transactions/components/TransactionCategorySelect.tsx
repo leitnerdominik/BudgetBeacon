@@ -1,4 +1,6 @@
 import {
+  ListItemIcon,
+  ListItemText,
   FormControl,
   MenuItem,
   Select,
@@ -6,6 +8,7 @@ import {
 } from "@mui/material";
 
 import { transactionCategories } from "../transactionCategories";
+import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 
 type TransactionCategorySelectProps = {
   autoFocus?: boolean;
@@ -46,12 +49,18 @@ export const TransactionCategorySelect = ({
       >
         {hasKnownCategory ? null : (
           <MenuItem value={category} disabled>
-            {category}
+            <ListItemIcon>
+              <TransactionCategoryIcon category={category} fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>{category}</ListItemText>
           </MenuItem>
         )}
         {transactionCategories.map((option) => (
           <MenuItem key={option} value={option}>
-            {option}
+            <ListItemIcon>
+              <TransactionCategoryIcon category={option} fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>{option}</ListItemText>
           </MenuItem>
         ))}
       </Select>

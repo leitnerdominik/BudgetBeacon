@@ -12,6 +12,7 @@ import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency } from "../../utils/formatDate";
+import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 import {
   useMonthlyCategorySummary,
   type MonthReference,
@@ -117,13 +118,20 @@ export const CategoryBreakdown = ({ month }: CategoryBreakdownProps) => {
                   sx={{ mb: 0.75 }}
                 >
                   <Box sx={{ minWidth: 0 }}>
-                    <Typography
-                      variant="subtitle2"
-                      fontWeight={700}
-                      sx={{ overflowWrap: "anywhere" }}
-                    >
-                      {category.category}
-                    </Typography>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <TransactionCategoryIcon
+                        category={category.category}
+                        fontSize="small"
+                        color="action"
+                      />
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight={700}
+                        sx={{ overflowWrap: "anywhere" }}
+                      >
+                        {category.category}
+                      </Typography>
+                    </Stack>
                     <Typography variant="caption" color="text.secondary">
                       {category.transactionCount} transactions
                     </Typography>

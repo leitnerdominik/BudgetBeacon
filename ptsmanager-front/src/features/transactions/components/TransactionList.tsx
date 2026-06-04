@@ -29,6 +29,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 
 import { LoadingState, StatusMessage } from "../../../components/AsyncState";
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
@@ -39,9 +40,9 @@ import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
 import { useUpdateTransactionCategory } from "../hooks/useUpdateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
-import { CreateTransactionDialog } from "./CreateTransactionDialog";
 import { CsvUploadButton } from "./CsvUploadButton";
 import { TransactionCategorySelect } from "./TransactionCategorySelect";
+import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import type { PaginatedTransactions, Transaction } from "../types";
 
 type GridPaginationModel = {
@@ -71,6 +72,7 @@ const DesktopGridFallback = () => (
 );
 
 export const TransactionList = () => {
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const isOnline = useNetworkStatus();
@@ -82,7 +84,6 @@ export const TransactionList = () => {
   const [draftCategory, setDraftCategory] = useState("");
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction>();
   const [isCategorizeDialogOpen, setIsCategorizeDialogOpen] = useState(false);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   const { data, isError, isFetching, isLoading, refetch } = useTransactions(
     paginationModel.page + 1,
@@ -292,7 +293,7 @@ export const TransactionList = () => {
       ) : !hasTransactions ? (
         <StatusMessage
           title="No transactions available yet"
-          description="Import a CSV file to populate your transaction history and monthly insights."
+          description="Add a transaction manually or import a CSV file to populate your transaction history."
           minHeight={280}
         />
       ) : isMobile ? (
@@ -356,6 +357,15 @@ export const TransactionList = () => {
                           <Typography variant="body2" color="text.secondary">
                             {formatDate(transaction.date)}
                           </Typography>
+                          {transaction.notes ? (
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ mt: 1, overflowWrap: "anywhere" }}
+                            >
+                              {transaction.notes}
+                            </Typography>
+                          ) : null}
                         </Box>
                         <Typography
                           variant="subtitle1"
@@ -385,6 +395,12 @@ export const TransactionList = () => {
                           ) : (
                             <Chip
                               label={transaction.category}
+                              icon={
+                                <TransactionCategoryIcon
+                                  category={transaction.category}
+                                  fontSize="small"
+                                />
+                              }
                               size="medium"
                               variant="outlined"
                             />
@@ -687,15 +703,11 @@ export const TransactionList = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      <CreateTransactionDialog
-        open={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
-      />
       <Tooltip title="Add transaction">
         <Fab
           color="primary"
           aria-label="Add transaction"
-          onClick={() => setIsCreateDialogOpen(true)}
+          onClick={() => navigate("/transactions/new")}
           disabled={!isOnline}
           sx={{
             position: "fixed",
