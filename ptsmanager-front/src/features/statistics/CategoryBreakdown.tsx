@@ -8,18 +8,14 @@ import {
 } from "@mui/material";
 import CategoryIcon from "@mui/icons-material/Category";
 
-import { LoadingState, StatusMessage } from "../../components/AsyncState";
-import { useNetworkStatus } from "../../hooks/useNetworkStatus";
-import { useSlowLoading } from "../../hooks/useSlowLoading";
+import { StatusMessage } from "../../components/AsyncState";
+import type { CategoryExpenseSummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
-import {
-  useMonthlyCategorySummary,
-  type MonthReference,
-} from "./useMonthlyStatistics";
 
 type CategoryBreakdownProps = {
-  month: MonthReference;
+  categories: CategoryExpenseSummary[];
+  periodLabel: string;
 };
 
 const percentFormatter = new Intl.NumberFormat("de-DE", {
@@ -29,16 +25,10 @@ const percentFormatter = new Intl.NumberFormat("de-DE", {
 
 const formatPercent = (value: number) => `${percentFormatter.format(value)} %`;
 
-export const CategoryBreakdown = ({ month }: CategoryBreakdownProps) => {
-  const isOnline = useNetworkStatus();
-  const {
-    data: categories = [],
-    isError,
-    isFetching,
-    isLoading,
-    refetch,
-  } = useMonthlyCategorySummary(month.year, month.month);
-  const isSlow = useSlowLoading(isLoading);
+export const CategoryBreakdown = ({
+  categories,
+  periodLabel,
+}: CategoryBreakdownProps) => {
   const maxExpense = Math.max(
     1,
     ...categories.map((category) => category.totalExpense),
@@ -73,41 +63,14 @@ export const CategoryBreakdown = ({ month }: CategoryBreakdownProps) => {
 
         <Divider sx={{ my: 2 }} />
 
-        {isLoading ? (
-          <LoadingState
-            label="Loading category expenses..."
-            isOffline={!isOnline}
-            isSlow={isSlow}
-            minHeight={260}
-          />
-        ) : isError ? (
+        {categories.length === 0 ? (
           <StatusMessage
-            title={isOnline ? "Category expenses are unavailable" : "You're offline"}
-            description={
-              isOnline
-                ? "We couldn't load category expenses right now. Retry to refresh this view."
-                : "Reconnect to the internet and retry to load category expenses."
-            }
-            actionLabel="Retry categories"
-            onAction={() => {
-              void refetch();
-            }}
-            minHeight={260}
-          />
-        ) : categories.length === 0 ? (
-          <StatusMessage
-            title="No expenses for this month"
-            description="No expense categories were found for the selected month."
+            title="No expenses for this period"
+            description={`No expense categories were found for ${periodLabel}.`}
             minHeight={220}
           />
         ) : (
           <Stack spacing={1.75}>
-            {isFetching ? (
-              <Typography variant="caption" color="text.secondary">
-                Refreshing category expenses...
-              </Typography>
-            ) : null}
-
             {categories.map((category) => (
               <Box key={category.category}>
                 <Stack

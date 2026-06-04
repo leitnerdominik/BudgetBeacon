@@ -185,6 +185,7 @@ try
     builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
     builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
     builder.Services.AddScoped<FinanceAggregationService>();
+    builder.Services.AddScoped<StatisticsAggregationService>();
     builder.Services.AddScoped<ICsvReaderService, CsvReaderService>();
 
     builder.Services.AddHttpClient<IAiAdvisorService, OpenRouterAiAdvisorService>((serviceProvider, client) =>

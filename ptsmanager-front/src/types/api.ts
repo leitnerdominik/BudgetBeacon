@@ -55,6 +55,29 @@ export interface MonthlySummaryWithPeriod extends MonthlySummary {
   year: number;
 }
 
+export interface StatisticsTrendPoint {
+  year: number;
+  month: number | null;
+  totalIncome: number;
+  totalExpense: number;
+  netBalance: number;
+  transactionCount: number;
+}
+
+export interface StatisticsOverview {
+  allTime: boolean;
+  monthsBack: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  trendGranularity: "month" | "year";
+  summary: MonthlySummary;
+  previousMonthSummary: MonthlySummary | null;
+  trend: StatisticsTrendPoint[];
+  categories: CategoryExpenseSummary[];
+  topExpenses: TopExpense[];
+  recurringExpenses: RecurringExpenseCandidate[];
+}
+
 export interface CategoryExpenseSummary {
   category: string;
   totalExpense: number;

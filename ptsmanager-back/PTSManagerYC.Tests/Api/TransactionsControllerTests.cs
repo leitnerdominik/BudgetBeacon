@@ -389,6 +389,104 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task GetStatistics_ReturnsFixedPeriodStatisticsForCurrentUser()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            RangeTransactions =
+            [
+                new Transaction
+                {
+                    Amount = -25m,
+                    Date = new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc),
+                    Category = "Groceries",
+                    Metadata = new TransactionMetadata { RawDescription = "Market" },
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
+                    Amount = -40m,
+                    Date = new DateTime(2026, 4, 5, 0, 0, 0, DateTimeKind.Utc),
+                    Category = "Groceries",
+                    Metadata = new TransactionMetadata { RawDescription = "Market" },
+                    UserId = "user-1"
+                }
+            ]
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.GetStatistics(
+            allTime: false,
+            endYear: 2026,
+            endMonth: 4,
+            monthsBack: 1);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.False(GetValue<bool>(ok.Value, "AllTime"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "MonthsBack"));
+        var summary = GetRawValue(ok.Value, "Summary");
+        Assert.Equal(-40m, GetValue<decimal>(summary, "TotalExpense"));
+        var previous = GetRawValue(ok.Value, "PreviousMonthSummary");
+        Assert.Equal(-25m, GetValue<decimal>(previous, "TotalExpense"));
+        Assert.Equal("user-1", repository.LastDateRangeUserId);
+        Assert.Equal(
+            new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
+            repository.LastDateRangeStartDate);
+        Assert.Equal(
+            new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc).AddTicks(-1),
+            repository.LastDateRangeEndDate);
+    }
+
+    [Fact]
+    public async Task GetStatistics_ReturnsAllTimeStatistics()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            AllTransactions =
+            [
+                new Transaction
+                {
+                    Amount = -25m,
+                    Date = new DateTime(2026, 4, 5),
+                    Category = "Groceries",
+                    Metadata = new TransactionMetadata { RawDescription = "Market" },
+                    UserId = "user-1"
+                }
+            ]
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.GetStatistics(allTime: true);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.True(GetValue<bool>(ok.Value, "AllTime"));
+        Assert.Equal("year", GetValue<string>(ok.Value, "TrendGranularity"));
+        Assert.Equal(1, repository.GetAllCalls);
+    }
+
+    [Theory]
+    [InlineData(false, null, null, null, "endYear")]
+    [InlineData(false, 2026, 4, 2, "monthsBack")]
+    [InlineData(false, 1999, 4, 3, "endYear")]
+    [InlineData(false, 2026, 13, 3, "endMonth")]
+    [InlineData(true, 2026, null, null, "allTime")]
+    public async Task GetStatistics_ReturnsValidationProblemForInvalidQuery(
+        bool allTime,
+        int? endYear,
+        int? endMonth,
+        int? monthsBack,
+        string expectedErrorKey)
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetStatistics(allTime, endYear, endMonth, monthsBack);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains(expectedErrorKey, problem.Errors.Keys);
+    }
+
+    [Fact]
     public async Task GetMonthlyCategorySummary_ReturnsExpensesGroupedByCategory()
     {
         var repository = new FakeTransactionRepository
@@ -1018,6 +1116,7 @@ public sealed class TransactionsControllerTests
             repository ?? new FakeTransactionRepository(),
             preferencesRepository ?? new FakeUserPreferencesRepository(),
             new FinanceAggregationService(),
+            new StatisticsAggregationService(new FinanceAggregationService()),
             aiService ?? new FakeAiAdvisorService(),
             csvReader ?? new FakeCsvReaderService(),
             NullLogger<TransactionsController>.Instance);

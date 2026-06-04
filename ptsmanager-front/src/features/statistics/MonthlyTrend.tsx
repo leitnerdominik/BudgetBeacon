@@ -11,18 +11,13 @@ import {
 import Grid from "@mui/material/Grid";
 import TimelineIcon from "@mui/icons-material/Timeline";
 
-import { LoadingState, StatusMessage } from "../../components/AsyncState";
-import { useNetworkStatus } from "../../hooks/useNetworkStatus";
-import { useSlowLoading } from "../../hooks/useSlowLoading";
+import type { StatisticsTrendPoint } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
-import {
-  useMonthlyTrend,
-  type MonthReference,
-  type MonthlyTrendPoint,
-} from "./useMonthlyStatistics";
 
 type MonthlyTrendProps = {
-  endMonth: MonthReference;
+  granularity: "month" | "year";
+  periodLabel: string;
+  points: StatisticsTrendPoint[];
 };
 
 type TrendSummaryMetric = {
@@ -31,7 +26,6 @@ type TrendSummaryMetric = {
   value: ReactNode;
 };
 
-const TREND_MONTH_COUNT = 6;
 const MIN_VISIBLE_BAR_PERCENT = 4;
 
 const shortMonthFormatter = new Intl.DateTimeFormat("de-DE", {
@@ -39,17 +33,13 @@ const shortMonthFormatter = new Intl.DateTimeFormat("de-DE", {
   year: "2-digit",
 });
 
-const formatShortMonthLabel = ({ month, year }: MonthReference) =>
-  shortMonthFormatter.format(new Date(year, month - 1, 1));
+const formatPointLabel = (point: StatisticsTrendPoint) =>
+  point.month === null
+    ? String(point.year)
+    : shortMonthFormatter.format(new Date(point.year, point.month - 1, 1));
 
-const getExpenseValue = (point: MonthlyTrendPoint) =>
-  Math.abs(point.summary?.totalExpense ?? 0);
-
-const getIncomeValue = (point: MonthlyTrendPoint) =>
-  point.summary?.totalIncome ?? 0;
-
-const getNetBalanceValue = (point: MonthlyTrendPoint) =>
-  point.summary?.netBalance ?? 0;
+const getExpenseValue = (point: StatisticsTrendPoint) =>
+  Math.abs(point.totalExpense);
 
 const getBarHeight = (value: number, maxValue: number) => {
   if (value <= 0 || maxValue <= 0) {
@@ -59,54 +49,38 @@ const getBarHeight = (value: number, maxValue: number) => {
   return `${Math.max((value / maxValue) * 100, MIN_VISIBLE_BAR_PERCENT)}%`;
 };
 
-const getBestBalanceMonthLabel = (points: MonthlyTrendPoint[]) => {
-  const bestPoint = points.reduce<MonthlyTrendPoint | null>((best, point) => {
-    if (!point.summary) {
+const getBestBalanceLabel = (points: StatisticsTrendPoint[]) => {
+  const bestPoint = points.reduce<StatisticsTrendPoint | null>((best, point) => {
+    if (point.transactionCount === 0) {
       return best;
     }
 
-    if (!best || getNetBalanceValue(point) > getNetBalanceValue(best)) {
+    if (!best || point.netBalance > best.netBalance) {
       return point;
     }
 
     return best;
   }, null);
 
-  return bestPoint ? formatShortMonthLabel(bestPoint) : "N/A";
+  return bestPoint ? formatPointLabel(bestPoint) : "N/A";
 };
 
-export const MonthlyTrend = ({ endMonth }: MonthlyTrendProps) => {
-  const isOnline = useNetworkStatus();
-  const {
-    data: trendPoints,
-    isError,
-    isFetching,
-    isLoading,
-    refetch,
-  } = useMonthlyTrend(endMonth, TREND_MONTH_COUNT);
-  const isSlow = useSlowLoading(isLoading);
-
+export const MonthlyTrend = ({
+  granularity,
+  periodLabel,
+  points,
+}: MonthlyTrendProps) => {
   const maxBarValue = Math.max(
     1,
-    ...trendPoints.map((point) =>
-      Math.max(getIncomeValue(point), getExpenseValue(point)),
-    ),
+    ...points.map((point) => Math.max(point.totalIncome, getExpenseValue(point))),
   );
-  const totalIncome = trendPoints.reduce(
-    (sum, point) => sum + getIncomeValue(point),
-    0,
-  );
-  const totalExpenses = trendPoints.reduce(
+  const totalIncome = points.reduce((sum, point) => sum + point.totalIncome, 0);
+  const totalExpenses = points.reduce(
     (sum, point) => sum + getExpenseValue(point),
     0,
   );
-  const netBalance = trendPoints.reduce(
-    (sum, point) => sum + getNetBalanceValue(point),
-    0,
-  );
-  const hasTrendData = trendPoints.some(
-    (point) => (point.summary?.transactionCount ?? 0) > 0,
-  );
+  const netBalance = points.reduce((sum, point) => sum + point.netBalance, 0);
+  const hasTrendData = points.some((point) => point.transactionCount > 0);
   const trendSummaryMetrics: TrendSummaryMetric[] = [
     {
       label: "Income",
@@ -124,8 +98,8 @@ export const MonthlyTrend = ({ endMonth }: MonthlyTrendProps) => {
       color: netBalance < 0 ? "error.main" : "primary.main",
     },
     {
-      label: "Best Month",
-      value: getBestBalanceMonthLabel(trendPoints),
+      label: granularity === "year" ? "Best Year" : "Best Month",
+      value: getBestBalanceLabel(points),
       color: "text.primary",
     },
   ];
@@ -154,8 +128,7 @@ export const MonthlyTrend = ({ endMonth }: MonthlyTrendProps) => {
                 Trend Over Time
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Last {TREND_MONTH_COUNT} months through{" "}
-                {formatShortMonthLabel(endMonth)}
+                {granularity === "year" ? "Yearly" : "Monthly"} trend for {periodLabel}
               </Typography>
             </Box>
           </Stack>
@@ -167,127 +140,86 @@ export const MonthlyTrend = ({ endMonth }: MonthlyTrendProps) => {
 
         <Divider sx={{ my: 2 }} />
 
-        {isLoading ? (
-          <LoadingState
-            label="Loading monthly trend..."
-            isOffline={!isOnline}
-            isSlow={isSlow}
-            minHeight={280}
-          />
-        ) : isError ? (
-          <StatusMessage
-            title={isOnline ? "Trend is unavailable" : "You're offline"}
-            description={
-              isOnline
-                ? "We couldn't load the monthly trend right now. Retry to refresh this view."
-                : "Reconnect to the internet and retry to load your monthly trend."
-            }
-            actionLabel="Retry trend"
-            onAction={() => {
-              void refetch();
-            }}
-            minHeight={280}
-          />
-        ) : (
-          <>
-            {isFetching ? (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block", mb: 1.5 }}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.max(points.length, 1)}, minmax(72px, 1fr))`,
+            gap: { xs: 1, sm: 1.5 },
+            minHeight: 240,
+            overflowX: "auto",
+            pb: 1,
+          }}
+        >
+          {points.map((point) => {
+            const income = point.totalIncome;
+            const expenses = getExpenseValue(point);
+            const net = point.netBalance;
+            const label = formatPointLabel(point);
+
+            return (
+              <Stack
+                key={`${point.year}-${point.month ?? "year"}`}
+                spacing={1}
+                alignItems="center"
+                justifyContent="flex-end"
+                sx={{ minWidth: 72 }}
               >
-                Refreshing monthly trend...
+                <Box
+                  sx={{
+                    height: 150,
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "center",
+                    gap: 0.75,
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                  }}
+                >
+                  <TooltipBar
+                    color="success.main"
+                    height={getBarHeight(income, maxBarValue)}
+                    label={`${label} income: ${formatCurrency(income)}`}
+                  />
+                  <TooltipBar
+                    color="error.main"
+                    height={getBarHeight(expenses, maxBarValue)}
+                    label={`${label} expenses: ${formatCurrency(expenses)}`}
+                  />
+                </Box>
+                <Typography variant="caption" color="text.secondary">
+                  {label}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  color={net < 0 ? "error.main" : "primary.main"}
+                >
+                  {formatCurrency(net)}
+                </Typography>
+              </Stack>
+            );
+          })}
+        </Box>
+
+        {!hasTrendData ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+            No transactions found in this trend range.
+          </Typography>
+        ) : null}
+
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          {trendSummaryMetrics.map((metric) => (
+            <Grid size={{ xs: 6, md: 3 }} key={metric.label}>
+              <Typography variant="body2" color="text.secondary">
+                {metric.label}
               </Typography>
-            ) : null}
-
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: `repeat(${TREND_MONTH_COUNT}, minmax(56px, 1fr))`,
-                  sm: `repeat(${TREND_MONTH_COUNT}, minmax(72px, 1fr))`,
-                },
-                gap: { xs: 1, sm: 1.5 },
-                minHeight: 240,
-                overflowX: "auto",
-                pb: 1,
-              }}
-            >
-              {trendPoints.map((point) => {
-                const income = getIncomeValue(point);
-                const expenses = getExpenseValue(point);
-                const net = getNetBalanceValue(point);
-
-                return (
-                  <Stack
-                    key={`${point.year}-${point.month}`}
-                    spacing={1}
-                    alignItems="center"
-                    justifyContent="flex-end"
-                    sx={{ minWidth: { xs: 56, sm: 72 } }}
-                  >
-                    <Box
-                      sx={{
-                        height: 150,
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        gap: 0.75,
-                        borderBottom: "1px solid",
-                        borderColor: "divider",
-                      }}
-                    >
-                      <TooltipBar
-                        color="success.main"
-                        height={getBarHeight(income, maxBarValue)}
-                        label={`${formatShortMonthLabel(point)} income: ${formatCurrency(income)}`}
-                      />
-                      <TooltipBar
-                        color="error.main"
-                        height={getBarHeight(expenses, maxBarValue)}
-                        label={`${formatShortMonthLabel(point)} expenses: ${formatCurrency(expenses)}`}
-                      />
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      {formatShortMonthLabel(point)}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      fontWeight={700}
-                      color={net < 0 ? "error.main" : "primary.main"}
-                    >
-                      {formatCurrency(net)}
-                    </Typography>
-                  </Stack>
-                );
-              })}
-            </Box>
-
-            {!hasTrendData ? (
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 1.5 }}
-              >
-                No transactions found in this trend range.
+              <Typography variant="subtitle1" fontWeight={700} color={metric.color}>
+                {metric.value}
               </Typography>
-            ) : null}
-
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              {trendSummaryMetrics.map((metric) => (
-                <Grid size={{ xs: 6, md: 3 }} key={metric.label}>
-                  <Typography variant="body2" color="text.secondary">
-                    {metric.label}
-                  </Typography>
-                  <Typography variant="subtitle1" fontWeight={700} color={metric.color}>
-                    {metric.value}
-                  </Typography>
-                </Grid>
-              ))}
             </Grid>
-          </>
-        )}
+          ))}
+        </Grid>
       </CardContent>
     </Card>
   );

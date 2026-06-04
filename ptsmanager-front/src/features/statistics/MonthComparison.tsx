@@ -9,17 +9,14 @@ import {
 import Grid from "@mui/material/Grid";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 
-import { LoadingState, StatusMessage } from "../../components/AsyncState";
-import { useNetworkStatus } from "../../hooks/useNetworkStatus";
-import { useSlowLoading } from "../../hooks/useSlowLoading";
+import type { MonthlySummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
-import {
-  useMonthlyTrend,
-  type MonthReference,
-} from "./useMonthlyStatistics";
+import type { MonthReference } from "./useStatistics";
 
 type MonthComparisonProps = {
+  current: MonthlySummary;
   month: MonthReference;
+  previous: MonthlySummary;
 };
 
 type ComparisonMetric = {
@@ -30,8 +27,6 @@ type ComparisonMetric = {
   previousValue: string;
 };
 
-const COMPARISON_MONTH_COUNT = 2;
-
 const shortMonthFormatter = new Intl.DateTimeFormat("de-DE", {
   month: "short",
   year: "2-digit",
@@ -41,6 +36,11 @@ const percentFormatter = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 0,
 });
+
+const shiftMonth = ({ month, year }: MonthReference, offset: number) => {
+  const date = new Date(year, month - 1 + offset, 1);
+  return { month: date.getMonth() + 1, year: date.getFullYear() };
+};
 
 const formatShortMonthLabel = ({ month, year }: MonthReference) =>
   shortMonthFormatter.format(new Date(year, month - 1, 1));
@@ -70,29 +70,20 @@ const getChangeColor = (
   return (delta > 0) === positiveIsGood ? "success.main" : "error.main";
 };
 
-export const MonthComparison = ({ month }: MonthComparisonProps) => {
-  const isOnline = useNetworkStatus();
-  const {
-    data: comparisonPoints,
-    isError,
-    isFetching,
-    isLoading,
-    refetch,
-  } = useMonthlyTrend(month, COMPARISON_MONTH_COUNT);
-  const isSlow = useSlowLoading(isLoading);
-  const previousPoint = comparisonPoints[0];
-  const currentPoint = comparisonPoints[1];
-  const previous = previousPoint?.summary;
-  const current = currentPoint?.summary;
-
-  const currentIncome = current?.totalIncome ?? 0;
-  const previousIncome = previous?.totalIncome ?? 0;
-  const currentExpenses = Math.abs(current?.totalExpense ?? 0);
-  const previousExpenses = Math.abs(previous?.totalExpense ?? 0);
-  const currentNet = current?.netBalance ?? 0;
-  const previousNet = previous?.netBalance ?? 0;
-  const currentTransactions = current?.transactionCount ?? 0;
-  const previousTransactions = previous?.transactionCount ?? 0;
+export const MonthComparison = ({
+  current,
+  month,
+  previous,
+}: MonthComparisonProps) => {
+  const previousMonth = shiftMonth(month, -1);
+  const currentIncome = current.totalIncome;
+  const previousIncome = previous.totalIncome;
+  const currentExpenses = Math.abs(current.totalExpense);
+  const previousExpenses = Math.abs(previous.totalExpense);
+  const currentNet = current.netBalance;
+  const previousNet = previous.netBalance;
+  const currentTransactions = current.transactionCount;
+  const previousTransactions = previous.transactionCount;
 
   const metrics: ComparisonMetric[] = [
     {
@@ -146,97 +137,60 @@ export const MonthComparison = ({ month }: MonthComparisonProps) => {
               Month Comparison
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {previousPoint && currentPoint
-                ? `${formatShortMonthLabel(currentPoint)} vs ${formatShortMonthLabel(previousPoint)}`
-                : "Compared with the previous month"}
+              {formatShortMonthLabel(month)} vs {formatShortMonthLabel(previousMonth)}
             </Typography>
           </Box>
         </Stack>
 
         <Divider sx={{ my: 2 }} />
 
-        {isLoading ? (
-          <LoadingState
-            label="Loading month comparison..."
-            isOffline={!isOnline}
-            isSlow={isSlow}
-            minHeight={240}
-          />
-        ) : isError ? (
-          <StatusMessage
-            title={isOnline ? "Month comparison is unavailable" : "You're offline"}
-            description={
-              isOnline
-                ? "We couldn't load the month comparison right now. Retry to refresh this view."
-                : "Reconnect to the internet and retry to load the month comparison."
-            }
-            actionLabel="Retry comparison"
-            onAction={() => {
-              void refetch();
-            }}
-            minHeight={240}
-          />
-        ) : (
-          <>
-            {isFetching ? (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block", mb: 1.5 }}
+        <Grid container spacing={1.5}>
+          {metrics.map((metric) => (
+            <Grid size={{ xs: 6, sm: 6, lg: 3 }} key={metric.label}>
+              <Box
+                sx={{
+                  height: "100%",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  p: 2,
+                }}
               >
-                Refreshing month comparison...
-              </Typography>
-            ) : null}
-
-            <Grid container spacing={1.5}>
-              {metrics.map((metric) => (
-                <Grid size={{ xs: 6, sm: 6, lg: 3 }} key={metric.label}>
-                  <Box
-                    sx={{
-                      height: "100%",
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: 1,
-                      p: 2,
-                    }}
+                <Typography variant="overline" color="text.secondary">
+                  {metric.label}
+                </Typography>
+                <Typography
+                  variant="h6"
+                  fontWeight={700}
+                  sx={{
+                    fontSize: { xs: "1rem", sm: "1.25rem" },
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {metric.currentValue}
+                </Typography>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={{ xs: 0.25, sm: 1 }}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                  justifyContent={{ sm: "space-between" }}
+                  sx={{ mt: 1 }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Previous {metric.previousValue}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    fontWeight={700}
+                    color={metric.changeColor}
                   >
-                    <Typography variant="overline" color="text.secondary">
-                      {metric.label}
-                    </Typography>
-                    <Typography
-                      variant="h6"
-                      fontWeight={700}
-                      sx={{
-                        fontSize: { xs: "1rem", sm: "1.25rem" },
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      {metric.currentValue}
-                    </Typography>
-                    <Stack
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={{ xs: 0.25, sm: 1 }}
-                      alignItems={{ xs: "flex-start", sm: "center" }}
-                      justifyContent={{ sm: "space-between" }}
-                      sx={{ mt: 1 }}
-                    >
-                      <Typography variant="caption" color="text.secondary">
-                        Previous {metric.previousValue}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        fontWeight={700}
-                        color={metric.changeColor}
-                      >
-                        {metric.changeLabel}
-                      </Typography>
-                    </Stack>
-                  </Box>
-                </Grid>
-              ))}
+                    {metric.changeLabel}
+                  </Typography>
+                </Stack>
+              </Box>
             </Grid>
-          </>
-        )}
+          ))}
+        </Grid>
       </CardContent>
     </Card>
   );

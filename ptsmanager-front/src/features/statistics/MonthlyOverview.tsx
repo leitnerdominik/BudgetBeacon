@@ -9,6 +9,8 @@ import {
   IconButton,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -25,6 +27,7 @@ import SavingsIcon from "@mui/icons-material/Savings";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 
+import type { StatisticsRequest } from "../../api/transactionsApi";
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
@@ -35,7 +38,7 @@ import { MonthlyTrend } from "./MonthlyTrend";
 import { RecurringExpenses } from "./RecurringExpenses";
 import { SpendingPace } from "./SpendingPace";
 import { TopExpenses } from "./TopExpenses";
-import { useMonthlyStatistics, type MonthReference } from "./useMonthlyStatistics";
+import { useStatistics, type MonthReference } from "./useStatistics";
 
 type MetricCard = {
   color: string;
@@ -43,6 +46,16 @@ type MetricCard = {
   label: string;
   value: string | number;
 };
+
+type TimeframeValue = "all" | "12" | "6" | "3" | "1";
+
+const timeframeOptions: Array<{ label: string; value: TimeframeValue }> = [
+  { value: "all", label: "All time" },
+  { value: "12", label: "1 year" },
+  { value: "6", label: "6 months" },
+  { value: "3", label: "3 months" },
+  { value: "1", label: "1 month" },
+];
 
 const monthFormatter = new Intl.DateTimeFormat("de-DE", {
   month: "long",
@@ -97,6 +110,23 @@ const shiftMonth = (
 const formatMonthLabel = ({ month, year }: MonthReference) =>
   monthFormatter.format(new Date(year, month - 1, 1));
 
+const formatPeriodLabel = (
+  timeframe: TimeframeValue,
+  endMonth: MonthReference,
+) => {
+  if (timeframe === "all") {
+    return "All time";
+  }
+
+  const monthCount = Number(timeframe);
+  if (monthCount === 1) {
+    return formatMonthLabel(endMonth);
+  }
+
+  const startMonth = shiftMonth(endMonth, -monthCount + 1);
+  return `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
+};
+
 const formatSavingsRate = (value: number | null) =>
   value === null ? "N/A" : `${percentFormatter.format(value)} %`;
 
@@ -105,15 +135,32 @@ export const MonthlyOverview = () => {
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthSelection);
+  const [timeframe, setTimeframe] = useState<TimeframeValue>("1");
+  const isAllTime = timeframe === "all";
+  const isMonthlyView = timeframe === "1";
+  const periodLabel = formatPeriodLabel(timeframe, selectedMonth);
+  const request = useMemo<StatisticsRequest>(() => {
+    if (timeframe === "all") {
+      return { allTime: true };
+    }
+
+    return {
+      allTime: false,
+      endYear: selectedMonth.year,
+      endMonth: selectedMonth.month,
+      monthsBack: Number(timeframe) as 1 | 3 | 6 | 12,
+    };
+  }, [selectedMonth.month, selectedMonth.year, timeframe]);
 
   const {
-    data: summary,
+    data,
     isError,
     isFetching,
     isLoading,
     refetch,
-  } = useMonthlyStatistics(selectedMonth.year, selectedMonth.month);
+  } = useStatistics(request);
   const isSlow = useSlowLoading(isLoading);
+  const summary = data?.summary;
 
   const metrics = useMemo<MetricCard[]>(() => {
     const income = summary?.totalIncome ?? 0;
@@ -165,18 +212,6 @@ export const MonthlyOverview = () => {
     }
   };
 
-  const handlePreviousMonth = () => {
-    setSelectedMonth((current) => shiftMonth(current, -1));
-  };
-
-  const handleNextMonth = () => {
-    setSelectedMonth((current) => shiftMonth(current, 1));
-  };
-
-  const handleCurrentMonth = () => {
-    setSelectedMonth(getCurrentMonthSelection());
-  };
-
   return (
     <Box sx={{ flexGrow: 1, minWidth: 0 }}>
       <Stack
@@ -210,70 +245,106 @@ export const MonthlyOverview = () => {
             </Typography>
           </Stack>
           <Typography variant="body1" color="text.secondary" sx={{ mt: 0.75 }}>
-            {formatMonthLabel(selectedMonth)}
+            {periodLabel}
           </Typography>
         </Box>
 
         <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={{ xs: 1, sm: 1 }}
-          alignItems={{ xs: "stretch", sm: "center" }}
-          sx={{
-            width: { xs: "100%", md: "auto" },
-            p: { xs: 1, sm: 0 },
-            border: { xs: "1px solid", sm: "none" },
-            borderColor: "divider",
-            borderRadius: { xs: 1, sm: 0 },
-            bgcolor: { xs: "background.paper", sm: "transparent" },
-          }}
+          spacing={1}
+          alignItems={{ xs: "stretch", md: "flex-end" }}
+          sx={{ width: { xs: "100%", md: "auto" } }}
         >
-          <Stack direction="row" spacing={0.75}>
-            <Tooltip title="Previous month">
-              <IconButton
-                aria-label="Previous month"
-                onClick={handlePreviousMonth}
-                sx={{ flex: { xs: 1, sm: "initial" } }}
-              >
-                <ChevronLeftIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Next month">
-              <IconButton
-                aria-label="Next month"
-                onClick={handleNextMonth}
-                sx={{ flex: { xs: 1, sm: "initial" } }}
-              >
-                <ChevronRightIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-          <TextField
-            label="Month"
-            type="month"
-            size="small"
-            value={toMonthInputValue(selectedMonth)}
-            onChange={(event) => handleMonthChange(event.target.value)}
-            inputProps={{
-              min: "2000-01",
-              max: "2100-12",
+          <ToggleButtonGroup
+            value={timeframe}
+            exclusive
+            onChange={(_, value: TimeframeValue | null) => {
+              if (value) {
+                setTimeframe(value);
+              }
             }}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: { sm: 170 } }}
-          />
-          <Button
-            variant="outlined"
-            startIcon={<CalendarMonthIcon />}
-            onClick={handleCurrentMonth}
-            sx={{ whiteSpace: "nowrap" }}
+            aria-label="Statistics timeframe"
+            size="small"
+            sx={{
+              flexWrap: "wrap",
+              "& .MuiToggleButton-root": {
+                flex: { xs: "1 1 auto", sm: "initial" },
+                whiteSpace: "nowrap",
+              },
+            }}
           >
-            Current
-          </Button>
+            {timeframeOptions.map((option) => (
+              <ToggleButton
+                key={option.value}
+                value={option.value}
+                aria-label={option.label}
+              >
+                {option.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+
+          {!isAllTime ? (
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              alignItems={{ xs: "stretch", sm: "center" }}
+              sx={{
+                p: { xs: 1, sm: 0 },
+                border: { xs: "1px solid", sm: "none" },
+                borderColor: "divider",
+                borderRadius: { xs: 1, sm: 0 },
+                bgcolor: { xs: "background.paper", sm: "transparent" },
+              }}
+            >
+              <Stack direction="row" spacing={0.75}>
+                <Tooltip title="Previous month">
+                  <IconButton
+                    aria-label="Previous month"
+                    onClick={() => setSelectedMonth((current) => shiftMonth(current, -1))}
+                    sx={{ flex: { xs: 1, sm: "initial" } }}
+                  >
+                    <ChevronLeftIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Next month">
+                  <IconButton
+                    aria-label="Next month"
+                    onClick={() => setSelectedMonth((current) => shiftMonth(current, 1))}
+                    sx={{ flex: { xs: 1, sm: "initial" } }}
+                  >
+                    <ChevronRightIcon />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+              <TextField
+                label={isMonthlyView ? "Month" : "End month"}
+                type="month"
+                size="small"
+                value={toMonthInputValue(selectedMonth)}
+                onChange={(event) => handleMonthChange(event.target.value)}
+                inputProps={{
+                  min: "2000-01",
+                  max: "2100-12",
+                }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: { sm: 170 } }}
+              />
+              <Button
+                variant="outlined"
+                startIcon={<CalendarMonthIcon />}
+                onClick={() => setSelectedMonth(getCurrentMonthSelection())}
+                sx={{ whiteSpace: "nowrap" }}
+              >
+                Current
+              </Button>
+            </Stack>
+          ) : null}
         </Stack>
       </Stack>
 
       {isLoading ? (
         <LoadingState
-          label="Loading monthly statistics..."
+          label="Loading statistics..."
           isOffline={!isOnline}
           isSlow={isSlow}
           minHeight={340}
@@ -283,8 +354,8 @@ export const MonthlyOverview = () => {
           title={isOnline ? "Statistics are unavailable" : "You're offline"}
           description={
             isOnline
-              ? "We couldn't load the monthly statistics right now. Retry to refresh this view."
-              : "Reconnect to the internet and retry to load your monthly statistics."
+              ? "We couldn't load the statistics right now. Retry to refresh this view."
+              : "Reconnect to the internet and retry to load your statistics."
           }
           actionLabel="Retry"
           onAction={() => {
@@ -300,7 +371,7 @@ export const MonthlyOverview = () => {
               color="text.secondary"
               sx={{ display: "block", mb: 1.5 }}
             >
-              Refreshing monthly statistics...
+              Refreshing statistics...
             </Typography>
           ) : null}
 
@@ -369,12 +440,12 @@ export const MonthlyOverview = () => {
               >
                 <Box>
                   <Typography variant="h6" fontWeight={700}>
-                    Monthly Overview
+                    Period Overview
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {hasTransactions
-                      ? "Income, expenses and balance for the selected month."
-                      : "No transactions found for the selected month."}
+                      ? `Income, expenses and balance for ${periodLabel}.`
+                      : `No transactions found for ${periodLabel}.`}
                   </Typography>
                 </Box>
                 <Chip
@@ -419,17 +490,38 @@ export const MonthlyOverview = () => {
             </CardContent>
           </Card>
 
-          <SpendingPace month={selectedMonth} summary={summary} />
+          {isMonthlyView ? (
+            <>
+              <SpendingPace month={selectedMonth} summary={summary} />
+              {summary && data?.previousMonthSummary ? (
+                <MonthComparison
+                  month={selectedMonth}
+                  current={summary}
+                  previous={data.previousMonthSummary}
+                />
+              ) : null}
+            </>
+          ) : null}
 
-          <MonthComparison month={selectedMonth} />
+          <CategoryBreakdown
+            categories={data?.categories ?? []}
+            periodLabel={periodLabel}
+          />
 
-          <CategoryBreakdown month={selectedMonth} />
+          <TopExpenses expenses={data?.topExpenses ?? []} periodLabel={periodLabel} />
 
-          <TopExpenses month={selectedMonth} />
+          {!isMonthlyView ? (
+            <RecurringExpenses
+              candidates={data?.recurringExpenses ?? []}
+              periodLabel={periodLabel}
+            />
+          ) : null}
 
-          <RecurringExpenses month={selectedMonth} />
-
-          <MonthlyTrend endMonth={selectedMonth} />
+          <MonthlyTrend
+            points={data?.trend ?? []}
+            granularity={data?.trendGranularity ?? (isAllTime ? "year" : "month")}
+            periodLabel={periodLabel}
+          />
         </>
       )}
     </Box>

@@ -28,6 +28,7 @@ public class TransactionsController : ControllerBase
     private readonly ITransactionRepository _repository;
     private readonly IUserPreferencesRepository _userPreferencesRepository;
     private readonly FinanceAggregationService _aggregationService;
+    private readonly StatisticsAggregationService _statisticsAggregationService;
     private readonly IAiAdvisorService _aiService;
     private readonly ICsvReaderService _csvReader;
     private readonly ILogger<TransactionsController> _logger;
@@ -36,6 +37,7 @@ public class TransactionsController : ControllerBase
         ITransactionRepository repository,
         IUserPreferencesRepository userPreferencesRepository,
         FinanceAggregationService aggregationService,
+        StatisticsAggregationService statisticsAggregationService,
         IAiAdvisorService aiService,
         ICsvReaderService csvReader,
         ILogger<TransactionsController> logger)
@@ -43,6 +45,7 @@ public class TransactionsController : ControllerBase
         _repository = repository;
         _userPreferencesRepository = userPreferencesRepository;
         _aggregationService = aggregationService;
+        _statisticsAggregationService = statisticsAggregationService;
         _aiService = aiService;
         _csvReader = csvReader;
         _logger = logger;
@@ -271,6 +274,95 @@ public class TransactionsController : ControllerBase
             .ToList();
 
         return Ok(summaries);
+    }
+
+    [HttpGet("statistics")]
+    public async Task<IActionResult> GetStatistics(
+        [FromQuery] bool allTime = false,
+        [FromQuery] int? endYear = null,
+        [FromQuery] int? endMonth = null,
+        [FromQuery] int? monthsBack = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access statistics.");
+        }
+
+        if (allTime)
+        {
+            if (endYear is not null || endMonth is not null || monthsBack is not null)
+            {
+                return this.ApiValidationProblem(
+                    "Invalid statistics query",
+                    "All-time statistics cannot be combined with an end month or a fixed month count.",
+                    errors => errors.AddModelError(nameof(allTime), "Remove endYear, endMonth, and monthsBack when allTime is true."));
+            }
+
+            _logger.LogInformation("API requested all-time statistics.");
+            var allTransactions = await _repository.GetAllAsync(userId);
+
+            return Ok(_statisticsAggregationService.BuildAllTime(allTransactions));
+        }
+
+        var hasInvalidFixedPeriod =
+            endYear is null ||
+            endMonth is null ||
+            monthsBack is null ||
+            endYear < 2000 ||
+            endYear > 2100 ||
+            endMonth < 1 ||
+            endMonth > 12 ||
+            monthsBack is not (1 or 3 or 6 or 12);
+
+        if (hasInvalidFixedPeriod)
+        {
+            return this.ApiValidationProblem(
+                "Invalid statistics query",
+                "Choose an end month between 2000 and 2100 and a supported period of 1, 3, 6, or 12 months.",
+                errors =>
+                {
+                    if (endYear is null || endYear < 2000 || endYear > 2100)
+                    {
+                        errors.AddModelError(nameof(endYear), "End year must be between 2000 and 2100.");
+                    }
+
+                    if (endMonth is null || endMonth < 1 || endMonth > 12)
+                    {
+                        errors.AddModelError(nameof(endMonth), "End month must be between 1 and 12.");
+                    }
+
+                    if (monthsBack is null || monthsBack is not (1 or 3 or 6 or 12))
+                    {
+                        errors.AddModelError(nameof(monthsBack), "Months back must be 1, 3, 6, or 12.");
+                    }
+                });
+        }
+
+        var validatedEndYear = endYear.GetValueOrDefault();
+        var validatedEndMonth = endMonth.GetValueOrDefault();
+        var validatedMonthsBack = monthsBack.GetValueOrDefault();
+        var endExclusive = new DateTime(validatedEndYear, validatedEndMonth, 1, 0, 0, 0, DateTimeKind.Utc)
+            .AddMonths(1);
+        var startDate = endExclusive.AddMonths(-validatedMonthsBack);
+        var endDate = endExclusive.AddTicks(-1);
+        var queryStartDate = validatedMonthsBack == 1
+            ? startDate.AddMonths(-1)
+            : startDate;
+
+        _logger.LogInformation(
+            "API requested statistics for the last {MonthsBack} months ending {EndMonth}/{EndYear}.",
+            monthsBack,
+            endMonth,
+            endYear);
+
+        var transactions = await _repository.GetByDateRangeAsync(userId, queryStartDate, endDate);
+
+        return Ok(_statisticsAggregationService.BuildFixedPeriod(
+            transactions,
+            startDate,
+            endDate,
+            validatedMonthsBack));
     }
 
     [HttpGet("category-summary")]
