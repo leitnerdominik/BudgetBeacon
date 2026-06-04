@@ -40,6 +40,41 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task GetById_ReturnsCurrentUsersTransaction()
+    {
+        var transactionId = Guid.NewGuid();
+        var transaction = new Transaction
+        {
+            Id = transactionId,
+            UserId = "user-1",
+            Amount = -12.34m
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = transaction
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.GetById(transactionId);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(transaction, ok.Value);
+        Assert.Equal("user-1", repository.LastGetByIdUserId);
+        Assert.Equal(transactionId, repository.LastGetByIdTransactionId);
+    }
+
+    [Fact]
+    public async Task GetById_ReturnsNotFoundWhenTransactionIsNotOwnedByCurrentUser()
+    {
+        var controller = CreateController(new FakeTransactionRepository());
+
+        var result = await controller.GetById(Guid.NewGuid());
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_StoresTrimmedNotesForCurrentUser()
     {
         var repository = new FakeTransactionRepository();
@@ -96,6 +131,138 @@ public sealed class TransactionsControllerTests
         var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
         Assert.Contains("Notes", problem.Errors.Keys);
         Assert.Empty(repository.AddedTransactions);
+    }
+
+    [Fact]
+    public async Task Update_UpdatesAllFieldsAndKeepsImportFingerprint()
+    {
+        var transactionId = Guid.NewGuid();
+        var fingerprint = new string('A', 64);
+        var transaction = new Transaction
+        {
+            Id = transactionId,
+            UserId = "user-1",
+            Date = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
+            Amount = -10m,
+            Category = "Groceries",
+            Notes = "Old note",
+            ImportFingerprint = fingerprint,
+            Metadata = new TransactionMetadata
+            {
+                RawDescription = "Old description",
+                AiSuggestedCategory = "Groceries",
+                AiConfidenceScore = 0.91
+            }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionToUpdate = transaction
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.Update(
+            transactionId,
+            new TransactionsController.UpdateTransactionRequest(
+                new DateOnly(2026, 6, 4),
+                1250m,
+                "  Updated salary  ",
+                "income",
+                "  Updated note  "));
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        Assert.Equal(new DateTime(2026, 6, 4, 0, 0, 0, DateTimeKind.Utc), updatedTransaction.Date);
+        Assert.Equal(1250m, updatedTransaction.Amount);
+        Assert.Equal("Income", updatedTransaction.Category);
+        Assert.Equal("Updated note", updatedTransaction.Notes);
+        Assert.Equal("Updated salary", updatedTransaction.Metadata.RawDescription);
+        Assert.Equal(fingerprint, updatedTransaction.ImportFingerprint);
+        Assert.Null(updatedTransaction.Metadata.AiSuggestedCategory);
+        Assert.Null(updatedTransaction.Metadata.AiConfidenceScore);
+        Assert.Equal("user-1", repository.LastUpdateUserId);
+        Assert.Equal(transactionId, repository.LastUpdateTransactionId);
+    }
+
+    [Fact]
+    public async Task Update_KeepsAiMetadataWhenOnlyDateAmountAndNotesChange()
+    {
+        var transactionId = Guid.NewGuid();
+        var transaction = new Transaction
+        {
+            Id = transactionId,
+            UserId = "user-1",
+            Date = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
+            Amount = -10m,
+            Category = "Groceries",
+            Metadata = new TransactionMetadata
+            {
+                RawDescription = "Market",
+                AiSuggestedCategory = "Groceries",
+                AiConfidenceScore = 0.91
+            }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionToUpdate = transaction
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.Update(
+            transactionId,
+            new TransactionsController.UpdateTransactionRequest(
+                new DateOnly(2026, 6, 4),
+                -20m,
+                "Market",
+                "Groceries",
+                "New note"));
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        Assert.Equal("Groceries", updatedTransaction.Metadata.AiSuggestedCategory);
+        Assert.Equal(0.91, updatedTransaction.Metadata.AiConfidenceScore);
+    }
+
+    [Fact]
+    public async Task Update_ReturnsValidationProblemForInvalidTransaction()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Update(
+            Guid.NewGuid(),
+            new TransactionsController.UpdateTransactionRequest(
+                new DateOnly(1999, 1, 1),
+                0m,
+                " ",
+                "Not real",
+                new string('a', 501)));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Date", problem.Errors.Keys);
+        Assert.Contains("Amount", problem.Errors.Keys);
+        Assert.Contains("Description", problem.Errors.Keys);
+        Assert.Contains("Category", problem.Errors.Keys);
+        Assert.Contains("Notes", problem.Errors.Keys);
+        Assert.Null(repository.LastUpdateTransactionId);
+    }
+
+    [Fact]
+    public async Task Update_ReturnsNotFoundWhenTransactionIsNotOwnedByCurrentUser()
+    {
+        var controller = CreateController(new FakeTransactionRepository());
+
+        var result = await controller.Update(
+            Guid.NewGuid(),
+            new TransactionsController.UpdateTransactionRequest(
+                new DateOnly(2026, 6, 4),
+                -20m,
+                "Market",
+                "Groceries",
+                null));
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
     }
 
     [Fact]
@@ -921,6 +1088,8 @@ public sealed class TransactionsControllerTests
         public Guid? LastDeleteTransactionId { get; private set; }
         public string? LastGetByIdUserId { get; private set; }
         public Guid? LastGetByIdTransactionId { get; private set; }
+        public string? LastUpdateUserId { get; private set; }
+        public Guid? LastUpdateTransactionId { get; private set; }
         public string? LastUpdateCategoryUserId { get; private set; }
         public Guid? LastUpdateCategoryTransactionId { get; private set; }
         public string? LastDateRangeUserId { get; private set; }
@@ -974,6 +1143,23 @@ public sealed class TransactionsControllerTests
         {
             SaveChangesCalled = true;
             return Task.CompletedTask;
+        }
+
+        public Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update)
+        {
+            LastUpdateUserId = userId;
+            LastUpdateTransactionId = transactionId;
+
+            if (TransactionToUpdate is null ||
+                TransactionToUpdate.Id != transactionId ||
+                TransactionToUpdate.UserId != userId)
+            {
+                return Task.FromResult<Transaction?>(null);
+            }
+
+            TransactionToUpdate.ApplyUpdate(update);
+
+            return Task.FromResult<Transaction?>(TransactionToUpdate);
         }
 
         public Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category)

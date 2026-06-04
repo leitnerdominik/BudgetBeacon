@@ -1,9 +1,5 @@
-﻿using PTSManagerYC.Core.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using PTSManagerYC.Core.Entities;
+using PTSManagerYC.Core.Models;
 
 namespace PTSManagerYC.Core.Interfaces
 {
@@ -14,11 +10,16 @@ namespace PTSManagerYC.Core.Interfaces
         Task<bool> DeleteAsync(string userId, Guid transactionId);
         Task<Transaction?> GetByIdAsync(string userId, Guid transactionId);
         Task SaveChangesAsync();
+        Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update);
         Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category);
         Task<IEnumerable<Transaction>> GetAllAsync(string userId);
         Task<List<Transaction>> GetUncategorizedAsync(string userId);
         Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month);
         Task<IEnumerable<Transaction>> GetByDateRangeAsync(string userId, DateTime startDate, DateTime endDate);
-        Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(string userId, DateTime? startDate, int pageNumber, int pageSize);
+        Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(
+            string userId,
+            DateTime? startDate,
+            int pageNumber,
+            int pageSize);
     }
 }

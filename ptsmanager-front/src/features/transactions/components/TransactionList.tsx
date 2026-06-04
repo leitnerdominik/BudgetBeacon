@@ -2,8 +2,6 @@ import { lazy, Suspense, useState } from "react";
 import AddIcon from "@mui/icons-material/Add";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import EditIcon from "@mui/icons-material/Edit";
-import CheckIcon from "@mui/icons-material/Check";
-import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
   Box,
@@ -38,10 +36,8 @@ import { formatCurrency, formatDate } from "../../../utils/formatDate";
 import { useCategorizeUncategorizedTransactions } from "../hooks/useCategorizeUncategorizedTransactions";
 import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
-import { useUpdateTransactionCategory } from "../hooks/useUpdateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
 import { CsvUploadButton } from "./CsvUploadButton";
-import { TransactionCategorySelect } from "./TransactionCategorySelect";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import type { PaginatedTransactions, Transaction } from "../types";
 
@@ -80,8 +76,6 @@ export const TransactionList = () => {
     page: 0,
     pageSize: 10,
   });
-  const [editingCategoryId, setEditingCategoryId] = useState<string>();
-  const [draftCategory, setDraftCategory] = useState("");
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction>();
   const [isCategorizeDialogOpen, setIsCategorizeDialogOpen] = useState(false);
 
@@ -92,7 +86,6 @@ export const TransactionList = () => {
   const categorizeMutation = useCategorizeUncategorizedTransactions();
   const deleteTransactionMutation = useDeleteTransaction();
   const regenerateCategoryMutation = useRegenerateTransactionCategory();
-  const updateCategoryMutation = useUpdateTransactionCategory();
   const isSlowLoading = useSlowLoading(isLoading);
 
   const transactions: PaginatedTransactions["data"] = data?.data ?? [];
@@ -122,32 +115,7 @@ export const TransactionList = () => {
     });
   };
 
-  const handleCategoryEditStart = (transactionId: string, category: string) => {
-    setEditingCategoryId(transactionId);
-    setDraftCategory(category);
-  };
-
-  const handleCategoryCancel = () => {
-    setEditingCategoryId(undefined);
-    setDraftCategory("");
-  };
-
-  const handleCategorySave = (transactionId: string) => {
-    if (!draftCategory) {
-      handleCategoryCancel();
-      return;
-    }
-
-    updateCategoryMutation.mutate(
-      { transactionId, category: draftCategory },
-      {
-        onSuccess: () => handleCategoryCancel(),
-      },
-    );
-  };
-
   const handleRegenerateCategory = (transactionId: string) => {
-    handleCategoryCancel();
     regenerateCategoryMutation.mutate(transactionId);
   };
 
@@ -221,7 +189,7 @@ export const TransactionList = () => {
             Transactions
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Review, categorize and maintain imported financial activity.
+            Review, categorize and maintain your financial activity.
           </Typography>
         </Box>
         <Stack
@@ -381,30 +349,17 @@ export const TransactionList = () => {
 
                       <Stack spacing={1}>
                         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                          {editingCategoryId === transaction.id ? (
-                            <TransactionCategorySelect
-                              autoFocus
-                              category={draftCategory}
-                              disabled={
-                                updateCategoryMutation.isPending &&
-                                updateCategoryMutation.variables?.transactionId ===
-                                  transaction.id
-                              }
-                              onChange={setDraftCategory}
-                            />
-                          ) : (
-                            <Chip
-                              label={transaction.category}
-                              icon={
-                                <TransactionCategoryIcon
-                                  category={transaction.category}
-                                  fontSize="small"
-                                />
-                              }
-                              size="medium"
-                              variant="outlined"
-                            />
-                          )}
+                          <Chip
+                            label={transaction.category}
+                            icon={
+                              <TransactionCategoryIcon
+                                category={transaction.category}
+                                fontSize="small"
+                              />
+                            }
+                            size="medium"
+                            variant="outlined"
+                          />
                           <Chip
                             label={`Confidence ${formatConfidenceScore(transaction.aiConfidenceScore)}`}
                             size="medium"
@@ -416,95 +371,55 @@ export const TransactionList = () => {
                         </Stack>
 
                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                          {editingCategoryId === transaction.id ? (
-                            <>
-                              <Tooltip title="Save category">
-                                <span>
-                                  <IconButton
-                                    aria-label="Save transaction category"
-                                    color="primary"
-                                    size="small"
-                                    disabled={updateCategoryMutation.isPending}
-                                    onClick={() => handleCategorySave(transaction.id)}
-                                  >
-                                    <CheckIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                              <Tooltip title="Cancel category edit">
-                                <span>
-                                  <IconButton
-                                    aria-label="Cancel category edit"
-                                    size="small"
-                                    disabled={updateCategoryMutation.isPending}
-                                    onClick={handleCategoryCancel}
-                                  >
-                                    <CloseIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                            </>
-                          ) : (
-                            <>
-                              <Tooltip title="Regenerate category">
-                                <span>
-                                  <IconButton
-                                    aria-label="Regenerate transaction category"
-                                    color="secondary"
-                                    size="small"
-                                    disabled={
-                                      updateCategoryMutation.isPending ||
-                                      deleteTransactionMutation.isPending ||
-                                      regenerateCategoryMutation.isPending
-                                    }
-                                    onClick={() =>
-                                      handleRegenerateCategory(transaction.id)
-                                    }
-                                  >
-                                    <AutoAwesomeIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                              <Tooltip title="Edit category">
-                                <span>
-                                  <IconButton
-                                    aria-label="Edit transaction category"
-                                    size="small"
-                                    disabled={
-                                      updateCategoryMutation.isPending ||
-                                      deleteTransactionMutation.isPending ||
-                                      regenerateCategoryMutation.isPending
-                                    }
-                                    onClick={() =>
-                                      handleCategoryEditStart(
-                                        transaction.id,
-                                        transaction.category,
-                                      )
-                                    }
-                                  >
-                                    <EditIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                              <Tooltip title="Delete transaction">
-                                <span>
-                                  <IconButton
-                                    aria-label="Delete transaction"
-                                    color="error"
-                                    size="small"
-                                    disabled={
-                                      updateCategoryMutation.isPending ||
-                                      deleteTransactionMutation.isPending ||
-                                      regenerateCategoryMutation.isPending
-                                    }
-                                    onClick={() => handleDeleteRequest(transaction.id)}
-                                  >
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                            </>
-                          )}
+                          <Tooltip title="Regenerate category">
+                            <span>
+                              <IconButton
+                                aria-label="Regenerate transaction category"
+                                color="secondary"
+                                size="small"
+                                disabled={
+                                  deleteTransactionMutation.isPending ||
+                                  regenerateCategoryMutation.isPending
+                                }
+                                onClick={() => handleRegenerateCategory(transaction.id)}
+                              >
+                                <AutoAwesomeIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Edit transaction">
+                            <span>
+                              <IconButton
+                                aria-label="Edit transaction"
+                                size="small"
+                                disabled={
+                                  deleteTransactionMutation.isPending ||
+                                  regenerateCategoryMutation.isPending
+                                }
+                                onClick={() =>
+                                  navigate(`/transactions/${transaction.id}/edit`)
+                                }
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Delete transaction">
+                            <span>
+                              <IconButton
+                                aria-label="Delete transaction"
+                                color="error"
+                                size="small"
+                                disabled={
+                                  deleteTransactionMutation.isPending ||
+                                  regenerateCategoryMutation.isPending
+                                }
+                                onClick={() => handleDeleteRequest(transaction.id)}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
                         </Stack>
                       </Stack>
                     </Stack>
@@ -550,26 +465,16 @@ export const TransactionList = () => {
           <DesktopTransactionGrid
             transactions={transactions}
             totalCount={totalCount}
-            draftCategory={draftCategory}
-            editingCategoryId={editingCategoryId}
             isLoading={isLoading}
             deletingTransactionId={
               deleteTransactionMutation.isPending
                 ? deleteTransactionMutation.variables
                 : undefined
             }
-            onCategoryCancel={handleCategoryCancel}
-            onCategoryDraftChange={setDraftCategory}
-            onCategoryEditStart={(transactionId) => {
-              const transaction = transactions.find(
-                (candidate) => candidate.id === transactionId,
-              );
-              if (transaction) {
-                handleCategoryEditStart(transaction.id, transaction.category);
-              }
-            }}
-            onCategorySave={handleCategorySave}
             onDeleteRequest={handleDeleteRequest}
+            onEditRequest={(transactionId) =>
+              navigate(`/transactions/${transactionId}/edit`)
+            }
             onRegenerateCategory={handleRegenerateCategory}
             paginationModel={paginationModel}
             regeneratingCategoryId={
@@ -578,11 +483,6 @@ export const TransactionList = () => {
                 : undefined
             }
             setPaginationModel={setPaginationModel}
-            updatingCategoryId={
-              updateCategoryMutation.isPending
-                ? updateCategoryMutation.variables?.transactionId
-                : undefined
-            }
           />
         </Suspense>
       )}

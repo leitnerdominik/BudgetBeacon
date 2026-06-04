@@ -1,3 +1,3 @@
-import { CreateTransactionForm } from "../features/transactions/components/CreateTransactionForm";
+import { TransactionForm } from "../features/transactions/components/TransactionForm";
 
-export const CreateTransactionPage = () => <CreateTransactionForm />;
+export const CreateTransactionPage = () => <TransactionForm />;

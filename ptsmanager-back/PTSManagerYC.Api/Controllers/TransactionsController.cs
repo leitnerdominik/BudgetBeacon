@@ -91,6 +91,24 @@ public class TransactionsController : ControllerBase
         });
     }
 
+    [HttpGet("{transactionId:guid}")]
+    public async Task<IActionResult> GetById(Guid transactionId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access transactions.");
+        }
+
+        var transaction = await _repository.GetByIdAsync(userId, transactionId);
+        if (transaction is null)
+        {
+            return TransactionNotFoundProblem();
+        }
+
+        return Ok(transaction);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTransactionRequest request)
     {
@@ -569,6 +587,88 @@ public class TransactionsController : ControllerBase
         });
     }
 
+    [HttpPut("{transactionId:guid}")]
+    public async Task<IActionResult> Update(
+        Guid transactionId,
+        [FromBody] UpdateTransactionRequest request)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to update transactions.");
+        }
+
+        var category = TransactionCategories.Normalize(request.Category);
+        var description = request.Description?.Trim();
+        var notes = string.IsNullOrWhiteSpace(request.Notes)
+            ? null
+            : request.Notes.Trim();
+
+        if (request.Date.Year < 2000 ||
+            request.Date.Year > 2100 ||
+            request.Amount == 0 ||
+            string.IsNullOrWhiteSpace(description) ||
+            description.Length > 200 ||
+            notes?.Length > 500 ||
+            category is null)
+        {
+            return this.ApiValidationProblem(
+                "Invalid transaction",
+                "Check the provided transaction details and try again.",
+                errors =>
+                {
+                    if (request.Date.Year < 2000 || request.Date.Year > 2100)
+                    {
+                        errors.AddModelError(nameof(request.Date), "Date must be between years 2000 and 2100.");
+                    }
+
+                    if (request.Amount == 0)
+                    {
+                        errors.AddModelError(nameof(request.Amount), "Amount must not be zero.");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(description))
+                    {
+                        errors.AddModelError(nameof(request.Description), "Description is required.");
+                    }
+
+                    if (description?.Length > 200)
+                    {
+                        errors.AddModelError(nameof(request.Description), "Description must be 200 characters or fewer.");
+                    }
+
+                    if (notes?.Length > 500)
+                    {
+                        errors.AddModelError(nameof(request.Notes), "Notes must be 500 characters or fewer.");
+                    }
+
+                    if (category is null)
+                    {
+                        errors.AddModelError(nameof(request.Category), "Unsupported transaction category.");
+                    }
+                });
+        }
+
+        var transaction = await _repository.UpdateAsync(
+            userId,
+            transactionId,
+            new TransactionUpdate
+            {
+                Date = request.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                Amount = request.Amount,
+                Description = description,
+                Category = category,
+                Notes = notes
+            });
+
+        if (transaction is null)
+        {
+            return TransactionNotFoundProblem();
+        }
+
+        return Ok(transaction);
+    }
+
     [HttpPatch("{transactionId:guid}/category")]
     public async Task<IActionResult> UpdateCategory(
         Guid transactionId,
@@ -592,11 +692,7 @@ public class TransactionsController : ControllerBase
         var transaction = await _repository.UpdateCategoryAsync(userId, transactionId, category);
         if (transaction is null)
         {
-            return this.ApiProblem(
-                StatusCodes.Status404NotFound,
-                "Transaction not found",
-                "The requested transaction could not be found for the current user.",
-                "urn:ptsmanager:transaction-not-found");
+            return TransactionNotFoundProblem();
         }
 
         return Ok(transaction);
@@ -614,11 +710,7 @@ public class TransactionsController : ControllerBase
         var deleted = await _repository.DeleteAsync(userId, transactionId);
         if (!deleted)
         {
-            return this.ApiProblem(
-                StatusCodes.Status404NotFound,
-                "Transaction not found",
-                "The requested transaction could not be found for the current user.",
-                "urn:ptsmanager:transaction-not-found");
+            return TransactionNotFoundProblem();
         }
 
         return NoContent();
@@ -636,11 +728,7 @@ public class TransactionsController : ControllerBase
         var transaction = await _repository.GetByIdAsync(userId, transactionId);
         if (transaction is null)
         {
-            return this.ApiProblem(
-                StatusCodes.Status404NotFound,
-                "Transaction not found",
-                "The requested transaction could not be found for the current user.",
-                "urn:ptsmanager:transaction-not-found");
+            return TransactionNotFoundProblem();
         }
 
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
@@ -747,6 +835,15 @@ public class TransactionsController : ControllerBase
             "Authentication required",
             detail,
             "urn:ptsmanager:authentication-required");
+    }
+
+    private IActionResult TransactionNotFoundProblem()
+    {
+        return this.ApiProblem(
+            StatusCodes.Status404NotFound,
+            "Transaction not found",
+            "The requested transaction could not be found for the current user.",
+            "urn:ptsmanager:transaction-not-found");
     }
 
     private string? GetCurrentUserId()
@@ -862,6 +959,12 @@ public class TransactionsController : ControllerBase
 
     public sealed record UpdateTransactionCategoryRequest(string? Category);
     public sealed record CreateTransactionRequest(
+        DateOnly Date,
+        decimal Amount,
+        string? Description,
+        string? Category,
+        string? Notes);
+    public sealed record UpdateTransactionRequest(
         DateOnly Date,
         decimal Amount,
         string? Description,

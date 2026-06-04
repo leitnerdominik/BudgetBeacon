@@ -1,7 +1,5 @@
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import EditIcon from "@mui/icons-material/Edit";
-import CheckIcon from "@mui/icons-material/Check";
-import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { Box, IconButton, Tooltip, Typography } from "@mui/material";
 import {
@@ -11,7 +9,6 @@ import {
 } from "@mui/x-data-grid";
 
 import { formatCurrency, formatDate } from "../../../utils/formatDate";
-import { TransactionCategorySelect } from "./TransactionCategorySelect";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import type { PaginatedTransactions } from "../types";
 
@@ -19,14 +16,9 @@ const formatConfidenceScore = (value: number | null | undefined) =>
   typeof value === "number" ? `${Math.round(value * 100)}%` : "N/A";
 
 type DesktopTransactionGridProps = {
-  draftCategory?: string;
-  editingCategoryId?: string;
   isLoading: boolean;
-  onCategoryCancel: () => void;
-  onCategoryDraftChange: (category: string) => void;
-  onCategoryEditStart: (transactionId: string) => void;
-  onCategorySave: (transactionId: string) => void;
   onDeleteRequest: (transactionId: string) => void;
+  onEditRequest: (transactionId: string) => void;
   onRegenerateCategory: (transactionId: string) => void;
   paginationModel: GridPaginationModel;
   setPaginationModel: (model: GridPaginationModel) => void;
@@ -34,18 +26,12 @@ type DesktopTransactionGridProps = {
   transactions: PaginatedTransactions["data"];
   deletingTransactionId?: string;
   regeneratingCategoryId?: string;
-  updatingCategoryId?: string;
 };
 
 export const DesktopTransactionGrid = ({
-  draftCategory,
-  editingCategoryId,
   isLoading,
-  onCategoryCancel,
-  onCategoryDraftChange,
-  onCategoryEditStart,
-  onCategorySave,
   onDeleteRequest,
+  onEditRequest,
   onRegenerateCategory,
   paginationModel,
   setPaginationModel,
@@ -53,7 +39,6 @@ export const DesktopTransactionGrid = ({
   transactions,
   deletingTransactionId,
   regeneratingCategoryId,
-  updatingCategoryId,
 }: DesktopTransactionGridProps) => {
   const columns: GridColDef[] = [
     {
@@ -75,26 +60,16 @@ export const DesktopTransactionGrid = ({
       field: "category",
       headerName: "Category",
       width: 190,
-      renderCell: (params) =>
-        editingCategoryId === params.row.id ? (
-          <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
-            <TransactionCategorySelect
-              autoFocus
-              category={draftCategory ?? params.row.category}
-              disabled={updatingCategoryId === params.row.id}
-              onChange={onCategoryDraftChange}
-            />
-          </Box>
-        ) : (
-          <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 1 }}>
-            <TransactionCategoryIcon
-              category={params.row.category}
-              fontSize="small"
-              color="action"
-            />
-            <Typography variant="body2">{params.row.category}</Typography>
-          </Box>
-        ),
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 1 }}>
+          <TransactionCategoryIcon
+            category={params.row.category}
+            fontSize="small"
+            color="action"
+          />
+          <Typography variant="body2">{params.row.category}</Typography>
+        </Box>
+      ),
     },
     {
       field: "aiConfidenceScore",
@@ -130,88 +105,55 @@ export const DesktopTransactionGrid = ({
       filterable: false,
       disableColumnMenu: true,
       renderCell: (params) => (
-        editingCategoryId === params.row.id ? (
-          <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 0.5 }}>
-            <Tooltip title="Save category">
-              <span>
-                <IconButton
-                  aria-label="Save transaction category"
-                  color="primary"
-                  size="small"
-                  disabled={updatingCategoryId === params.row.id}
-                  onClick={() => onCategorySave(params.row.id)}
-                >
-                  <CheckIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Cancel category edit">
-              <span>
-                <IconButton
-                  aria-label="Cancel category edit"
-                  size="small"
-                  disabled={updatingCategoryId === params.row.id}
-                  onClick={onCategoryCancel}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Box>
-        ) : (
-          <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 0.5 }}>
-            <Tooltip title="Regenerate category">
-              <span>
-                <IconButton
-                  aria-label="Regenerate transaction category"
-                  color="secondary"
-                  size="small"
-                  disabled={
-                    Boolean(updatingCategoryId) ||
-                    Boolean(deletingTransactionId) ||
-                    Boolean(regeneratingCategoryId)
-                  }
-                  onClick={() => onRegenerateCategory(params.row.id)}
-                >
-                  <AutoAwesomeIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Edit category">
-              <span>
-                <IconButton
-                  aria-label="Edit transaction category"
-                  size="small"
-                  disabled={
-                    Boolean(updatingCategoryId) ||
-                    Boolean(deletingTransactionId) ||
-                    Boolean(regeneratingCategoryId)
-                  }
-                  onClick={() => onCategoryEditStart(params.row.id)}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Delete transaction">
-              <span>
-                <IconButton
-                  aria-label="Delete transaction"
-                  color="error"
-                  size="small"
-                  disabled={
-                    Boolean(updatingCategoryId) ||
-                    Boolean(deletingTransactionId) ||
-                    Boolean(regeneratingCategoryId)
-                  }
-                  onClick={() => onDeleteRequest(params.row.id)}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Box>
-        )
+        <Box sx={{ display: "flex", alignItems: "center", height: "100%", gap: 0.5 }}>
+          <Tooltip title="Regenerate category">
+            <span>
+              <IconButton
+                aria-label="Regenerate transaction category"
+                color="secondary"
+                size="small"
+                disabled={
+                  Boolean(deletingTransactionId) ||
+                  Boolean(regeneratingCategoryId)
+                }
+                onClick={() => onRegenerateCategory(params.row.id)}
+              >
+                <AutoAwesomeIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Edit transaction">
+            <span>
+              <IconButton
+                aria-label="Edit transaction"
+                size="small"
+                disabled={
+                  Boolean(deletingTransactionId) ||
+                  Boolean(regeneratingCategoryId)
+                }
+                onClick={() => onEditRequest(params.row.id)}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Delete transaction">
+            <span>
+              <IconButton
+                aria-label="Delete transaction"
+                color="error"
+                size="small"
+                disabled={
+                  Boolean(deletingTransactionId) ||
+                  Boolean(regeneratingCategoryId)
+                }
+                onClick={() => onDeleteRequest(params.row.id)}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
       ),
     },
   ];

@@ -43,13 +43,15 @@ export interface CategorizeUncategorizedTransactionsResponse {
   categorizedCount: number;
 }
 
-export interface CreateTransactionRequest {
+export interface TransactionWriteRequest {
   date: string;
   amount: number;
   description: string;
   category: string;
   notes: string | null;
 }
+
+export type CreateTransactionRequest = TransactionWriteRequest;
 
 export interface CsvUploadResponse {
   message: string;
@@ -89,14 +91,25 @@ export const createTransaction = async (
   return mapTransaction(response);
 };
 
-export const updateTransactionCategory = async (
+export const getTransaction = async (
   transactionId: string,
-  category: string,
 ): Promise<Transaction> => {
-  const response = await apiClient.patch<
+  const response = await apiClient.get<
     TransactionApiResponse,
     TransactionApiResponse
-  >(`/transactions/${transactionId}/category`, { category });
+  >(`/transactions/${transactionId}`);
+
+  return mapTransaction(response);
+};
+
+export const updateTransaction = async (
+  transactionId: string,
+  request: TransactionWriteRequest,
+): Promise<Transaction> => {
+  const response = await apiClient.put<
+    TransactionApiResponse,
+    TransactionApiResponse
+  >(`/transactions/${transactionId}`, request);
 
   return mapTransaction(response);
 };

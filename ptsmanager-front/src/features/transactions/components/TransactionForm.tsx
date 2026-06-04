@@ -22,21 +22,37 @@ import { useNavigate } from "react-router-dom";
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { transactionCategoryOptions } from "../transactionCategories";
 import { useCreateTransaction } from "../hooks/useCreateTransaction";
+import { useUpdateTransaction } from "../hooks/useUpdateTransaction";
+import type { Transaction } from "../types";
 
 const getTodayDateInputValue = () => new Date().toISOString().slice(0, 10);
 
 type TransactionDirection = "expense" | "income";
 
-export const CreateTransactionForm = () => {
+type TransactionFormProps = {
+  transaction?: Transaction;
+};
+
+export const TransactionForm = ({ transaction }: TransactionFormProps) => {
   const navigate = useNavigate();
   const isOnline = useNetworkStatus();
   const createTransactionMutation = useCreateTransaction();
-  const [date, setDate] = useState(getTodayDateInputValue);
-  const [direction, setDirection] = useState<TransactionDirection>("expense");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [notes, setNotes] = useState("");
-  const [category, setCategory] = useState("Uncategorized");
+  const updateTransactionMutation = useUpdateTransaction();
+  const isEdit = Boolean(transaction);
+  const [date, setDate] = useState(
+    transaction ? transaction.date.slice(0, 10) : getTodayDateInputValue,
+  );
+  const [direction, setDirection] = useState<TransactionDirection>(
+    transaction && transaction.amount > 0 ? "income" : "expense",
+  );
+  const [amount, setAmount] = useState(
+    transaction ? String(Math.abs(transaction.amount)) : "",
+  );
+  const [description, setDescription] = useState(transaction?.description ?? "");
+  const [notes, setNotes] = useState(transaction?.notes ?? "");
+  const [category, setCategory] = useState(
+    transaction?.category ?? "Uncategorized",
+  );
 
   const parsedAmount = Number(amount);
   const signedAmount =
@@ -50,7 +66,8 @@ export const CreateTransactionForm = () => {
     date.length > 0 &&
     isAmountValid &&
     normalizedDescription.length > 0 &&
-    !createTransactionMutation.isPending;
+    !createTransactionMutation.isPending &&
+    !updateTransactionMutation.isPending;
 
   const handleDirectionChange = (
     _: MouseEvent<HTMLElement>,
@@ -68,21 +85,30 @@ export const CreateTransactionForm = () => {
       return;
     }
 
-    createTransactionMutation.mutate(
-      {
-        date,
-        amount: signedAmount,
-        description: normalizedDescription,
-        category,
-        notes: normalizedNotes || null,
-      },
-      {
-        onSuccess: () => navigate("/transactions"),
-      },
-    );
+    const request = {
+      date,
+      amount: signedAmount,
+      description: normalizedDescription,
+      category,
+      notes: normalizedNotes || null,
+    };
+    const options = {
+      onSuccess: () => navigate("/transactions"),
+    };
+
+    if (transaction) {
+      updateTransactionMutation.mutate(
+        { transactionId: transaction.id, request },
+        options,
+      );
+      return;
+    }
+
+    createTransactionMutation.mutate(request, options);
   };
 
-  const isPending = createTransactionMutation.isPending;
+  const isPending =
+    createTransactionMutation.isPending || updateTransactionMutation.isPending;
 
   return (
     <Box sx={{ width: "100%", maxWidth: 960, mx: "auto" }}>
@@ -95,10 +121,12 @@ export const CreateTransactionForm = () => {
       >
         <Box>
           <Typography variant="h4" component="h1">
-            Add transaction
+            {isEdit ? "Edit transaction" : "Add transaction"}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Record one income or expense entry manually.
+            {isEdit
+              ? "Update the details of this transaction."
+              : "Record one income or expense entry manually."}
           </Typography>
         </Box>
         <Button
@@ -284,7 +312,7 @@ export const CreateTransactionForm = () => {
                 }
                 disabled={!canSubmit}
               >
-                Save transaction
+                {isEdit ? "Update transaction" : "Save transaction"}
               </Button>
             </Stack>
           </Stack>

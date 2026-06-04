@@ -1,26 +1,34 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { updateTransactionCategory } from "../../../api/transactionsApi";
+import {
+  updateTransaction,
+  type TransactionWriteRequest,
+} from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
+import { transactionDetailQueryKey } from "./useTransaction";
 
-type UpdateTransactionCategoryInput = {
+type UpdateTransactionInput = {
   transactionId: string;
-  category: string;
+  request: TransactionWriteRequest;
 };
 
-export const useUpdateTransactionCategory = () => {
+export const useUpdateTransaction = () => {
   const queryClient = useQueryClient();
   const { showNotification } = useNotification();
 
   return useMutation({
-    mutationFn: ({ transactionId, category }: UpdateTransactionCategoryInput) =>
-      updateTransactionCategory(transactionId, category),
-    onSuccess: () => {
+    mutationFn: ({ transactionId, request }: UpdateTransactionInput) =>
+      updateTransaction(transactionId, request),
+    onSuccess: (transaction) => {
+      queryClient.setQueryData(
+        transactionDetailQueryKey(transaction.id),
+        transaction,
+      );
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["tips"] });
       showNotification({
         severity: "success",
-        message: "Transaction category updated.",
+        message: "Transaction updated.",
       });
     },
     onError: (error) => {
@@ -29,7 +37,7 @@ export const useUpdateTransactionCategory = () => {
         message:
           error instanceof Error
             ? error.message
-            : "Transaction category could not be updated.",
+            : "Transaction could not be updated.",
       });
     },
   });

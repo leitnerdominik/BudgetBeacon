@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PTSManagerYC.Core.Entities;
 using PTSManagerYC.Core.Interfaces;
+using PTSManagerYC.Core.Models;
 using PTSManagerYC.Core.Services;
 using System.Text.Json;
 using Npgsql;
@@ -105,6 +106,21 @@ public class TransactionRepository : ITransactionRepository
     public async Task SaveChangesAsync()
     {
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update)
+    {
+        var transaction = await _context.Transactions
+            .SingleOrDefaultAsync(candidate => candidate.Id == transactionId && candidate.UserId == userId);
+
+        if (transaction is null)
+            return null;
+
+        transaction.ApplyUpdate(update);
+
+        await _context.SaveChangesAsync();
+
+        return transaction;
     }
 
     public async Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category)

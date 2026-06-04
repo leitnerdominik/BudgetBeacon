@@ -18,6 +18,9 @@ const TransactionsPage = lazy(async () => ({
 const CreateTransactionPage = lazy(async () => ({
   default: (await import("./pages/CreateTransactionPage")).CreateTransactionPage,
 }));
+const EditTransactionPage = lazy(async () => ({
+  default: (await import("./pages/EditTransactionPage")).EditTransactionPage,
+}));
 const StatisticsPage = lazy(async () => ({
   default: (await import("./pages/StatisticsPage")).StatisticsPage,
 }));
@@ -71,6 +74,10 @@ export const router = createBrowserRouter([
           {
             path: "transactions/new",
             element: withSuspense(<CreateTransactionPage />),
+          },
+          {
+            path: "transactions/:transactionId/edit",
+            element: withSuspense(<EditTransactionPage />),
           },
           { path: "statistics", element: withSuspense(<StatisticsPage />) },
           { path: "tips", element: withSuspense(<TipsPage />) },
