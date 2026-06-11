@@ -38,9 +38,9 @@ public sealed partial class StatisticsAggregationService
             PreviousMonthSummary: previousMonthSummary,
             Trend: BuildMonthlyTrend(periodTransactions, startDate, endDate),
             Categories: BuildCategorySummaries(periodTransactions),
-            TopExpenses: BuildTopExpenses(periodTransactions),
+            TopExpenses: BuildTopExpenses(periodTransactions, TopExpenseLimit),
             RecurringExpenses: monthsBack >= 2
-                ? BuildRecurringExpenses(periodTransactions)
+                ? BuildRecurringExpenses(periodTransactions, RecurringExpenseLimit)
                 : []);
     }
 
@@ -66,8 +66,51 @@ public sealed partial class StatisticsAggregationService
             PreviousMonthSummary: null,
             Trend: BuildYearlyTrend(allTransactions),
             Categories: BuildCategorySummaries(allTransactions),
-            TopExpenses: BuildTopExpenses(allTransactions),
-            RecurringExpenses: BuildRecurringExpenses(allTransactions));
+            TopExpenses: BuildTopExpenses(allTransactions, TopExpenseLimit),
+            RecurringExpenses: BuildRecurringExpenses(allTransactions, RecurringExpenseLimit));
+    }
+
+    public MonthlySummary BuildMonthlySummary(
+        int year,
+        int month,
+        IEnumerable<Transaction> transactions)
+    {
+        var monthlyTransactions = transactions.ToList();
+        var summary = BuildSummary(monthlyTransactions);
+
+        return new MonthlySummary(
+            year,
+            month,
+            summary.TotalIncome,
+            summary.TotalExpense,
+            summary.NetBalance,
+            summary.AverageExpense,
+            summary.MedianExpense,
+            summary.TransactionCount);
+    }
+
+    public IReadOnlyList<MonthlySummary> BuildMonthlySummaries(
+        int startYear,
+        int startMonth,
+        int endYear,
+        int endMonth,
+        IEnumerable<Transaction> transactions)
+    {
+        var transactionsByMonth = transactions
+            .GroupBy(transaction => new { transaction.Date.Year, transaction.Date.Month })
+            .ToDictionary(group => (group.Key.Year, group.Key.Month), group => group.ToList());
+
+        return EnumerateMonths(startYear, startMonth, endYear, endMonth)
+            .Select(monthRef =>
+            {
+                transactionsByMonth.TryGetValue((monthRef.Year, monthRef.Month), out var monthlyTransactions);
+
+                return BuildMonthlySummary(
+                    monthRef.Year,
+                    monthRef.Month,
+                    monthlyTransactions ?? []);
+            })
+            .ToList();
     }
 
     private StatisticsSummary BuildSummary(IReadOnlyCollection<Transaction> transactions)
@@ -140,7 +183,7 @@ public sealed partial class StatisticsAggregationService
             summary.NetBalance,
             summary.TransactionCount);
 
-    private IReadOnlyList<StatisticsCategorySummary> BuildCategorySummaries(
+    public IReadOnlyList<StatisticsCategorySummary> BuildCategorySummaries(
         IReadOnlyCollection<Transaction> transactions)
     {
         var expenses = transactions.Where(transaction => transaction.Amount < 0).ToList();
@@ -166,13 +209,14 @@ public sealed partial class StatisticsAggregationService
             .ToList();
     }
 
-    private static IReadOnlyList<StatisticsTopExpense> BuildTopExpenses(
-        IReadOnlyCollection<Transaction> transactions) =>
+    public IReadOnlyList<StatisticsTopExpense> BuildTopExpenses(
+        IReadOnlyCollection<Transaction> transactions,
+        int limit) =>
         transactions
             .Where(transaction => transaction.Amount < 0)
             .OrderBy(transaction => transaction.Amount)
             .ThenByDescending(transaction => transaction.Date)
-            .Take(TopExpenseLimit)
+            .Take(limit)
             .Select(transaction => new StatisticsTopExpense(
                 transaction.Id,
                 transaction.Date,
@@ -181,8 +225,9 @@ public sealed partial class StatisticsAggregationService
                 transaction.Metadata.RawDescription?.Trim() ?? "No description"))
             .ToList();
 
-    private static IReadOnlyList<StatisticsRecurringExpense> BuildRecurringExpenses(
-        IReadOnlyCollection<Transaction> transactions) =>
+    public IReadOnlyList<StatisticsRecurringExpense> BuildRecurringExpenses(
+        IReadOnlyCollection<Transaction> transactions,
+        int limit) =>
         transactions
             .Where(transaction => transaction.Amount < 0)
             .Select(transaction => new
@@ -225,7 +270,7 @@ public sealed partial class StatisticsAggregationService
             .Where(item => item.MonthCount >= 2)
             .OrderByDescending(item => item.Candidate.AverageAmount)
             .ThenBy(item => item.Candidate.Description)
-            .Take(RecurringExpenseLimit)
+            .Take(limit)
             .Select(item => item.Candidate)
             .ToList();
 
@@ -242,6 +287,29 @@ public sealed partial class StatisticsAggregationService
 
     private static DateTime EndOfMonth(DateTime date) =>
         StartOfMonth(date).AddMonths(1).AddTicks(-1);
+
+    private static int GetInclusiveMonthCount(
+        int startYear,
+        int startMonth,
+        int endYear,
+        int endMonth) =>
+        ((endYear - startYear) * 12) + endMonth - startMonth + 1;
+
+    private static IEnumerable<(int Year, int Month)> EnumerateMonths(
+        int startYear,
+        int startMonth,
+        int endYear,
+        int endMonth)
+    {
+        var monthCount = GetInclusiveMonthCount(startYear, startMonth, endYear, endMonth);
+        var current = new DateTime(startYear, startMonth, 1);
+
+        for (var index = 0; index < monthCount; index++)
+        {
+            yield return (current.Year, current.Month);
+            current = current.AddMonths(1);
+        }
+    }
 
     private static string NormalizeDescription(string? description)
     {

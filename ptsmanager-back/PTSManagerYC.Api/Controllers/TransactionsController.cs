@@ -27,7 +27,6 @@ public class TransactionsController : ControllerBase
 
     private readonly ITransactionRepository _repository;
     private readonly IUserPreferencesRepository _userPreferencesRepository;
-    private readonly FinanceAggregationService _aggregationService;
     private readonly StatisticsAggregationService _statisticsAggregationService;
     private readonly IAiAdvisorService _aiService;
     private readonly ICsvReaderService _csvReader;
@@ -36,7 +35,6 @@ public class TransactionsController : ControllerBase
     public TransactionsController(
         ITransactionRepository repository,
         IUserPreferencesRepository userPreferencesRepository,
-        FinanceAggregationService aggregationService,
         StatisticsAggregationService statisticsAggregationService,
         IAiAdvisorService aiService,
         ICsvReaderService csvReader,
@@ -44,7 +42,6 @@ public class TransactionsController : ControllerBase
     {
         _repository = repository;
         _userPreferencesRepository = userPreferencesRepository;
-        _aggregationService = aggregationService;
         _statisticsAggregationService = statisticsAggregationService;
         _aiService = aiService;
         _csvReader = csvReader;
@@ -221,7 +218,7 @@ public class TransactionsController : ControllerBase
         _logger.LogInformation("API requested monthly summary for {Month}/{Year}", month, year);
         var transactions = (await _repository.GetByMonthAsync(userId, year, month)).ToList();
 
-        return Ok(BuildMonthlySummary(year, month, transactions));
+        return Ok(_statisticsAggregationService.BuildMonthlySummary(year, month, transactions));
     }
 
     [HttpGet("summaries")]
@@ -257,21 +254,12 @@ public class TransactionsController : ControllerBase
                 startDate,
                 endExclusive.AddTicks(-1)))
             .ToList();
-        var transactionsByMonth = transactions
-            .GroupBy(transaction => new { transaction.Date.Year, transaction.Date.Month })
-            .ToDictionary(group => (group.Key.Year, group.Key.Month), group => group.ToList());
-
-        var summaries = EnumerateMonths(startYear, startMonth, endYear, endMonth)
-            .Select(monthRef =>
-            {
-                transactionsByMonth.TryGetValue((monthRef.Year, monthRef.Month), out var monthlyTransactions);
-
-                return BuildMonthlySummary(
-                    monthRef.Year,
-                    monthRef.Month,
-                    monthlyTransactions ?? []);
-            })
-            .ToList();
+        var summaries = _statisticsAggregationService.BuildMonthlySummaries(
+            startYear,
+            startMonth,
+            endYear,
+            endMonth,
+            transactions);
 
         return Ok(summaries);
     }
@@ -395,27 +383,7 @@ public class TransactionsController : ControllerBase
 
         _logger.LogInformation("API requested category summary for {Month}/{Year}", month, year);
         var transactions = (await _repository.GetByMonthAsync(userId, year, month)).ToList();
-        var expenses = transactions.Where(transaction => transaction.Amount < 0).ToList();
-        var totalExpense = Math.Abs(_aggregationService.CalculateTotal(expenses));
-
-        var categorySummaries = expenses
-            .GroupBy(transaction =>
-                string.IsNullOrWhiteSpace(transaction.Category)
-                    ? "Uncategorized"
-                    : transaction.Category)
-            .Select(group =>
-            {
-                var categoryTotal = Math.Abs(_aggregationService.CalculateTotal(group));
-
-                return new CategorySummaryResponse(
-                    group.Key,
-                    categoryTotal,
-                    totalExpense > 0 ? categoryTotal / totalExpense * 100 : 0,
-                    group.Count());
-            })
-            .OrderByDescending(summary => summary.TotalExpense)
-            .ThenBy(summary => summary.Category)
-            .ToList();
+        var categorySummaries = _statisticsAggregationService.BuildCategorySummaries(transactions);
 
         return Ok(categorySummaries);
     }
@@ -457,19 +425,8 @@ public class TransactionsController : ControllerBase
         }
 
         _logger.LogInformation("API requested top expenses for {Month}/{Year}", month, year);
-        var transactions = await _repository.GetByMonthAsync(userId, year, month);
-        var topExpenses = transactions
-            .Where(transaction => transaction.Amount < 0)
-            .OrderBy(transaction => transaction.Amount)
-            .ThenByDescending(transaction => transaction.Date)
-            .Take(limit)
-            .Select(transaction => new TopExpenseResponse(
-                transaction.Id,
-                transaction.Date,
-                Math.Abs(transaction.Amount),
-                transaction.Category,
-                transaction.Metadata.RawDescription?.Trim() ?? "No description"))
-            .ToList();
+        var transactions = (await _repository.GetByMonthAsync(userId, year, month)).ToList();
+        var topExpenses = _statisticsAggregationService.BuildTopExpenses(transactions, limit);
 
         return Ok(topExpenses);
     }
@@ -535,72 +492,11 @@ public class TransactionsController : ControllerBase
             startDate,
             endExclusive.AddTicks(-1));
 
-        var recurringExpenses = transactions
-            .Where(transaction => transaction.Amount < 0)
-            .Select(transaction => new
-            {
-                Transaction = transaction,
-                Description = NormalizeDescription(transaction.Metadata.RawDescription)
-            })
-            .Where(item => item.Description.Length > 0)
-            .GroupBy(item => new
-            {
-                item.Transaction.Category,
-                item.Description
-            })
-            .Select(group =>
-            {
-                var expenses = group
-                    .Select(item => item.Transaction)
-                    .OrderByDescending(transaction => transaction.Date)
-                    .ToList();
-                var monthCount = expenses
-                    .Select(transaction => new { transaction.Date.Year, transaction.Date.Month })
-                    .Distinct()
-                    .Count();
-                var amounts = expenses.Select(transaction => Math.Abs(transaction.Amount)).ToList();
-
-                return new
-                {
-                    Candidate = new RecurringExpenseCandidateResponse(
-                        group.Key.Description,
-                        group.Key.Category,
-                        amounts.Average(),
-                        amounts.Min(),
-                        amounts.Max(),
-                        expenses.Count,
-                        monthCount,
-                        expenses[0].Date),
-                    MonthCount = monthCount
-                };
-            })
-            .Where(item => item.MonthCount >= 2)
-            .OrderByDescending(item => item.Candidate.AverageAmount)
-            .ThenBy(item => item.Candidate.Description)
-            .Take(limit)
-            .Select(item => item.Candidate)
-            .ToList();
+        var recurringExpenses = _statisticsAggregationService.BuildRecurringExpenses(
+            transactions.ToList(),
+            limit);
 
         return Ok(recurringExpenses);
-    }
-
-    private MonthlySummaryResponse BuildMonthlySummary(
-        int year,
-        int month,
-        IReadOnlyCollection<Transaction> transactions)
-    {
-        var incomes = transactions.Where(t => t.Amount > 0).ToList();
-        var expenses = transactions.Where(t => t.Amount < 0).ToList();
-
-        return new MonthlySummaryResponse(
-            year,
-            month,
-            _aggregationService.CalculateTotal(incomes),
-            _aggregationService.CalculateTotal(expenses),
-            _aggregationService.CalculateTotal(transactions),
-            _aggregationService.CalculateAverage(expenses),
-            _aggregationService.CalculateMedian(expenses),
-            transactions.Count);
     }
 
     [HttpPost("import")]
@@ -900,7 +796,7 @@ public class TransactionsController : ControllerBase
         else
         {
             _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
-            var startDate = DateTime.Now.AddMonths(-monthsBack);
+            var startDate = GetUtcTipsStartDate(monthsBack);
             (transactions, _) = await _repository.GetTransactionsPagedAsync(userId, startDate, 1, 10000);
             timeframe = FormatTipsTimeframe(monthsBack);
         }
@@ -1017,20 +913,10 @@ public class TransactionsController : ControllerBase
         int endMonth) =>
         ((endYear - startYear) * 12) + endMonth - startMonth + 1;
 
-    private static IEnumerable<(int Year, int Month)> EnumerateMonths(
-        int startYear,
-        int startMonth,
-        int endYear,
-        int endMonth)
+    private static DateTime GetUtcTipsStartDate(int monthsBack)
     {
-        var monthCount = GetInclusiveMonthCount(startYear, startMonth, endYear, endMonth);
-        var current = new DateTime(startYear, startMonth, 1);
-
-        for (var index = 0; index < monthCount; index++)
-        {
-            yield return (current.Year, current.Month);
-            current = current.AddMonths(1);
-        }
+        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
+        return utcToday.AddMonths(-monthsBack).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
     }
 
     private static string FormatTipsTimeframe(int monthsBack) =>
@@ -1040,14 +926,6 @@ public class TransactionsController : ControllerBase
             12 => "Last 1 year",
             _ => $"Last {monthsBack} months"
         };
-
-    private static string NormalizeDescription(string? description) =>
-        string.Join(
-            " ",
-            (description ?? string.Empty)
-                .Trim()
-                .ToLowerInvariant()
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     public sealed record UpdateTransactionCategoryRequest(string? Category);
     public sealed record CreateTransactionRequest(
@@ -1063,36 +941,4 @@ public class TransactionsController : ControllerBase
         string? Category,
         string? Notes);
 
-    private sealed record MonthlySummaryResponse(
-        int Year,
-        int Month,
-        decimal TotalIncome,
-        decimal TotalExpense,
-        decimal NetBalance,
-        decimal AverageExpense,
-        decimal MedianExpense,
-        int TransactionCount);
-
-    private sealed record CategorySummaryResponse(
-        string Category,
-        decimal TotalExpense,
-        decimal Percentage,
-        int TransactionCount);
-
-    private sealed record TopExpenseResponse(
-        Guid Id,
-        DateTime Date,
-        decimal Amount,
-        string Category,
-        string Description);
-
-    private sealed record RecurringExpenseCandidateResponse(
-        string Description,
-        string Category,
-        decimal AverageAmount,
-        decimal MinAmount,
-        decimal MaxAmount,
-        int OccurrenceCount,
-        int MonthCount,
-        DateTime LastDate);
 }

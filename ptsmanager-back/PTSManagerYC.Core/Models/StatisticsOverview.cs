@@ -21,6 +21,16 @@ public sealed record StatisticsSummary(
     decimal MedianExpense,
     int TransactionCount);
 
+public sealed record MonthlySummary(
+    int Year,
+    int Month,
+    decimal TotalIncome,
+    decimal TotalExpense,
+    decimal NetBalance,
+    decimal AverageExpense,
+    decimal MedianExpense,
+    int TransactionCount);
+
 public sealed record StatisticsTrendPoint(
     int Year,
     int? Month,

@@ -94,13 +94,78 @@ public sealed class StatisticsAggregationServiceTests
         Assert.Empty(result.RecurringExpenses);
     }
 
+    [Fact]
+    public void BuildMonthlySummaries_IncludesEmptyMonthsInRequestedRange()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(new DateTime(2026, 1, 5), 1000m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 3, 5), -25m, "Groceries", "Market")
+        };
+
+        var result = _sut.BuildMonthlySummaries(2026, 1, 2026, 3, transactions);
+
+        Assert.Collection(
+            result,
+            january =>
+            {
+                Assert.Equal(1, january.Month);
+                Assert.Equal(1000m, january.TotalIncome);
+                Assert.Equal(1000m, january.NetBalance);
+            },
+            february =>
+            {
+                Assert.Equal(2, february.Month);
+                Assert.Equal(0, february.TransactionCount);
+            },
+            march =>
+            {
+                Assert.Equal(3, march.Month);
+                Assert.Equal(-25m, march.TotalExpense);
+                Assert.Equal(-25m, march.NetBalance);
+            });
+    }
+
+    [Fact]
+    public void BuildCategorySummariesAndTopExpenses_ReturnExpenseOnlySnapshots()
+    {
+        var expensiveId = Guid.NewGuid();
+        var transactions = new[]
+        {
+            CreateTransaction(new DateTime(2026, 4, 1), 1000m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 4, 2), -100m, "Groceries", "Market", expensiveId),
+            CreateTransaction(new DateTime(2026, 4, 3), -50m, "Transport", "Train")
+        };
+
+        var categories = _sut.BuildCategorySummaries(transactions);
+        var topExpenses = _sut.BuildTopExpenses(transactions, limit: 1);
+
+        Assert.Collection(
+            categories,
+            first =>
+            {
+                Assert.Equal("Groceries", first.Category);
+                Assert.Equal(100m, first.TotalExpense);
+            },
+            second =>
+            {
+                Assert.Equal("Transport", second.Category);
+                Assert.Equal(50m, second.TotalExpense);
+            });
+        var topExpense = Assert.Single(topExpenses);
+        Assert.Equal(expensiveId, topExpense.Id);
+        Assert.Equal(100m, topExpense.Amount);
+    }
+
     private static Transaction CreateTransaction(
         DateTime date,
         decimal amount,
         string category,
-        string description) =>
+        string description,
+        Guid? id = null) =>
         new()
         {
+            Id = id ?? Guid.NewGuid(),
             Date = date,
             Amount = amount,
             Category = category,

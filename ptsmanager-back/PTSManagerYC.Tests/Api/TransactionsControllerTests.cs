@@ -1105,6 +1105,34 @@ public sealed class TransactionsControllerTests
         Assert.Equal("Merano, South Tyrol, Italy", aiService.LastSavingsTipsLocationContext);
     }
 
+    [Fact]
+    public async Task GetAiSavingsTips_UsesUtcDayBoundaryForRelativeFilter()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            PagedTransactions = [new Transaction { Amount = -25m, Category = "Groceries" }],
+            PagedTotalCount = 1
+        };
+        var controller = CreateController(repository);
+        var earliestExpectedStartDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            .AddMonths(-3)
+            .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        await controller.GetAiSavingsTips(3);
+
+        var latestExpectedStartDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            .AddMonths(-3)
+            .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        Assert.Equal("user-1", repository.LastPagedUserId);
+        Assert.NotNull(repository.LastPagedStartDate);
+        Assert.Equal(DateTimeKind.Utc, repository.LastPagedStartDate.Value.Kind);
+        Assert.Equal(TimeSpan.Zero, repository.LastPagedStartDate.Value.TimeOfDay);
+        Assert.InRange(repository.LastPagedStartDate.Value, earliestExpectedStartDate, latestExpectedStartDate);
+        Assert.Equal(1, repository.LastPagedPageNumber);
+        Assert.Equal(10000, repository.LastPagedPageSize);
+    }
+
     private static TransactionsController CreateController(
         FakeTransactionRepository? repository = null,
         FakeUserPreferencesRepository? preferencesRepository = null,
@@ -1115,7 +1143,6 @@ public sealed class TransactionsControllerTests
         var controller = new TransactionsController(
             repository ?? new FakeTransactionRepository(),
             preferencesRepository ?? new FakeUserPreferencesRepository(),
-            new FinanceAggregationService(),
             new StatisticsAggregationService(new FinanceAggregationService()),
             aiService ?? new FakeAiAdvisorService(),
             csvReader ?? new FakeCsvReaderService(),
@@ -1194,6 +1221,10 @@ public sealed class TransactionsControllerTests
         public string? LastDateRangeUserId { get; private set; }
         public DateTime? LastDateRangeStartDate { get; private set; }
         public DateTime? LastDateRangeEndDate { get; private set; }
+        public string? LastPagedUserId { get; private set; }
+        public DateTime? LastPagedStartDate { get; private set; }
+        public int? LastPagedPageNumber { get; private set; }
+        public int? LastPagedPageSize { get; private set; }
 
         public Task AddRangeAsync(IEnumerable<Transaction> transactions)
         {
@@ -1312,6 +1343,10 @@ public sealed class TransactionsControllerTests
             int pageSize)
         {
             PagedCalls++;
+            LastPagedUserId = userId;
+            LastPagedStartDate = startDate;
+            LastPagedPageNumber = pageNumber;
+            LastPagedPageSize = pageSize;
             return Task.FromResult((PagedTransactions, PagedTotalCount));
         }
     }

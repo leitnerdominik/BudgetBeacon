@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Antiforgery;
@@ -85,7 +87,7 @@ public class AuthController : ControllerBase
 
         await _signInManager.SignInAsync(user, isPersistent: false);
 
-        _logger.LogInformation("User {Email} registered successfully.", normalizedEmail);
+        _logger.LogInformation("User {UserId} registered successfully.", user.Id);
 
         return Ok(new SessionResponse(ToAuthenticatedUser(user)));
     }
@@ -99,7 +101,9 @@ public class AuthController : ControllerBase
 
         if (user is null)
         {
-            _logger.LogWarning("Failed login attempt for unknown email {Email}.", normalizedEmail);
+            _logger.LogWarning(
+                "Failed login attempt for unknown email fingerprint {EmailHash}.",
+                HashEmailForLog(normalizedEmail));
             return this.ApiProblem(
                 StatusCodes.Status401Unauthorized,
                 "Login failed",
@@ -111,7 +115,7 @@ public class AuthController : ControllerBase
 
         if (result.IsLockedOut)
         {
-            _logger.LogWarning("Locked-out user {Email} attempted to log in.", normalizedEmail);
+            _logger.LogWarning("Locked-out user {UserId} attempted to log in.", user.Id);
             return this.ApiProblem(
                 StatusCodes.Status423Locked,
                 "Account locked",
@@ -121,7 +125,7 @@ public class AuthController : ControllerBase
 
         if (!result.Succeeded)
         {
-            _logger.LogWarning("Failed login attempt for {Email}.", normalizedEmail);
+            _logger.LogWarning("Failed login attempt for user {UserId}.", user.Id);
             return this.ApiProblem(
                 StatusCodes.Status401Unauthorized,
                 "Login failed",
@@ -131,7 +135,7 @@ public class AuthController : ControllerBase
 
         await _signInManager.SignInAsync(user, isPersistent: request.RememberMe);
 
-        _logger.LogInformation("User {Email} logged in successfully.", normalizedEmail);
+        _logger.LogInformation("User {UserId} logged in successfully.", user.Id);
 
         return Ok(new SessionResponse(ToAuthenticatedUser(user)));
     }
@@ -191,5 +195,11 @@ public class AuthController : ControllerBase
             user.Email ?? string.Empty,
             user.FirstName,
             user.LastName);
+    }
+
+    private static string HashEmailForLog(string normalizedEmail)
+    {
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedEmail));
+        return Convert.ToHexString(hashBytes);
     }
 }
