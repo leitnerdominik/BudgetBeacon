@@ -12,8 +12,9 @@ using PTSManagerYC.Core.Models;
 
 namespace PTSManagerYC.Infrastructure.External;
 
-public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
+public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 {
+    private const string DefaultModel = "deepseek-v4-flash";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -23,19 +24,25 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
     private readonly string _model;
-    private readonly ILogger<OpenRouterAiAdvisorService> _logger;
+    private readonly ILogger<DeepSeekAiAdvisorService> _logger;
 
-    public OpenRouterAiAdvisorService(
+    public DeepSeekAiAdvisorService(
         HttpClient httpClient,
         IConfiguration config,
-        ILogger<OpenRouterAiAdvisorService> logger)
+        ILogger<DeepSeekAiAdvisorService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiKey = config["OpenRouter:ApiKey"] ?? throw new InvalidOperationException(
-            "OpenRouter:ApiKey is missing. Configure it via .NET user secrets or environment variables.");
-        _model = config["OpenRouter:Model"] ?? throw new InvalidOperationException(
-            "OpenRouter:Model is missing. Configure it via application settings.");
+        _apiKey = config["DeepSeek:ApiKey"]!;
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            throw new InvalidOperationException(
+                "DeepSeek:ApiKey is missing. Configure it via .NET user secrets or environment variables.");
+        }
+
+        _model = string.IsNullOrWhiteSpace(config["DeepSeek:Model"])
+            ? DefaultModel
+            : config["DeepSeek:Model"]!;
     }
 
     public async Task CategorizeTransactionsAsync(List<Transaction> transactions, string? aiLocationContext = null)
@@ -44,7 +51,7 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
             return;
 
         _logger.LogInformation(
-            "Starting AI categorization for {Count} transactions via OpenRouter model {Model}.",
+            "Starting AI categorization for {Count} transactions via DeepSeek model {Model}.",
             transactions.Count,
             _model);
 
@@ -96,9 +103,9 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
             catch (Exception ex)
             {
                 _logger.LogError(
-                    ObservabilityEventIds.OpenRouterInvalidResponse,
+                    ObservabilityEventIds.DeepSeekInvalidResponse,
                     ex,
-                    "Failed to parse OpenRouter categorization response for model {Model}.",
+                    "Failed to parse DeepSeek categorization response for model {Model}.",
                     _model);
             }
         }
@@ -116,7 +123,7 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
             return Array.Empty<SavingsTip>();
 
         _logger.LogInformation(
-            "Generating AI savings tips for {Count} transactions via OpenRouter model {Model}.",
+            "Generating AI savings tips for {Count} transactions via DeepSeek model {Model}.",
             transactionList.Count,
             _model);
 
@@ -155,9 +162,9 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
         catch (Exception ex)
         {
             _logger.LogError(
-                ObservabilityEventIds.OpenRouterInvalidResponse,
+                ObservabilityEventIds.DeepSeekInvalidResponse,
                 ex,
-                "Failed to parse OpenRouter savings tips response for model {Model}.",
+                "Failed to parse DeepSeek savings tips response for model {Model}.",
                 _model);
             throw new ExternalServiceException("The AI provider returned an invalid response.");
         }
@@ -165,12 +172,12 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
 
     private async Task<string?> SendPromptAsync(string prompt, string operation, double? temperature = null)
     {
-        var requestBody = new OpenRouterChatRequest
+        var requestBody = new DeepSeekChatRequest
         {
             Model = _model,
             Messages =
             [
-                new OpenRouterMessage
+                new DeepSeekMessage
                 {
                     Role = "user",
                     Content = prompt
@@ -189,14 +196,12 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
 
         if (!response.IsSuccessStatusCode)
         {
-            var error = await response.Content.ReadAsStringAsync();
             _logger.LogError(
-                ObservabilityEventIds.OpenRouterUpstreamFailure,
-                "OpenRouter {Operation} request failed. StatusCode: {StatusCode}, Model: {Model}, Error: {Error}",
+                ObservabilityEventIds.DeepSeekUpstreamFailure,
+                "DeepSeek {Operation} request failed. StatusCode: {StatusCode}, Model: {Model}",
                 operation,
                 (int)response.StatusCode,
-                _model,
-                error);
+                _model);
             throw new ExternalServiceException($"AI {operation} is currently unavailable.");
         }
 
@@ -348,20 +353,20 @@ public sealed class OpenRouterAiAdvisorService : IAiAdvisorService
             : withoutOpeningFence;
     }
 
-    private sealed class OpenRouterChatRequest
+    private sealed class DeepSeekChatRequest
     {
         [JsonPropertyName("model")]
         public string Model { get; init; } = string.Empty;
 
         [JsonPropertyName("messages")]
-        public IReadOnlyList<OpenRouterMessage> Messages { get; init; } = Array.Empty<OpenRouterMessage>();
+        public IReadOnlyList<DeepSeekMessage> Messages { get; init; } = Array.Empty<DeepSeekMessage>();
 
         [JsonPropertyName("temperature")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? Temperature { get; init; }
     }
 
-    private sealed class OpenRouterMessage
+    private sealed class DeepSeekMessage
     {
         [JsonPropertyName("role")]
         public string Role { get; init; } = string.Empty;

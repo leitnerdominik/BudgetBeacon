@@ -55,7 +55,7 @@ try
     builder.Services.AddHealthChecks()
         .AddCheck("self", () => HealthCheckResult.Healthy("API process is running."), tags: ["live"])
         .AddCheck<DatabaseReadinessHealthCheck>("database", failureStatus: HealthStatus.Unhealthy, tags: ["ready", "database"])
-        .AddCheck<OpenRouterReadinessHealthCheck>("openrouter", failureStatus: HealthStatus.Degraded, tags: ["ready", "openrouter"]);
+        .AddCheck<DeepSeekReadinessHealthCheck>("deepseek", failureStatus: HealthStatus.Degraded, tags: ["ready", "deepseek"]);
     builder.Services.Configure<ApiBehaviorOptions>(options =>
     {
         options.InvalidModelStateResponseFactory = context =>
@@ -188,24 +188,12 @@ try
     builder.Services.AddScoped<StatisticsAggregationService>();
     builder.Services.AddScoped<ICsvReaderService, CsvReaderService>();
 
-    builder.Services.AddHttpClient<IAiAdvisorService, OpenRouterAiAdvisorService>((serviceProvider, client) =>
+    builder.Services.AddHttpClient<IAiAdvisorService, DeepSeekAiAdvisorService>((serviceProvider, client) =>
     {
         var configuration = serviceProvider.GetRequiredService<IConfiguration>();
 
-        client.BaseAddress = new Uri(configuration["OpenRouter:BaseUrl"] ?? "https://openrouter.ai/api/v1/");
+        client.BaseAddress = new Uri(configuration["DeepSeek:BaseUrl"] ?? "https://api.deepseek.com/");
         client.Timeout = TimeSpan.FromMinutes(5);
-
-        var referer = configuration["OpenRouter:Referer"];
-        if (!string.IsNullOrWhiteSpace(referer))
-        {
-            client.DefaultRequestHeaders.TryAddWithoutValidation("HTTP-Referer", referer);
-        }
-
-        var title = configuration["OpenRouter:Title"];
-        if (!string.IsNullOrWhiteSpace(title))
-        {
-            client.DefaultRequestHeaders.TryAddWithoutValidation("X-OpenRouter-Title", title);
-        }
     });
 
     var app = builder.Build();

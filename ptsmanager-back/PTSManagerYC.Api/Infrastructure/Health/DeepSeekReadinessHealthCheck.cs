@@ -3,14 +3,15 @@ using PTSManagerYC.Core.Diagnostics;
 
 namespace PTSManagerYC.Api.Infrastructure.Health;
 
-public sealed class OpenRouterReadinessHealthCheck : IHealthCheck
+public sealed class DeepSeekReadinessHealthCheck : IHealthCheck
 {
+    private const string DefaultModel = "deepseek-v4-flash";
     private readonly IConfiguration _configuration;
-    private readonly ILogger<OpenRouterReadinessHealthCheck> _logger;
+    private readonly ILogger<DeepSeekReadinessHealthCheck> _logger;
 
-    public OpenRouterReadinessHealthCheck(
+    public DeepSeekReadinessHealthCheck(
         IConfiguration configuration,
-        ILogger<OpenRouterReadinessHealthCheck> logger)
+        ILogger<DeepSeekReadinessHealthCheck> logger)
     {
         _configuration = configuration;
         _logger = logger;
@@ -20,19 +21,21 @@ public sealed class OpenRouterReadinessHealthCheck : IHealthCheck
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        var apiKey = _configuration["OpenRouter:ApiKey"];
-        var model = _configuration["OpenRouter:Model"];
+        var apiKey = _configuration["DeepSeek:ApiKey"];
+        var model = string.IsNullOrWhiteSpace(_configuration["DeepSeek:Model"])
+            ? DefaultModel
+            : _configuration["DeepSeek:Model"];
 
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(model))
         {
             _logger.LogWarning(
-                ObservabilityEventIds.OpenRouterHealthCheckFailed,
-                "OpenRouter readiness check is degraded. ApiKeyConfigured: {ApiKeyConfigured}, ModelConfigured: {ModelConfigured}",
+                ObservabilityEventIds.DeepSeekHealthCheckFailed,
+                "DeepSeek readiness check is degraded. ApiKeyConfigured: {ApiKeyConfigured}, ModelConfigured: {ModelConfigured}",
                 !string.IsNullOrWhiteSpace(apiKey),
                 !string.IsNullOrWhiteSpace(model));
 
             return Task.FromResult(HealthCheckResult.Degraded(
-                "OpenRouter configuration is incomplete.",
+                "DeepSeek configuration is incomplete.",
                 data: new Dictionary<string, object>
                 {
                     ["apiKeyConfigured"] = !string.IsNullOrWhiteSpace(apiKey),
@@ -40,6 +43,6 @@ public sealed class OpenRouterReadinessHealthCheck : IHealthCheck
                 }));
         }
 
-        return Task.FromResult(HealthCheckResult.Healthy("OpenRouter configuration is available."));
+        return Task.FromResult(HealthCheckResult.Healthy("DeepSeek configuration is available."));
     }
 }

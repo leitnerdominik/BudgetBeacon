@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PTSManagerYC.Core.Entities;
 using PTSManagerYC.Core.Exceptions;
@@ -9,24 +10,51 @@ using PTSManagerYC.Infrastructure.External;
 
 namespace PTSManagerYC.Tests.Infrastructure;
 
-public sealed class OpenRouterAiAdvisorServiceTests
+public sealed class DeepSeekAiAdvisorServiceTests
 {
     [Fact]
     public void Constructor_ThrowsWhenApiKeyIsMissing()
     {
         using var httpClient = new HttpClient(new StubHttpMessageHandler())
         {
-            BaseAddress = new Uri("https://openrouter.test/api/v1/")
+            BaseAddress = new Uri("https://api.deepseek.test/")
         };
-        var config = CreateConfig(("OpenRouter:Model", "test-model"));
+        var config = CreateConfig(("DeepSeek:Model", "test-model"));
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
-            new OpenRouterAiAdvisorService(
+            new DeepSeekAiAdvisorService(
                 httpClient,
                 config,
-                NullLogger<OpenRouterAiAdvisorService>.Instance));
+                NullLogger<DeepSeekAiAdvisorService>.Instance));
 
-        Assert.Contains("OpenRouter:ApiKey", exception.Message);
+        Assert.Contains("DeepSeek:ApiKey", exception.Message);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_UsesDefaultModelWhenModelIsNotConfigured()
+    {
+        var transaction = new Transaction
+        {
+            Id = Guid.NewGuid(),
+            Amount = -15m,
+            Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
+        };
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.deepseek.test/")
+        };
+        var sut = new DeepSeekAiAdvisorService(
+            httpClient,
+            CreateConfig(("DeepSeek:ApiKey", "test-api-key")),
+            NullLogger<DeepSeekAiAdvisorService>.Instance);
+
+        await sut.CategorizeTransactionsAsync([transaction]);
+
+        var request = Assert.Single(handler.Requests);
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("deepseek-v4-flash", body.RootElement.GetProperty("model").GetString());
     }
 
     [Fact]
@@ -68,7 +96,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
             $"{{\"Id\":\"{ignoredId}\",\"Category\":\"Groceries\",\"Confidence\":0.9}}" +
             "\n]```";
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse(providerContent));
+        handler.Enqueue(DeepSeekResponse(providerContent));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync(transactions);
@@ -103,7 +131,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
             Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
         };
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync([transaction], " Bolzano,\nSouth Tyrol, Italy ");
@@ -124,7 +152,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
             Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
         };
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync([transaction], "   ");
@@ -147,8 +175,8 @@ public sealed class OpenRouterAiAdvisorServiceTests
             })
             .ToList();
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transactions[0].Id}\",\"Category\":\"Groceries\",\"Confidence\":0.7}}]"));
-        handler.Enqueue(OpenRouterResponse($"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[0].Id}\",\"Category\":\"Groceries\",\"Confidence\":0.7}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync(transactions);
@@ -167,7 +195,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
             Metadata = new TransactionMetadata { RawDescription = "Unknown merchant" }
         };
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse("this is not json"));
+        handler.Enqueue(DeepSeekResponse("this is not json"));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync([transaction]);
@@ -225,7 +253,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
             }
         });
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse($"```json\n{providerTips}\n```"));
+        handler.Enqueue(DeepSeekResponse($"```json\n{providerTips}\n```"));
         var sut = CreateService(handler);
         var transactions = new[]
         {
@@ -270,7 +298,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
     public async Task GetSavingTipsAsync_UsesProvidedLocationContextInPrompt()
     {
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse("[{\"Title\":\"Tip\",\"Description\":\"Use local alternatives.\",\"Impact\":\"Medium\",\"Category\":\"Transport\"}]"));
+        handler.Enqueue(DeepSeekResponse("[{\"Title\":\"Tip\",\"Description\":\"Use local alternatives.\",\"Impact\":\"Medium\",\"Category\":\"Transport\"}]"));
         var sut = CreateService(handler);
 
         await sut.GetSavingTipsAsync(
@@ -287,7 +315,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
     public async Task GetSavingTipsAsync_ThrowsExternalServiceExceptionForInvalidProviderJson()
     {
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(OpenRouterResponse("not json"));
+        handler.Enqueue(DeepSeekResponse("not json"));
         var sut = CreateService(handler);
 
         await Assert.ThrowsAsync<ExternalServiceException>(() =>
@@ -310,19 +338,40 @@ public sealed class OpenRouterAiAdvisorServiceTests
         Assert.Contains("unavailable", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static OpenRouterAiAdvisorService CreateService(StubHttpMessageHandler handler)
+    [Fact]
+    public async Task GetSavingTipsAsync_DoesNotLogRawUpstreamErrorBody()
+    {
+        const string sensitiveErrorBody = "raw provider payload includes Merchant ABC and 123.45";
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent(sensitiveErrorBody)
+        });
+        var logger = new CapturingLogger<DeepSeekAiAdvisorService>();
+        var sut = CreateService(handler, logger);
+
+        await Assert.ThrowsAsync<ExternalServiceException>(() =>
+            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Groceries" }]));
+
+        Assert.DoesNotContain(logger.Messages, message => message.Contains(sensitiveErrorBody, StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, message => message.Contains("DeepSeek savings tips request failed", StringComparison.Ordinal));
+    }
+
+    private static DeepSeekAiAdvisorService CreateService(
+        StubHttpMessageHandler handler,
+        ILogger<DeepSeekAiAdvisorService>? logger = null)
     {
         var httpClient = new HttpClient(handler)
         {
-            BaseAddress = new Uri("https://openrouter.test/api/v1/")
+            BaseAddress = new Uri("https://api.deepseek.test/")
         };
 
-        return new OpenRouterAiAdvisorService(
+        return new DeepSeekAiAdvisorService(
             httpClient,
             CreateConfig(
-                ("OpenRouter:ApiKey", "test-api-key"),
-                ("OpenRouter:Model", "test-model")),
-            NullLogger<OpenRouterAiAdvisorService>.Instance);
+                ("DeepSeek:ApiKey", "test-api-key"),
+                ("DeepSeek:Model", "test-model")),
+            logger ?? NullLogger<DeepSeekAiAdvisorService>.Instance);
     }
 
     private static IConfiguration CreateConfig(params (string Key, string? Value)[] values)
@@ -332,7 +381,7 @@ public sealed class OpenRouterAiAdvisorServiceTests
             .Build();
     }
 
-    private static HttpResponseMessage OpenRouterResponse(string content)
+    private static HttpResponseMessage DeepSeekResponse(string content)
     {
         var json = JsonSerializer.Serialize(new
         {
@@ -405,4 +454,35 @@ public sealed class OpenRouterAiAdvisorServiceTests
         string? AuthorizationScheme,
         string? AuthorizationParameter,
         string Body);
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull =>
+            NoopScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+        }
+    }
+
+    private sealed class NoopScope : IDisposable
+    {
+        public static readonly NoopScope Instance = new();
+
+        public void Dispose()
+        {
+        }
+    }
 }
+
