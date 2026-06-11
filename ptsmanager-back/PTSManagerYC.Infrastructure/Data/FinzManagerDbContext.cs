@@ -41,6 +41,9 @@ public class FinzManagerDbContext : IdentityDbContext<ApplicationUser>
                     value => value.ToUniversalTime(),
                     value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
+            entity.Property(transaction => transaction.Amount)
+                .HasPrecision(18, 2);
+
             entity.HasIndex(transaction => new { transaction.UserId, transaction.Date });
 
             entity.HasIndex(transaction => new { transaction.UserId, transaction.ImportFingerprint })
