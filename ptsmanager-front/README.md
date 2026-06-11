@@ -140,6 +140,7 @@ If your local PostgreSQL database was created before migrations were introduced,
 - Node.js 20+ and npm
 - .NET 9 SDK
 - PostgreSQL
+- Docker, if you want to run the frontend dev server in a container
 
 ### 1. Start the backend
 
@@ -163,7 +164,7 @@ dotnet run
 
 By default, local development uses the profile from `Properties/launchSettings.json` and serves the API on `http://localhost:5078`.
 
-### 2. Start the frontend
+### 2. Start the frontend on the host
 
 Open a second terminal:
 
@@ -174,6 +175,23 @@ npm run dev
 ```
 
 The Vite dev server runs on `http://localhost:5173` and proxies `/api` requests to `http://localhost:5078`.
+
+### 2b. Start the frontend with Docker
+
+If you prefer to run only the frontend in Docker, keep the backend running on the host at `http://localhost:5078`, then run this from the workspace root:
+
+```powershell
+docker compose -f docker-compose.frontend.yml up --build
+```
+
+The containerized Vite dev server runs on `http://localhost:5173` and proxies `/api` requests to the host backend through `http://host.docker.internal:5078`.
+
+If frontend dependencies change, rebuild the image. If the named `frontend_node_modules` volume already exists and dependencies do not refresh as expected, remove it before starting the stack again:
+
+```powershell
+docker compose -f docker-compose.frontend.yml down -v
+docker compose -f docker-compose.frontend.yml up --build
+```
 
 ### 3. Open the app
 
