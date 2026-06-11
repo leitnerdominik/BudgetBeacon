@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,9 @@ using PTSManagerYC.Infrastructure.Data;
 using PTSManagerYC.Infrastructure.External;
 
 var builder = WebApplication.CreateBuilder(args);
+var secureCookiePolicy = builder.Environment.IsDevelopment()
+    ? CookieSecurePolicy.SameAsRequest
+    : CookieSecurePolicy.Always;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -52,6 +56,17 @@ try
     });
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddControllers();
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+    });
+    builder.Services.AddHsts(options =>
+    {
+        options.IncludeSubDomains = true;
+        options.MaxAge = TimeSpan.FromDays(365);
+        options.Preload = true;
+    });
     builder.Services.AddHealthChecks()
         .AddCheck("self", () => HealthCheckResult.Healthy("API process is running."), tags: ["live"])
         .AddCheck<DatabaseReadinessHealthCheck>("database", failureStatus: HealthStatus.Unhealthy, tags: ["ready", "database"])
@@ -100,7 +115,7 @@ try
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = secureCookiePolicy;
     });
     builder.Services.AddSwaggerGen(c =>
     {
@@ -160,7 +175,7 @@ try
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = secureCookiePolicy;
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromDays(7);
         options.Events = new CookieAuthenticationEvents
@@ -197,6 +212,13 @@ try
     });
 
     var app = builder.Build();
+
+    app.UseForwardedHeaders();
+
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHsts();
+    }
 
     if (app.Environment.IsDevelopment())
     {
