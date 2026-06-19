@@ -1,7 +1,7 @@
 services:
   frontend:
     build:
-      context: ./ptsmanager-front
+      context: ./budgetbeacon-front
       dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
@@ -9,7 +9,7 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       VITE_DEV_PROXY_TARGET: "http://host.docker.internal:5078"
     volumes:
-      - ./ptsmanager-front:/app
+      - ./budgetbeacon-front:/app
       - frontend_node_modules:/app/node_modules
     extra_hosts:
       - "host.docker.internal:host-gateway"

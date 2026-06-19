@@ -1,12 +1,12 @@
-PTS Manager Production TODO
+BudgetBeacon Production TODO
 ===========================
 
 Critical before production
 --------------------------
 [x] Replace demo authentication with real user management.
-    - Remove DemoAuth-based login from `PTSManagerYC.Api/Controllers/AuthController.cs`.
-    - Remove demo credentials from `PTSManagerYC.Api/appsettings.Development.json`.
-    - Remove the demo credentials hint from `ptsmanager-front/src/features/auth/components/LoginPage.tsx`.
+    - Remove DemoAuth-based login from `BudgetBeacon.Api/Controllers/AuthController.cs`.
+    - Remove demo credentials from `BudgetBeacon.Api/appsettings.Development.json`.
+    - Remove the demo credentials hint from `budgetbeacon-front/src/features/auth/components/LoginPage.tsx`.
 
 [x] Implement real API authentication and authorization.
     - Add JWT or secure session auth in the backend.
@@ -14,14 +14,14 @@ Critical before production
     - Validate tokens on every protected API route, not only in the frontend.
 
 [ ] Remove secrets and local credentials from source control.
-    - Move `ConnectionStrings:DefaultConnection` and `OpenRouter:ApiKey` out of `PTSManagerYC.Api/appsettings.json`.
+    - Move `ConnectionStrings:DefaultConnection` and `OpenRouter:ApiKey` out of `BudgetBeacon.Api/appsettings.json`.
     - Use environment variables, user secrets, vault/secret manager and separate production config.
     - Rotate any exposed AI provider API key and database password.
 
 [ ] Replace development-only CORS and API endpoint assumptions.
-    - Remove hardcoded localhost origins from `PTSManagerYC.Api/Program.cs`.
+    - Remove hardcoded localhost origins from `BudgetBeacon.Api/Program.cs`.
     - Make frontend API base URL and backend allowed origins environment-driven.
-    - Replace the dev proxy target in `ptsmanager-front/vite.config.ts` with production env config.
+    - Replace the dev proxy target in `budgetbeacon-front/vite.config.ts` with production env config.
 
 [x] Replace `EnsureCreatedAsync()` with proper EF Core migrations.
     - Create and apply database migrations.
@@ -63,7 +63,7 @@ High priority
 Frontend and mobile polish
 --------------------------
 [x] Optimize the transactions screen for mobile.
-    - `@mui/x-data-grid` with fixed columns is not mobile-friendly in `ptsmanager-front/src/features/transactions/components/TransactionList.tsx`.
+    - `@mui/x-data-grid` with fixed columns is not mobile-friendly in `budgetbeacon-front/src/features/transactions/components/TransactionList.tsx`.
     - Add a mobile list/card layout or responsive column reduction.
     - Improve spacing, typography and touch targets for small screens.
 
