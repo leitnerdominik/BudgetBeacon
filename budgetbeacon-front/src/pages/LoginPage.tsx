@@ -125,7 +125,7 @@ export const LoginPage = () => {
           Finance Manager
         </Typography>
         <Typography variant="body2" color="text.secondary" align="center">
-          Secure access to your personal finance workspace.
+          Secure invite-only access to your personal finance workspace.
         </Typography>
 
         <Paper
@@ -265,7 +265,7 @@ export const LoginPage = () => {
               sx={{ display: "block", mt: 1 }}
             >
               {isRegisterMode
-                ? "Create the first account directly in the app."
+                ? "Create an account with an approved email address."
                 : "Sign in with your existing account."}
             </Typography>
           </Box>

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using BudgetBeacon.Api.Infrastructure.Auth;
 using BudgetBeacon.Infrastructure.Data;
 
 namespace BudgetBeacon.Api.Controllers;
@@ -15,15 +16,18 @@ public class AuthController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly IAccountAccessPolicy _accountAccessPolicy;
     private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
+        IAccountAccessPolicy accountAccessPolicy,
         ILogger<AuthController> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
+        _accountAccessPolicy = accountAccessPolicy;
         _logger = logger;
     }
 
@@ -49,7 +53,21 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        var normalizedEmail = _accountAccessPolicy.NormalizeEmail(request.Email);
+
+        if (!_accountAccessPolicy.IsEmailAllowed(normalizedEmail))
+        {
+            _logger.LogWarning(
+                "Registration rejected for disallowed email fingerprint {EmailHash}.",
+                HashEmailForLog(normalizedEmail));
+
+            return this.ApiProblem(
+                StatusCodes.Status403Forbidden,
+                "Account access is restricted",
+                "This email is not allowed to create a BudgetBeacon account.",
+                "urn:budgetbeacon:account-not-allowed");
+        }
+
         var existingUser = await _userManager.FindByEmailAsync(normalizedEmail);
 
         if (existingUser is not null)
@@ -96,7 +114,7 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
-        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        var normalizedEmail = _accountAccessPolicy.NormalizeEmail(request.Email);
         var user = await _userManager.FindByEmailAsync(normalizedEmail);
 
         if (user is null)
@@ -131,6 +149,17 @@ public class AuthController : ControllerBase
                 "Login failed",
                 "Invalid email or password.",
                 "urn:budgetbeacon:invalid-credentials");
+        }
+
+        if (!_accountAccessPolicy.IsEmailAllowed(user.Email))
+        {
+            _logger.LogWarning("Login rejected for disallowed user {UserId}.", user.Id);
+
+            return this.ApiProblem(
+                StatusCodes.Status403Forbidden,
+                "Account access is restricted",
+                "This account is not allowed to access BudgetBeacon.",
+                "urn:budgetbeacon:account-not-allowed");
         }
 
         await _signInManager.SignInAsync(user, isPersistent: request.RememberMe);

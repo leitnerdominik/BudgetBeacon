@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -11,6 +12,7 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Context;
 using BudgetBeacon.Api.Infrastructure;
+using BudgetBeacon.Api.Infrastructure.Auth;
 using BudgetBeacon.Api.Infrastructure.Health;
 using BudgetBeacon.Core.Diagnostics;
 using BudgetBeacon.Core.Interfaces;
@@ -143,6 +145,9 @@ try
             }
         });
     });
+    builder.Services.Configure<AccountAccessOptions>(
+        builder.Configuration.GetSection(AccountAccessOptions.SectionName));
+    builder.Services.AddSingleton<IAccountAccessPolicy, ConfiguredAccountAccessPolicy>();
 
     var defaultConnection = builder.Configuration.GetConnectionString("DefaultConnection");
 
@@ -181,6 +186,32 @@ try
         options.ExpireTimeSpan = TimeSpan.FromDays(7);
         options.Events = new CookieAuthenticationEvents
         {
+            OnValidatePrincipal = async context =>
+            {
+                var accountAccessPolicy = context.HttpContext.RequestServices.GetRequiredService<IAccountAccessPolicy>();
+                var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+                var logger = context.HttpContext.RequestServices
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("BudgetBeacon.Api.Authentication");
+
+                var user = context.Principal is null
+                    ? null
+                    : await userManager.GetUserAsync(context.Principal);
+
+                if (user is null)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+                    return;
+                }
+
+                if (!accountAccessPolicy.IsEmailAllowed(user.Email))
+                {
+                    logger.LogWarning("Rejected session for disallowed user {UserId}.", user.Id);
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+                }
+            },
             OnRedirectToLogin = context => WriteAuthProblemAsync(
                 context.HttpContext,
                 StatusCodes.Status401Unauthorized,
