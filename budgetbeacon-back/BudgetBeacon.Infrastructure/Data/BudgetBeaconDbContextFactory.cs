@@ -7,9 +7,14 @@ public class BudgetBeaconDbContextFactory : IDesignTimeDbContextFactory<BudgetBe
 {
     public BudgetBeaconDbContext CreateDbContext(string[] args)
     {
-        var connectionString =
-            Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection") ??
-            "Host=localhost;Port=5432;Database=budgetbeacon_design;Username=postgres;Password=postgres;SSL Mode=Disable";
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "ConnectionStrings__DefaultConnection is required for design-time DbContext creation. " +
+                "Use a local secret or environment variable; production PostgreSQL connections should use SSL Mode=VerifyFull or SSL Mode=Require.");
+        }
 
         var optionsBuilder = new DbContextOptionsBuilder<BudgetBeaconDbContext>();
         optionsBuilder.UseNpgsql(connectionString);
