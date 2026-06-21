@@ -14,7 +14,7 @@ public sealed class StatisticsAggregationServiceTests
         var transactions = new[]
         {
             CreateTransaction(new DateTime(2026, 2, 10), 1000m, "Income", "Salary"),
-            CreateTransaction(new DateTime(2026, 2, 12), -100m, "Groceries", "Market"),
+            CreateTransaction(new DateTime(2026, 2, 12), -100m, "Food & Groceries", "Market"),
             CreateTransaction(new DateTime(2026, 4, 5), -50m, "Transport", "Train")
         };
 
@@ -41,8 +41,8 @@ public sealed class StatisticsAggregationServiceTests
     {
         var transactions = new[]
         {
-            CreateTransaction(new DateTime(2026, 3, 10), -25m, "Groceries", "Market"),
-            CreateTransaction(new DateTime(2026, 4, 10), -40m, "Groceries", "Market")
+            CreateTransaction(new DateTime(2026, 3, 10), -25m, "Food & Groceries", "Market"),
+            CreateTransaction(new DateTime(2026, 4, 10), -40m, "Food & Groceries", "Market")
         };
 
         var result = _sut.BuildFixedPeriod(
@@ -62,8 +62,8 @@ public sealed class StatisticsAggregationServiceTests
     {
         var transactions = new[]
         {
-            CreateTransaction(new DateTime(2024, 1, 5), -50m, "Subscriptions", "Music Stream"),
-            CreateTransaction(new DateTime(2024, 2, 5), -52m, "Subscriptions", "  MUSIC  STREAM "),
+            CreateTransaction(new DateTime(2024, 1, 5), -50m, "Subscriptions & Services", "Music Stream"),
+            CreateTransaction(new DateTime(2024, 2, 5), -52m, "Subscriptions & Services", "  MUSIC  STREAM "),
             CreateTransaction(new DateTime(2026, 3, 1), 2000m, "Income", "Salary")
         };
 
@@ -100,7 +100,7 @@ public sealed class StatisticsAggregationServiceTests
         var transactions = new[]
         {
             CreateTransaction(new DateTime(2026, 1, 5), 1000m, "Income", "Salary"),
-            CreateTransaction(new DateTime(2026, 3, 5), -25m, "Groceries", "Market")
+            CreateTransaction(new DateTime(2026, 3, 5), -25m, "Food & Groceries", "Market")
         };
 
         var result = _sut.BuildMonthlySummaries(2026, 1, 2026, 3, transactions);
@@ -133,7 +133,7 @@ public sealed class StatisticsAggregationServiceTests
         var transactions = new[]
         {
             CreateTransaction(new DateTime(2026, 4, 1), 1000m, "Income", "Salary"),
-            CreateTransaction(new DateTime(2026, 4, 2), -100m, "Groceries", "Market", expensiveId),
+            CreateTransaction(new DateTime(2026, 4, 2), -100m, "Food & Groceries", "Market", expensiveId),
             CreateTransaction(new DateTime(2026, 4, 3), -50m, "Transport", "Train")
         };
 
@@ -144,7 +144,7 @@ public sealed class StatisticsAggregationServiceTests
             categories,
             first =>
             {
-                Assert.Equal("Groceries", first.Category);
+                Assert.Equal("Food & Groceries", first.Category);
                 Assert.Equal(100m, first.TotalExpense);
             },
             second =>

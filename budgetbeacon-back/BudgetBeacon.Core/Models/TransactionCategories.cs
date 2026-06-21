@@ -18,21 +18,8 @@ public static class TransactionCategories
         "Transfers & Adjustments"
     ];
 
-    public static readonly IReadOnlyList<string> Legacy =
-    [
-        "Transport",
-        "Energy",
-        "Groceries",
-        "Lifestyle",
-        "Housing",
-        "Utilities",
-        "Entertainment",
-        "Health",
-        "Subscriptions"
-    ];
-
     public static readonly IReadOnlyList<string> Allowed =
-        UserFacing.Concat(Legacy).Concat(["Uncategorized"]).ToArray();
+        UserFacing.Concat(["Uncategorized"]).ToArray();
 
     public static string? NormalizeUserFacing(string? category)
     {

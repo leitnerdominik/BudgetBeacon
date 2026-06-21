@@ -144,13 +144,13 @@ public sealed class TransactionsControllerTests
             UserId = "user-1",
             Date = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
             Amount = -10m,
-            Category = "Groceries",
+            Category = "Food & Groceries",
             Notes = "Old note",
             ImportFingerprint = fingerprint,
             Metadata = new TransactionMetadata
             {
                 RawDescription = "Old description",
-                AiSuggestedCategory = "Groceries",
+                AiSuggestedCategory = "Food & Groceries",
                 AiConfidenceScore = 0.91
             }
         };
@@ -193,11 +193,11 @@ public sealed class TransactionsControllerTests
             UserId = "user-1",
             Date = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
             Amount = -10m,
-            Category = "Groceries",
+            Category = "Food & Groceries",
             Metadata = new TransactionMetadata
             {
                 RawDescription = "Market",
-                AiSuggestedCategory = "Groceries",
+                AiSuggestedCategory = "Food & Groceries",
                 AiConfidenceScore = 0.91
             }
         };
@@ -213,12 +213,12 @@ public sealed class TransactionsControllerTests
                 new DateOnly(2026, 6, 4),
                 -20m,
                 "Market",
-                "Groceries",
+                "Food & Groceries",
                 "New note"));
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
-        Assert.Equal("Groceries", updatedTransaction.Metadata.AiSuggestedCategory);
+        Assert.Equal("Food & Groceries", updatedTransaction.Metadata.AiSuggestedCategory);
         Assert.Equal(0.91, updatedTransaction.Metadata.AiConfidenceScore);
     }
 
@@ -258,7 +258,7 @@ public sealed class TransactionsControllerTests
                 new DateOnly(2026, 6, 4),
                 -20m,
                 "Market",
-                "Groceries",
+                "Food & Groceries",
                 null));
 
         var objectResult = Assert.IsType<ObjectResult>(result);
@@ -399,7 +399,7 @@ public sealed class TransactionsControllerTests
                 {
                     Amount = -25m,
                     Date = new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc),
-                    Category = "Groceries",
+                    Category = "Food & Groceries",
                     Metadata = new TransactionMetadata { RawDescription = "Market" },
                     UserId = "user-1"
                 },
@@ -407,7 +407,7 @@ public sealed class TransactionsControllerTests
                 {
                     Amount = -40m,
                     Date = new DateTime(2026, 4, 5, 0, 0, 0, DateTimeKind.Utc),
-                    Category = "Groceries",
+                    Category = "Food & Groceries",
                     Metadata = new TransactionMetadata { RawDescription = "Market" },
                     UserId = "user-1"
                 }
@@ -448,7 +448,7 @@ public sealed class TransactionsControllerTests
                 {
                     Amount = -25m,
                     Date = new DateTime(2026, 4, 5),
-                    Category = "Groceries",
+                    Category = "Food & Groceries",
                     Metadata = new TransactionMetadata { RawDescription = "Market" },
                     UserId = "user-1"
                 }
@@ -494,8 +494,8 @@ public sealed class TransactionsControllerTests
             MonthlyTransactions =
             [
                 new Transaction { Amount = 1000m, Category = "Income", Date = new DateTime(2026, 4, 1), UserId = "user-1" },
-                new Transaction { Amount = -75m, Category = "Groceries", Date = new DateTime(2026, 4, 2), UserId = "user-1" },
-                new Transaction { Amount = -25m, Category = "Groceries", Date = new DateTime(2026, 4, 3), UserId = "user-1" },
+                new Transaction { Amount = -75m, Category = "Food & Groceries", Date = new DateTime(2026, 4, 2), UserId = "user-1" },
+                new Transaction { Amount = -25m, Category = "Food & Groceries", Date = new DateTime(2026, 4, 3), UserId = "user-1" },
                 new Transaction { Amount = -50m, Category = "Transport", Date = new DateTime(2026, 4, 4), UserId = "user-1" },
                 new Transaction { Amount = -25m, Category = "", Date = new DateTime(2026, 4, 5), UserId = "user-1" }
             ]
@@ -508,7 +508,7 @@ public sealed class TransactionsControllerTests
         var summaries = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value).ToList();
         Assert.Equal(3, summaries.Count);
 
-        Assert.Equal("Groceries", GetValue<string>(summaries[0], "Category"));
+        Assert.Equal("Food & Groceries", GetValue<string>(summaries[0], "Category"));
         Assert.Equal(100m, GetValue<decimal>(summaries[0], "TotalExpense"));
         Assert.Equal(57.14m, GetValue<decimal>(summaries[0], "Percentage"), precision: 2);
         Assert.Equal(2, GetValue<int>(summaries[0], "TransactionCount"));
@@ -562,7 +562,7 @@ public sealed class TransactionsControllerTests
                 {
                     Id = secondLargestExpenseId,
                     Amount = -75m,
-                    Category = "Groceries",
+                    Category = "Food & Groceries",
                     Date = new DateTime(2026, 4, 2),
                     Metadata = new TransactionMetadata { RawDescription = "Market" },
                     UserId = "user-1"
@@ -571,7 +571,7 @@ public sealed class TransactionsControllerTests
                 {
                     Id = largestExpenseId,
                     Amount = -150m,
-                    Category = "Housing",
+                    Category = "Housing & Utilities",
                     Date = new DateTime(2026, 4, 3),
                     Metadata = new TransactionMetadata { RawDescription = "Rent" },
                     UserId = "user-1"
@@ -597,7 +597,7 @@ public sealed class TransactionsControllerTests
 
         Assert.Equal(largestExpenseId, GetValue<Guid>(expenses[0], "Id"));
         Assert.Equal(150m, GetValue<decimal>(expenses[0], "Amount"));
-        Assert.Equal("Housing", GetValue<string>(expenses[0], "Category"));
+        Assert.Equal("Housing & Utilities", GetValue<string>(expenses[0], "Category"));
         Assert.Equal("Rent", GetValue<string>(expenses[0], "Description"));
 
         Assert.Equal(secondLargestExpenseId, GetValue<Guid>(expenses[1], "Id"));
@@ -635,7 +635,7 @@ public sealed class TransactionsControllerTests
                 new Transaction
                 {
                     Amount = -50m,
-                    Category = "Subscriptions",
+                    Category = "Subscriptions & Services",
                     Date = new DateTime(2026, 1, 5),
                     Metadata = new TransactionMetadata { RawDescription = "Music Stream" },
                     UserId = "user-1"
@@ -643,7 +643,7 @@ public sealed class TransactionsControllerTests
                 new Transaction
                 {
                     Amount = -52m,
-                    Category = "Subscriptions",
+                    Category = "Subscriptions & Services",
                     Date = new DateTime(2026, 2, 5),
                     Metadata = new TransactionMetadata { RawDescription = "  MUSIC   STREAM " },
                     UserId = "user-1"
@@ -651,7 +651,7 @@ public sealed class TransactionsControllerTests
                 new Transaction
                 {
                     Amount = -90m,
-                    Category = "Energy",
+                    Category = "Housing & Utilities",
                     Date = new DateTime(2026, 2, 10),
                     Metadata = new TransactionMetadata { RawDescription = "Power Co" },
                     UserId = "user-1"
@@ -683,7 +683,7 @@ public sealed class TransactionsControllerTests
         var candidate = Assert.Single(candidates);
 
         Assert.Equal("music stream", GetValue<string>(candidate, "Description"));
-        Assert.Equal("Subscriptions", GetValue<string>(candidate, "Category"));
+        Assert.Equal("Subscriptions & Services", GetValue<string>(candidate, "Category"));
         Assert.Equal(51m, GetValue<decimal>(candidate, "AverageAmount"));
         Assert.Equal(50m, GetValue<decimal>(candidate, "MinAmount"));
         Assert.Equal(52m, GetValue<decimal>(candidate, "MaxAmount"));
@@ -845,7 +845,7 @@ public sealed class TransactionsControllerTests
             Metadata = new TransactionMetadata
             {
                 RawDescription = "Test",
-                AiSuggestedCategory = "Groceries",
+                AiSuggestedCategory = "Food & Groceries",
                 AiConfidenceScore = 0.91
             }
         };
@@ -890,7 +890,7 @@ public sealed class TransactionsControllerTests
 
         var result = await controller.UpdateCategory(
             Guid.NewGuid(),
-            new TransactionsController.UpdateTransactionCategoryRequest("Groceries"));
+            new TransactionsController.UpdateTransactionCategoryRequest("Food & Groceries"));
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -956,8 +956,8 @@ public sealed class TransactionsControllerTests
         {
             CategorizeAction = items =>
             {
-                items[0].Category = "Dining";
-                items[0].Metadata.AiSuggestedCategory = "Dining";
+                items[0].Category = "Eating Out";
+                items[0].Metadata.AiSuggestedCategory = "Eating Out";
                 items[0].Metadata.AiConfidenceScore = 0.87;
                 return Task.CompletedTask;
             }
@@ -968,7 +968,7 @@ public sealed class TransactionsControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
-        Assert.Equal("Dining", updatedTransaction.Category);
+        Assert.Equal("Eating Out", updatedTransaction.Category);
         Assert.Equal(0.87, updatedTransaction.Metadata.AiConfidenceScore);
         Assert.Equal("user-1", repository.LastGetByIdUserId);
         Assert.Equal(transactionId, repository.LastGetByIdTransactionId);
@@ -1028,7 +1028,7 @@ public sealed class TransactionsControllerTests
         {
             CategorizeAction = items =>
             {
-                items[0].Category = "Groceries";
+                items[0].Category = "Food & Groceries";
                 return Task.CompletedTask;
             }
         };
@@ -1078,7 +1078,7 @@ public sealed class TransactionsControllerTests
     {
         var repository = new FakeTransactionRepository
         {
-            AllTransactions = [new Transaction { Amount = -45m, Category = "Dining" }]
+            AllTransactions = [new Transaction { Amount = -45m, Category = "Eating Out" }]
         };
         var aiService = new FakeAiAdvisorService
         {
@@ -1090,7 +1090,7 @@ public sealed class TransactionsControllerTests
                     Title = "Review dining",
                     Description = "Compare restaurant spending over the full history.",
                     Impact = "Low",
-                    Category = "Dining"
+                    Category = "Eating Out"
                 }
             ]
         };
@@ -1110,7 +1110,7 @@ public sealed class TransactionsControllerTests
     {
         var repository = new FakeTransactionRepository
         {
-            PagedTransactions = [new Transaction { Amount = -25m, Category = "Groceries" }],
+            PagedTransactions = [new Transaction { Amount = -25m, Category = "Food & Groceries" }],
             PagedTotalCount = 1
         };
         var preferencesRepository = new FakeUserPreferencesRepository
@@ -1127,7 +1127,7 @@ public sealed class TransactionsControllerTests
                     Title = "Plan groceries",
                     Description = "Use a weekly shopping list.",
                     Impact = "Medium",
-                    Category = "Groceries"
+                    Category = "Food & Groceries"
                 }
             ]
         };
@@ -1149,7 +1149,7 @@ public sealed class TransactionsControllerTests
     {
         var repository = new FakeTransactionRepository
         {
-            PagedTransactions = [new Transaction { Amount = -25m, Category = "Groceries" }],
+            PagedTransactions = [new Transaction { Amount = -25m, Category = "Food & Groceries" }],
             PagedTotalCount = 1
         };
         var controller = CreateController(repository);

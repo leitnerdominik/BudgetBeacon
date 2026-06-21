@@ -15,7 +15,7 @@ public sealed class TransactionTests
             Date = transaction.Date,
             Amount = transaction.Amount,
             Description = "Updated market",
-            Category = "Lifestyle",
+            Category = "Shopping & Personal",
             Notes = transaction.Notes
         });
 
@@ -38,7 +38,7 @@ public sealed class TransactionTests
             Notes = "Updated note"
         });
 
-        Assert.Equal("Groceries", transaction.Metadata.AiSuggestedCategory);
+        Assert.Equal("Food & Groceries", transaction.Metadata.AiSuggestedCategory);
         Assert.Equal(0.91, transaction.Metadata.AiConfidenceScore);
         Assert.Equal(fingerprint, transaction.ImportFingerprint);
     }
@@ -48,13 +48,13 @@ public sealed class TransactionTests
         {
             Date = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
             Amount = -10m,
-            Category = "Groceries",
+            Category = "Food & Groceries",
             Notes = "Old note",
             ImportFingerprint = new string('A', 64),
             Metadata = new TransactionMetadata
             {
                 RawDescription = "Market",
-                AiSuggestedCategory = "Groceries",
+                AiSuggestedCategory = "Food & Groceries",
                 AiConfidenceScore = 0.91
             }
         };
