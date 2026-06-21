@@ -40,7 +40,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
             Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
         };
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.8}}]"));
         var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri("https://api.deepseek.test/")
@@ -93,7 +93,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
             "```json\n[" +
             $"{{\"Id\":\"{transportId}\",\"Category\":\"transport\",\"Confidence\":1.2}}," +
             $"{{\"Id\":\"{unknownCategoryId}\",\"Category\":\"Not a real category\",\"Confidence\":-0.25}}," +
-            $"{{\"Id\":\"{ignoredId}\",\"Category\":\"Groceries\",\"Confidence\":0.9}}" +
+            $"{{\"Id\":\"{ignoredId}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.9}}" +
             "\n]```";
         var handler = new StubHttpMessageHandler();
         handler.Enqueue(DeepSeekResponse(providerContent));
@@ -105,8 +105,8 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Equal("Transport", transactions[0].Metadata.AiSuggestedCategory);
         Assert.Equal(1.0, transactions[0].Metadata.AiConfidenceScore);
 
-        Assert.Equal("Lifestyle", transactions[1].Category);
-        Assert.Equal("Lifestyle", transactions[1].Metadata.AiSuggestedCategory);
+        Assert.Equal("Shopping & Personal", transactions[1].Category);
+        Assert.Equal("Shopping & Personal", transactions[1].Metadata.AiSuggestedCategory);
         Assert.Equal(0.0, transactions[1].Metadata.AiConfidenceScore);
 
         var request = Assert.Single(handler.Requests);
@@ -119,6 +119,11 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Equal("test-model", body.RootElement.GetProperty("model").GetString());
         Assert.Equal("user", body.RootElement.GetProperty("messages")[0].GetProperty("role").GetString());
         Assert.False(body.RootElement.TryGetProperty("temperature", out _));
+
+        var prompt = GetPrompt(request.Body);
+        Assert.Contains("Food & Groceries", prompt);
+        Assert.Contains("Shopping & Personal", prompt);
+        Assert.DoesNotContain("Groceries, Lifestyle", prompt);
     }
 
     [Fact]
@@ -131,7 +136,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
             Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
         };
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync([transaction], " Bolzano,\nSouth Tyrol, Italy ");
@@ -152,7 +157,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
             Metadata = new TransactionMetadata { RawDescription = "Local merchant" }
         };
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Groceries\",\"Confidence\":0.8}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transaction.Id}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync([transaction], "   ");
@@ -175,14 +180,14 @@ public sealed class DeepSeekAiAdvisorServiceTests
             })
             .ToList();
         var handler = new StubHttpMessageHandler();
-        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[0].Id}\",\"Category\":\"Groceries\",\"Confidence\":0.7}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[0].Id}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.7}}]"));
         handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         await sut.CategorizeTransactionsAsync(transactions);
 
         Assert.Equal(2, handler.Requests.Count);
-        Assert.Equal("Groceries", transactions[0].Category);
+        Assert.Equal("Food & Groceries", transactions[0].Category);
         Assert.Equal("Transport", transactions[50].Category);
     }
 
@@ -242,14 +247,14 @@ public sealed class DeepSeekAiAdvisorServiceTests
                 Title = longTitle,
                 Description = "Move recurring grocery purchases to a planned weekly shop.",
                 Impact = "low",
-                Category = "Groceries"
+                Category = "Food & Groceries"
             },
             new
             {
                 Title = "Blank description",
                 Description = "   ",
                 Impact = "High",
-                Category = "Energy"
+                Category = "Housing & Utilities"
             }
         });
         var handler = new StubHttpMessageHandler();
@@ -258,7 +263,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var transactions = new[]
         {
             new Transaction { Amount = -30m, Category = "Transport" },
-            new Transaction { Amount = -15m, Category = "Subscriptions" },
+            new Transaction { Amount = -15m, Category = "Subscriptions & Services" },
             new Transaction { Amount = 2500m, Category = "Income" }
         };
 
@@ -279,19 +284,24 @@ public sealed class DeepSeekAiAdvisorServiceTests
                 Assert.Equal("tip-2", second.Id);
                 Assert.Equal("Savings Tip 2", second.Title);
                 Assert.Equal("Medium", second.Impact);
-                Assert.Equal("Lifestyle", second.Category);
+                Assert.Equal("Shopping & Personal", second.Category);
             },
             third =>
             {
                 Assert.Equal("tip-3", third.Id);
                 Assert.True(third.Title.Length <= 60);
                 Assert.Equal("Low", third.Impact);
-                Assert.Equal("Groceries", third.Category);
+                Assert.Equal("Food & Groceries", third.Category);
             });
 
         var request = Assert.Single(handler.Requests);
         using var body = JsonDocument.Parse(request.Body);
         Assert.Equal(0.7, body.RootElement.GetProperty("temperature").GetDouble());
+
+        var prompt = GetPrompt(request.Body);
+        Assert.Contains("Subscriptions & Services", prompt);
+        Assert.Contains("Savings & Investments", prompt);
+        Assert.DoesNotContain("Energy, Groceries", prompt);
     }
 
     [Fact]
@@ -319,7 +329,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var sut = CreateService(handler);
 
         await Assert.ThrowsAsync<ExternalServiceException>(() =>
-            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Groceries" }]));
+            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
     }
 
     [Fact]
@@ -333,7 +343,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var sut = CreateService(handler);
 
         var exception = await Assert.ThrowsAsync<ExternalServiceException>(() =>
-            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Groceries" }]));
+            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
 
         Assert.Contains("unavailable", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -351,7 +361,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var sut = CreateService(handler, logger);
 
         await Assert.ThrowsAsync<ExternalServiceException>(() =>
-            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Groceries" }]));
+            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
 
         Assert.DoesNotContain(logger.Messages, message => message.Contains(sensitiveErrorBody, StringComparison.Ordinal));
         Assert.Contains(logger.Messages, message => message.Contains("DeepSeek savings tips request failed", StringComparison.Ordinal));
@@ -485,4 +495,3 @@ public sealed class DeepSeekAiAdvisorServiceTests
         }
     }
 }
-

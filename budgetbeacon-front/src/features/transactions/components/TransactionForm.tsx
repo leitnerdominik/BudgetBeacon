@@ -51,7 +51,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
   const [description, setDescription] = useState(transaction?.description ?? "");
   const [notes, setNotes] = useState(transaction?.notes ?? "");
   const [category, setCategory] = useState(
-    transaction?.category ?? "Uncategorized",
+    transaction?.category ?? "Food & Groceries",
   );
 
   const parsedAmount = Number(amount);
@@ -247,14 +247,15 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                   const selected = option.value === category;
 
                   return (
-                    <Grid key={option.value} size={{ xs: 6, sm: 4, md: 3 }}>
+                    <Grid key={option.value} size={{ xs: 12, sm: 6, md: 4 }}>
                       <ButtonBase
                         onClick={() => setCategory(option.value)}
                         disabled={isPending}
                         aria-pressed={selected}
                         sx={{
                           width: "100%",
-                          minHeight: 104,
+                          height: "100%",
+                          minHeight: 142,
                           p: 1.5,
                           border: "1px solid",
                           borderColor: selected ? "primary.main" : "divider",
@@ -273,11 +274,20 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                           },
                         }}
                       >
-                        <Stack spacing={1} alignItems="center">
+                        <Stack spacing={1} alignItems="flex-start" sx={{ width: "100%" }}>
                           <option.Icon color="inherit" />
-                          <Typography variant="body2" fontWeight={700} textAlign="center">
-                            {option.value}
-                          </Typography>
+                          <Box>
+                            <Typography variant="body2" fontWeight={700}>
+                              {option.value}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color={selected ? "primary.dark" : "text.secondary"}
+                              sx={{ display: "block", mt: 0.5, lineHeight: 1.35 }}
+                            >
+                              {option.description}
+                            </Typography>
+                          </Box>
                         </Stack>
                       </ButtonBase>
                     </Grid>

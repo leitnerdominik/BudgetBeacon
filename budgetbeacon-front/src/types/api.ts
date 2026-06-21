@@ -105,16 +105,18 @@ export interface RecurringExpenseCandidate {
 }
 
 export type RegionalTipCategory =
+  | "Income"
+  | "Housing & Utilities"
+  | "Food & Groceries"
+  | "Eating Out"
   | "Transport"
-  | "Energy"
-  | "Groceries"
-  | "Lifestyle"
-  | "Housing"
-  | "Utilities"
-  | "Entertainment"
-  | "Health"
-  | "Subscriptions"
-  | "Income";
+  | "Health & Insurance"
+  | "Shopping & Personal"
+  | "Leisure & Hobbies"
+  | "Travel"
+  | "Subscriptions & Services"
+  | "Savings & Investments"
+  | "Transfers & Adjustments";
 
 export interface RegionalTip {
   id: string;

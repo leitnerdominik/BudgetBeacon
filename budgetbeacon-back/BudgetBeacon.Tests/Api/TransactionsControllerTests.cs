@@ -84,13 +84,13 @@ public sealed class TransactionsControllerTests
             new DateOnly(2026, 6, 4),
             -12.34m,
             "  Grocery store  ",
-            "groceries",
+            "food & groceries",
             "  Weekly shopping  "));
 
         var created = Assert.IsType<CreatedResult>(result);
         var transaction = Assert.IsType<Transaction>(created.Value);
         Assert.Equal("user-1", transaction.UserId);
-        Assert.Equal("Groceries", transaction.Category);
+        Assert.Equal("Food & Groceries", transaction.Category);
         Assert.Equal("Weekly shopping", transaction.Notes);
         Assert.Equal("Grocery store", transaction.Metadata.RawDescription);
         Assert.Same(transaction, Assert.Single(repository.AddedTransactions));
@@ -124,7 +124,7 @@ public sealed class TransactionsControllerTests
             new DateOnly(2026, 6, 4),
             -12.34m,
             "Grocery store",
-            "Groceries",
+            "Food & Groceries",
             new string('a', 501)));
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);

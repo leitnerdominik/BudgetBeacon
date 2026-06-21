@@ -15,6 +15,9 @@ namespace BudgetBeacon.Infrastructure.External;
 public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 {
     private const string DefaultModel = "deepseek-v4-flash";
+    private const string DefaultCategory = "Shopping & Personal";
+    private static readonly string AllowedCategoryValues =
+        string.Join(", ", TransactionCategories.UserFacing);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -220,7 +223,9 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                 You are an expert financial categorization AI.
                 Context: {BuildLocationContext(aiLocationContext)}
 
-                Task: Categorize the following bank transactions into standard budgeting categories (e.g., Groceries, Housing, Utilities, Entertainment, Salary, Transport, Health, Subscriptions).
+                Task: Categorize the following bank transactions into standard budgeting categories.
+
+                Allowed Category values: {AllowedCategoryValues}
 
                 CRUCIAL INSTRUCTION: For EACH transaction, you MUST calculate a realistic 'Confidence' score between 0.0 (completely guessing) and 1.0 (absolutely certain) based on how recognizable the description is. Do not just copy the example value!
 
@@ -257,7 +262,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                  }}
                ]
             3. Allowed Impact values: High, Medium, Low.
-            4. Allowed Category values: Transport, Energy, Groceries, Lifestyle, Housing, Utilities, Entertainment, Health, Subscriptions, Income.
+            4. Allowed Category values: {AllowedCategoryValues}.
             5. Keep each title under 60 characters.
             6. Description must be plain text, readable in a web UI, and may include the EUR symbol.
 
@@ -329,9 +334,9 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         var normalized = category?.Trim();
 
         if (string.IsNullOrWhiteSpace(normalized))
-            return "Lifestyle";
+            return DefaultCategory;
 
-        return TransactionCategories.Normalize(normalized) ?? "Lifestyle";
+        return TransactionCategories.NormalizeUserFacing(normalized) ?? DefaultCategory;
     }
 
     private static string NormalizeJsonText(string text)
