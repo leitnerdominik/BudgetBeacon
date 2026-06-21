@@ -37,7 +37,7 @@ import { useCategorizeUncategorizedTransactions } from "../hooks/useCategorizeUn
 import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
-import { CsvUploadButton } from "./CsvUploadButton";
+import { TransactionImportButton } from "./TransactionImportButton";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import type { PaginatedTransactions, Transaction } from "../types";
 
@@ -216,7 +216,7 @@ export const TransactionList = () => {
           >
             Categorize uncategorized
           </Button>
-          <CsvUploadButton />
+          <TransactionImportButton />
         </Stack>
       </Box>
       {showRefreshError ? (
@@ -261,7 +261,7 @@ export const TransactionList = () => {
       ) : !hasTransactions ? (
         <StatusMessage
           title="No transactions available yet"
-          description="Add a transaction manually or import a CSV file to populate your transaction history."
+          description="Add a transaction manually or import a CSV/XLSX file to populate your transaction history."
           minHeight={280}
         />
       ) : isMobile ? (

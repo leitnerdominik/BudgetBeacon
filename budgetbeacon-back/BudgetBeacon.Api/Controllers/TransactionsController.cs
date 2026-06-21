@@ -13,10 +13,11 @@ namespace BudgetBeacon.Api.Controllers;
 [Route("api/[controller]")]
 public class TransactionsController : ControllerBase
 {
-    private const long MaxCsvUploadSizeBytes = 5 * 1024 * 1024;
-    private static readonly HashSet<string> AllowedCsvExtensions = new(StringComparer.OrdinalIgnoreCase)
+    private const long MaxTransactionImportSizeBytes = 5 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedTransactionImportExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".csv"
+        ".csv",
+        ".xlsx"
     };
     private static readonly HashSet<string> AllowedCsvContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -24,12 +25,16 @@ public class TransactionsController : ControllerBase
         "application/csv",
         "application/vnd.ms-excel"
     };
+    private static readonly HashSet<string> AllowedXlsxContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    };
 
     private readonly ITransactionRepository _repository;
     private readonly IUserPreferencesRepository _userPreferencesRepository;
     private readonly StatisticsAggregationService _statisticsAggregationService;
     private readonly IAiAdvisorService _aiService;
-    private readonly ICsvReaderService _csvReader;
+    private readonly ITransactionImportParser _transactionImportParser;
     private readonly ILogger<TransactionsController> _logger;
 
     public TransactionsController(
@@ -37,14 +42,14 @@ public class TransactionsController : ControllerBase
         IUserPreferencesRepository userPreferencesRepository,
         StatisticsAggregationService statisticsAggregationService,
         IAiAdvisorService aiService,
-        ICsvReaderService csvReader,
+        ITransactionImportParser transactionImportParser,
         ILogger<TransactionsController> logger)
     {
         _repository = repository;
         _userPreferencesRepository = userPreferencesRepository;
         _statisticsAggregationService = statisticsAggregationService;
         _aiService = aiService;
-        _csvReader = csvReader;
+        _transactionImportParser = transactionImportParser;
         _logger = logger;
     }
 
@@ -500,11 +505,15 @@ public class TransactionsController : ControllerBase
     }
 
     [HttpPost("import")]
-    [RequestFormLimits(MultipartBodyLengthLimit = MaxCsvUploadSizeBytes)]
-    [RequestSizeLimit(MaxCsvUploadSizeBytes)]
-    public async Task<IActionResult> UploadCsv(
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxTransactionImportSizeBytes)]
+    [RequestSizeLimit(MaxTransactionImportSizeBytes)]
+    public async Task<IActionResult> ImportTransactions(
         [FromForm] IFormFile? file,
-        [FromForm] string? delimiter = null)
+        [FromForm] string? delimiter = null,
+        [FromForm] bool hasHeaderRow = true,
+        [FromForm] int? dateColumnIndex = null,
+        [FromForm] int? amountColumnIndex = null,
+        [FromForm] int? descriptionColumnIndex = null)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -515,41 +524,50 @@ public class TransactionsController : ControllerBase
         if (file == null || file.Length == 0)
         {
             return this.ApiValidationProblem(
-                "Invalid CSV upload",
-                "A non-empty CSV file is required.",
-                errors => errors.AddModelError(nameof(file), "Please upload a CSV file."));
+                "Invalid transaction import",
+                "A non-empty CSV or XLSX file is required.",
+                errors => errors.AddModelError(nameof(file), "Please upload a CSV or XLSX file."));
         }
 
         var fileExtension = Path.GetExtension(file.FileName);
 
-        if (!AllowedCsvExtensions.Contains(fileExtension))
+        if (!AllowedTransactionImportExtensions.Contains(fileExtension))
         {
             return this.ApiValidationProblem(
-                "Invalid CSV upload",
-                "Only .csv files are supported.",
-                errors => errors.AddModelError(nameof(file), "The uploaded file must have a .csv extension."));
+                "Invalid transaction import",
+                "Only .csv and .xlsx files are supported.",
+                errors => errors.AddModelError(nameof(file), "The uploaded file must have a .csv or .xlsx extension."));
         }
 
-        if (file.Length > MaxCsvUploadSizeBytes)
+        if (file.Length > MaxTransactionImportSizeBytes)
         {
             return this.ApiValidationProblem(
-                "Invalid CSV upload",
-                $"The uploaded file exceeds the {MaxCsvUploadSizeBytes / (1024 * 1024)} MB limit.",
+                "Invalid transaction import",
+                $"The uploaded file exceeds the {MaxTransactionImportSizeBytes / (1024 * 1024)} MB limit.",
                 errors => errors.AddModelError(nameof(file), "The uploaded file is too large."));
         }
 
-        if (!string.IsNullOrWhiteSpace(file.ContentType) && !AllowedCsvContentTypes.Contains(file.ContentType))
+        if (!IsSupportedImportContentType(fileExtension, file.ContentType))
         {
             return this.ApiValidationProblem(
-                "Invalid CSV upload",
-                "The uploaded file does not look like a supported CSV file.",
+                "Invalid transaction import",
+                "The uploaded file does not look like a supported transaction import file.",
                 errors => errors.AddModelError(nameof(file), "Unsupported file content type."));
         }
 
-        _logger.LogInformation("API processing CSV upload: {FileName}", file.FileName);
+        _logger.LogInformation("API processing transaction import: {FileName}", file.FileName);
 
         using var stream = file.OpenReadStream();
-        var parsedTransactions = _csvReader.ParseTransactions(stream, delimiter).ToList();
+        var parsedTransactions = string.Equals(fileExtension, ".xlsx", StringComparison.OrdinalIgnoreCase)
+            ? _transactionImportParser.ParseXlsxTransactions(
+                    stream,
+                    new TransactionImportMapping(
+                        hasHeaderRow,
+                        dateColumnIndex,
+                        amountColumnIndex,
+                        descriptionColumnIndex))
+                .ToList()
+            : _transactionImportParser.ParseCsvTransactions(stream, delimiter).ToList();
         parsedTransactions.ForEach(transaction =>
         {
             transaction.UserId = userId;
@@ -559,9 +577,9 @@ public class TransactionsController : ControllerBase
         if (!parsedTransactions.Any())
         {
             return this.ApiValidationProblem(
-                "Invalid CSV upload",
+                "Invalid transaction import",
                 "No valid transactions were found in the uploaded file.",
-                errors => errors.AddModelError(nameof(file), "The uploaded CSV file does not contain any valid transaction rows."));
+                errors => errors.AddModelError(nameof(file), "The uploaded file does not contain any valid transaction rows."));
         }
 
         var importedCount = await _repository.AddImportedTransactionsAsync(parsedTransactions);
@@ -573,6 +591,18 @@ public class TransactionsController : ControllerBase
             Imported = importedCount,
             DuplicatesSkipped = parsedTransactions.Count - importedCount
         });
+    }
+
+    private static bool IsSupportedImportContentType(string fileExtension, string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            return true;
+        }
+
+        return fileExtension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase)
+            ? AllowedXlsxContentTypes.Contains(contentType)
+            : AllowedCsvContentTypes.Contains(contentType);
     }
 
     [HttpPut("{transactionId:guid}")]

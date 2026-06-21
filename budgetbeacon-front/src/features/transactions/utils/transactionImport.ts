@@ -1,11 +1,16 @@
-export interface ParsedCsvFile {
+import { readSheet } from "read-excel-file/browser";
+
+export type TransactionImportFileKind = "csv" | "xlsx";
+
+export interface ParsedTransactionImportFile {
   rows: string[][];
   delimiter: string;
+  fileKind: TransactionImportFileKind;
 }
 
 export type CsvDelimiterOption = "auto" | "semicolon" | "comma" | "tab";
 
-export interface CsvImportColumn {
+export interface TransactionImportColumn {
   key: string;
   index: number;
   columnLetter: string;
@@ -14,23 +19,25 @@ export interface CsvImportColumn {
   sampleValue: string;
 }
 
-export interface CsvImportPreview {
-  columns: CsvImportColumn[];
+export interface TransactionImportPreview {
+  columns: TransactionImportColumn[];
   previewRows: string[][];
   totalRowCount: number;
 }
 
-export interface CsvImportMapping {
+export interface TransactionImportMapping {
   hasHeaderRow: boolean;
   dateColumnKey: string;
   amountColumnKey: string;
   descriptionColumnKey: string;
 }
 
-const csvImportMappingStorageKey = "transactions.csvImportMapping.v2";
+type ExcelCellValue = string | number | boolean | Date | null;
+
+const transactionImportMappingStorageKey = "transactions.importMapping.v3";
 const previewRowLimit = 5;
-export const maxCsvFileSizeBytes = 5 * 1024 * 1024;
-export const maxCsvRowCount = 10_000;
+export const maxTransactionImportFileSizeBytes = 5 * 1024 * 1024;
+export const maxTransactionImportRowCount = 10_000;
 
 const fieldHeaderAliases = {
   date: ["datum", "buchungstag", "date", "wertstellung", "valuta"],
@@ -48,11 +55,25 @@ const fieldHeaderAliases = {
   ],
 } as const;
 
-export const defaultCsvImportMapping: CsvImportMapping = {
+export const defaultTransactionImportMapping: TransactionImportMapping = {
   hasHeaderRow: true,
   dateColumnKey: "",
   amountColumnKey: "",
   descriptionColumnKey: "",
+};
+
+export const getTransactionImportFileKind = (
+  file: File,
+): TransactionImportFileKind => {
+  if (/\.xlsx$/i.test(file.name)) {
+    return "xlsx";
+  }
+
+  if (/\.csv$/i.test(file.name)) {
+    return "csv";
+  }
+
+  throw new Error("Select a .csv or .xlsx file to import transactions.");
 };
 
 const stripBom = (value: string) => value.replace(/^\uFEFF/, "");
@@ -107,13 +128,31 @@ const detectDelimiter = (csvText: string) => {
   return bestDelimiter?.occurrences ? bestDelimiter.delimiter : ";";
 };
 
+const formatDateCell = (value: Date) => {
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${value.getFullYear()}-${month}-${day}`;
+};
+
+const formatCellValue = (value: ExcelCellValue) => {
+  if (value === null) {
+    return "";
+  }
+
+  if (value instanceof Date) {
+    return formatDateCell(value);
+  }
+
+  return String(value).trim();
+};
+
 const isNonEmptyRow = (row: string[]) =>
   row.some((cell) => cell.trim().length > 0);
 
-const assertCsvRowLimit = (rows: string[][]) => {
-  if (rows.length > maxCsvRowCount) {
+const assertTransactionImportRowLimit = (rows: string[][]) => {
+  if (rows.length > maxTransactionImportRowCount) {
     throw new Error(
-      `The selected CSV file contains more than ${maxCsvRowCount.toLocaleString(
+      `The selected file contains more than ${maxTransactionImportRowCount.toLocaleString(
         "en-US",
       )} data row(s). Split the file and import it in smaller batches.`,
     );
@@ -126,7 +165,7 @@ const pushParsedRow = (rows: string[][], row: string[]) => {
   }
 
   rows.push(row);
-  assertCsvRowLimit(rows);
+  assertTransactionImportRowLimit(rows);
 };
 
 const parseCsvRows = (csvText: string, delimiter: string) => {
@@ -207,34 +246,36 @@ const getDataRows = (rows: string[][], hasHeaderRow: boolean) =>
 
 const getFallbackColumnLabel = (index: number) => `Column ${toColumnLetter(index)}`;
 
-export const readStoredCsvImportMapping = (): CsvImportMapping => {
+export const readStoredTransactionImportMapping = (): TransactionImportMapping => {
   if (typeof window === "undefined") {
-    return defaultCsvImportMapping;
+    return defaultTransactionImportMapping;
   }
 
   try {
-    const rawValue = window.localStorage.getItem(csvImportMappingStorageKey);
+    const rawValue = window.localStorage.getItem(transactionImportMappingStorageKey);
     if (!rawValue) {
-      return defaultCsvImportMapping;
+      return defaultTransactionImportMapping;
     }
 
-    const parsedValue = JSON.parse(rawValue) as Partial<CsvImportMapping>;
+    const parsedValue = JSON.parse(rawValue) as Partial<TransactionImportMapping>;
     return {
-      ...defaultCsvImportMapping,
+      ...defaultTransactionImportMapping,
       ...parsedValue,
     };
   } catch {
-    return defaultCsvImportMapping;
+    return defaultTransactionImportMapping;
   }
 };
 
-export const storeCsvImportMapping = (mapping: CsvImportMapping) => {
+export const storeTransactionImportMapping = (
+  mapping: TransactionImportMapping,
+) => {
   if (typeof window === "undefined") {
     return;
   }
 
   window.localStorage.setItem(
-    csvImportMappingStorageKey,
+    transactionImportMappingStorageKey,
     JSON.stringify(mapping),
   );
 };
@@ -242,7 +283,7 @@ export const storeCsvImportMapping = (mapping: CsvImportMapping) => {
 export const parseCsvText = (
   csvText: string,
   delimiterOption: CsvDelimiterOption = "auto",
-): ParsedCsvFile => {
+): ParsedTransactionImportFile => {
   const delimiter = resolveDelimiterOption(delimiterOption) ?? detectDelimiter(csvText);
   const rows = parseCsvRows(csvText, delimiter);
 
@@ -253,31 +294,56 @@ export const parseCsvText = (
   return {
     rows,
     delimiter,
+    fileKind: "csv",
   };
 };
 
-export const parseCsvFile = async (
+const parseXlsxFile = async (
+  file: File,
+): Promise<ParsedTransactionImportFile> => {
+  const rows = ((await readSheet(file)) as ExcelCellValue[][])
+    .map((row) => row.map(formatCellValue))
+    .filter(isNonEmptyRow);
+
+  assertTransactionImportRowLimit(rows);
+
+  if (rows.length === 0) {
+    throw new Error("The selected XLSX file is empty.");
+  }
+
+  return {
+    rows,
+    delimiter: ";",
+    fileKind: "xlsx",
+  };
+};
+
+export const parseTransactionImportFile = async (
   file: File,
   delimiterOption: CsvDelimiterOption = "auto",
-): Promise<ParsedCsvFile> => {
-  if (file.size > maxCsvFileSizeBytes) {
+): Promise<ParsedTransactionImportFile> => {
+  if (file.size > maxTransactionImportFileSizeBytes) {
     throw new Error(
-      `The selected CSV file is too large. The maximum size is ${Math.floor(
-        maxCsvFileSizeBytes / 1024 / 1024,
+      `The selected file is too large. The maximum size is ${Math.floor(
+        maxTransactionImportFileSizeBytes / 1024 / 1024,
       )} MB.`,
     );
   }
 
-  return parseCsvText(await file.text(), delimiterOption);
+  const fileKind = getTransactionImportFileKind(file);
+
+  return fileKind === "xlsx"
+    ? parseXlsxFile(file)
+    : parseCsvText(await file.text(), delimiterOption);
 };
 
-export const getCsvImportPreview = (
-  parsedCsv: ParsedCsvFile,
+export const getTransactionImportPreview = (
+  parsedFile: ParsedTransactionImportFile,
   hasHeaderRow: boolean,
-): CsvImportPreview => {
-  const maxColumnCount = getMaxColumnCount(parsedCsv.rows);
-  const dataRows = getDataRows(parsedCsv.rows, hasHeaderRow);
-  const headerRow = hasHeaderRow ? parsedCsv.rows[0] ?? [] : [];
+): TransactionImportPreview => {
+  const maxColumnCount = getMaxColumnCount(parsedFile.rows);
+  const dataRows = getDataRows(parsedFile.rows, hasHeaderRow);
+  const headerRow = hasHeaderRow ? parsedFile.rows[0] ?? [] : [];
 
   const columns = Array.from({ length: maxColumnCount }, (_, index) => {
     const columnLetter = toColumnLetter(index);
@@ -307,7 +373,7 @@ export const getCsvImportPreview = (
 };
 
 const findSuggestedColumnKey = (
-  columns: CsvImportColumn[],
+  columns: TransactionImportColumn[],
   aliases: readonly string[],
   excludedKeys: Set<string>,
 ) => {
@@ -324,16 +390,17 @@ const findSuggestedColumnKey = (
 };
 
 const pickFirstAvailableColumnKey = (
-  columns: CsvImportColumn[],
+  columns: TransactionImportColumn[],
   excludedKeys: Set<string>,
 ) => columns.find((column) => !excludedKeys.has(column.key))?.key ?? "";
 
-export const suggestCsvImportMapping = (
-  columns: CsvImportColumn[],
-  previousMapping?: CsvImportMapping,
-): CsvImportMapping => {
-  const nextMapping: CsvImportMapping = {
-    hasHeaderRow: previousMapping?.hasHeaderRow ?? defaultCsvImportMapping.hasHeaderRow,
+export const suggestTransactionImportMapping = (
+  columns: TransactionImportColumn[],
+  previousMapping?: TransactionImportMapping,
+): TransactionImportMapping => {
+  const nextMapping: TransactionImportMapping = {
+    hasHeaderRow:
+      previousMapping?.hasHeaderRow ?? defaultTransactionImportMapping.hasHeaderRow,
     dateColumnKey: "",
     amountColumnKey: "",
     descriptionColumnKey: "",
@@ -354,7 +421,9 @@ export const suggestCsvImportMapping = (
     }
   }
 
-  nextMapping.amountColumnKey = keepIfAvailable(previousMapping?.amountColumnKey ?? "");
+  nextMapping.amountColumnKey = keepIfAvailable(
+    previousMapping?.amountColumnKey ?? "",
+  );
   if (nextMapping.amountColumnKey && !excludedKeys.has(nextMapping.amountColumnKey)) {
     excludedKeys.add(nextMapping.amountColumnKey);
   } else {
@@ -383,9 +452,9 @@ export const suggestCsvImportMapping = (
   return nextMapping;
 };
 
-export const getCsvImportMappingValidationMessage = (
-  mapping: CsvImportMapping,
-  columns: CsvImportColumn[],
+export const getTransactionImportMappingValidationMessage = (
+  mapping: TransactionImportMapping,
+  columns: TransactionImportColumn[],
 ) => {
   const requiredFields = [
     { label: "Date", key: mapping.dateColumnKey },
@@ -417,15 +486,15 @@ export const getCsvImportMappingValidationMessage = (
   return null;
 };
 
-const resolveColumnIndex = (key: string) => Number.parseInt(key, 10);
+export const resolveImportColumnIndex = (key: string) => Number.parseInt(key, 10);
 
 export const createMappedCsvFile = (
   originalFile: File,
-  parsedCsv: ParsedCsvFile,
-  mapping: CsvImportMapping,
+  parsedFile: ParsedTransactionImportFile,
+  mapping: TransactionImportMapping,
 ) => {
-  const preview = getCsvImportPreview(parsedCsv, mapping.hasHeaderRow);
-  const validationMessage = getCsvImportMappingValidationMessage(
+  const preview = getTransactionImportPreview(parsedFile, mapping.hasHeaderRow);
+  const validationMessage = getTransactionImportMappingValidationMessage(
     mapping,
     preview.columns,
   );
@@ -433,12 +502,12 @@ export const createMappedCsvFile = (
     throw new Error(validationMessage);
   }
 
-  const dateColumnIndex = resolveColumnIndex(mapping.dateColumnKey);
-  const amountColumnIndex = resolveColumnIndex(mapping.amountColumnKey);
+  const dateColumnIndex = resolveImportColumnIndex(mapping.dateColumnKey);
+  const amountColumnIndex = resolveImportColumnIndex(mapping.amountColumnKey);
   const descriptionColumnIndex = mapping.descriptionColumnKey
-    ? resolveColumnIndex(mapping.descriptionColumnKey)
+    ? resolveImportColumnIndex(mapping.descriptionColumnKey)
     : -1;
-  const dataRows = getDataRows(parsedCsv.rows, mapping.hasHeaderRow);
+  const dataRows = getDataRows(parsedFile.rows, mapping.hasHeaderRow);
 
   if (dataRows.length === 0) {
     throw new Error("No transaction rows were found in the selected CSV file.");
@@ -475,7 +544,7 @@ export const createMappedCsvFile = (
       ["Datum", "Betrag", "Verwendungszweck"],
       ...mappedRows,
     ],
-    parsedCsv.delimiter,
+    parsedFile.delimiter,
   );
   const outputFileName = originalFile.name.replace(/\.csv$/i, "") || "transactions";
 

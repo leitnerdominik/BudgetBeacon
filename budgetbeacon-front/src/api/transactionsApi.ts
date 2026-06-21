@@ -50,11 +50,18 @@ export interface TransactionWriteRequest {
 
 export type CreateTransactionRequest = TransactionWriteRequest;
 
-export interface CsvUploadResponse {
+export interface TransactionImportResponse {
   message: string;
   totalParsed: number;
   imported: number;
   duplicatesSkipped: number;
+}
+
+export interface TransactionImportMappingRequest {
+  hasHeaderRow: boolean;
+  dateColumnIndex: number;
+  amountColumnIndex: number;
+  descriptionColumnIndex?: number;
 }
 
 export const getTransactions = async (
@@ -166,15 +173,29 @@ export const categorizeUncategorizedTransactions =
     >("/transactions/ai/categorize", {});
   };
 
-export const uploadCsv = async (
+export const uploadTransactions = async (
   file: File,
   delimiter = "auto",
-): Promise<CsvUploadResponse> => {
+  mapping?: TransactionImportMappingRequest,
+): Promise<TransactionImportResponse> => {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("delimiter", delimiter);
 
-  return apiClient.post<CsvUploadResponse, CsvUploadResponse>(
+  if (mapping) {
+    formData.append("hasHeaderRow", String(mapping.hasHeaderRow));
+    formData.append("dateColumnIndex", String(mapping.dateColumnIndex));
+    formData.append("amountColumnIndex", String(mapping.amountColumnIndex));
+
+    if (mapping.descriptionColumnIndex !== undefined) {
+      formData.append(
+        "descriptionColumnIndex",
+        String(mapping.descriptionColumnIndex),
+      );
+    }
+  }
+
+  return apiClient.post<TransactionImportResponse, TransactionImportResponse>(
     "/transactions/import",
     formData,
     {

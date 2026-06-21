@@ -723,40 +723,40 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
-    public async Task UploadCsv_ReturnsValidationProblemForNullFile()
+    public async Task ImportTransactions_ReturnsValidationProblemForNullFile()
     {
-        var csvReader = new FakeCsvReaderService();
-        var controller = CreateController(csvReader: csvReader);
+        var importParser = new FakeTransactionImportParser();
+        var controller = CreateController(importParser: importParser);
 
-        var result = await controller.UploadCsv(null);
+        var result = await controller.ImportTransactions(null);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
         Assert.Contains("file", problem.Errors.Keys);
-        Assert.Equal(0, csvReader.ParseCalls);
+        Assert.Equal(0, importParser.ParseCalls);
     }
 
     [Fact]
-    public async Task UploadCsv_ReturnsValidationProblemForUnsupportedFileExtension()
+    public async Task ImportTransactions_ReturnsValidationProblemForUnsupportedFileExtension()
     {
-        var csvReader = new FakeCsvReaderService();
-        var controller = CreateController(csvReader: csvReader);
+        var importParser = new FakeTransactionImportParser();
+        var controller = CreateController(importParser: importParser);
         var file = CreateFormFile("transactions.txt", "text/csv");
 
-        var result = await controller.UploadCsv(file, delimiter: "comma");
+        var result = await controller.ImportTransactions(file, delimiter: "comma");
 
         Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal(0, csvReader.ParseCalls);
+        Assert.Equal(0, importParser.ParseCalls);
     }
 
     [Fact]
-    public async Task UploadCsv_UsesAtomicImportAndAssignsCurrentUserAndFingerprints()
+    public async Task ImportTransactions_UsesAtomicImportAndAssignsCurrentUserAndFingerprints()
     {
         var repository = new FakeTransactionRepository
         {
             ImportedCount = 1
         };
-        var csvReader = new FakeCsvReaderService
+        var importParser = new FakeTransactionImportParser
         {
             ParsedTransactions =
             [
@@ -774,10 +774,10 @@ public sealed class TransactionsControllerTests
                 }
             ]
         };
-        var controller = CreateController(repository, csvReader: csvReader);
+        var controller = CreateController(repository, importParser: importParser);
         var file = CreateFormFile("transactions.csv", "text/csv");
 
-        var result = await controller.UploadCsv(file, delimiter: "comma");
+        var result = await controller.ImportTransactions(file, delimiter: "comma");
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(2, GetValue<int>(ok.Value, "TotalParsed"));
@@ -785,13 +785,52 @@ public sealed class TransactionsControllerTests
         Assert.Equal(1, GetValue<int>(ok.Value, "DuplicatesSkipped"));
 
         Assert.Equal(2, repository.ImportAttemptedTransactions.Count);
-        Assert.Equal("comma", csvReader.LastDelimiter);
+        Assert.Equal("comma", importParser.LastDelimiter);
         Assert.All(repository.ImportAttemptedTransactions, transaction =>
         {
             Assert.Equal("user-1", transaction.UserId);
             Assert.Equal(TransactionImportFingerprint.Create(transaction), transaction.ImportFingerprint);
         });
         Assert.Empty(repository.AddedTransactions);
+    }
+
+    [Fact]
+    public async Task ImportTransactions_AcceptsXlsxAndPassesMappingToParser()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            ImportedCount = 1
+        };
+        var importParser = new FakeTransactionImportParser
+        {
+            ParsedTransactions =
+            [
+                new Transaction
+                {
+                    Date = new DateTime(2026, 6, 1),
+                    Amount = -42.10m,
+                    Metadata = new TransactionMetadata { RawDescription = "Card payment" }
+                }
+            ]
+        };
+        var controller = CreateController(repository, importParser: importParser);
+        var file = CreateFormFile(
+            "transactions.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+        var result = await controller.ImportTransactions(
+            file,
+            hasHeaderRow: true,
+            dateColumnIndex: 2,
+            amountColumnIndex: 4,
+            descriptionColumnIndex: 5);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, GetValue<int>(ok.Value, "TotalParsed"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "Imported"));
+        Assert.Equal(1, importParser.ParseCalls);
+        Assert.Equal(new TransactionImportMapping(true, 2, 4, 5), importParser.LastXlsxMapping);
+        Assert.Equal("user-1", repository.ImportAttemptedTransactions.Single().UserId);
     }
 
     [Fact]
@@ -1137,7 +1176,7 @@ public sealed class TransactionsControllerTests
         FakeTransactionRepository? repository = null,
         FakeUserPreferencesRepository? preferencesRepository = null,
         FakeAiAdvisorService? aiService = null,
-        FakeCsvReaderService? csvReader = null,
+        FakeTransactionImportParser? importParser = null,
         string? userId = "user-1")
     {
         var controller = new TransactionsController(
@@ -1145,7 +1184,7 @@ public sealed class TransactionsControllerTests
             preferencesRepository ?? new FakeUserPreferencesRepository(),
             new StatisticsAggregationService(new FinanceAggregationService()),
             aiService ?? new FakeAiAdvisorService(),
-            csvReader ?? new FakeCsvReaderService(),
+            importParser ?? new FakeTransactionImportParser(),
             NullLogger<TransactionsController>.Instance);
 
         var httpContext = new DefaultHttpContext
@@ -1403,16 +1442,26 @@ public sealed class TransactionsControllerTests
         }
     }
 
-    private sealed class FakeCsvReaderService : ICsvReaderService
+    private sealed class FakeTransactionImportParser : ITransactionImportParser
     {
         public int ParseCalls { get; private set; }
         public string? LastDelimiter { get; private set; }
+        public TransactionImportMapping? LastXlsxMapping { get; private set; }
         public IEnumerable<Transaction> ParsedTransactions { get; init; } = [];
 
-        public IEnumerable<Transaction> ParseTransactions(Stream fileStream, string? delimiter = null)
+        public IEnumerable<Transaction> ParseCsvTransactions(Stream fileStream, string? delimiter = null)
         {
             ParseCalls++;
             LastDelimiter = delimiter;
+            return ParsedTransactions;
+        }
+
+        public IEnumerable<Transaction> ParseXlsxTransactions(
+            Stream fileStream,
+            TransactionImportMapping mapping)
+        {
+            ParseCalls++;
+            LastXlsxMapping = mapping;
             return ParsedTransactions;
         }
     }

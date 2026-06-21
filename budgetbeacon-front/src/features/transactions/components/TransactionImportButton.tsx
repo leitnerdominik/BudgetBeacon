@@ -28,19 +28,20 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TuneIcon from "@mui/icons-material/Tune";
 
 import { useNotification } from "../../../components/NotificationProvider";
-import { useUploadCsv } from "../hooks/useUploadCsv";
+import { useUploadTransactions } from "../hooks/useUploadTransactions";
 import {
   createMappedCsvFile,
-  getCsvImportMappingValidationMessage,
-  getCsvImportPreview,
-  parseCsvFile,
-  readStoredCsvImportMapping,
-  storeCsvImportMapping,
-  suggestCsvImportMapping,
+  getTransactionImportMappingValidationMessage,
+  getTransactionImportPreview,
+  parseTransactionImportFile,
+  readStoredTransactionImportMapping,
+  resolveImportColumnIndex,
+  storeTransactionImportMapping,
+  suggestTransactionImportMapping,
   type CsvDelimiterOption,
-  type CsvImportMapping,
-  type ParsedCsvFile,
-} from "../utils/csvImport";
+  type ParsedTransactionImportFile,
+  type TransactionImportMapping,
+} from "../utils/transactionImport";
 
 const delimiterOptions: { value: CsvDelimiterOption; label: string }[] = [
   { value: "auto", label: "Auto-detect" },
@@ -49,7 +50,7 @@ const delimiterOptions: { value: CsvDelimiterOption; label: string }[] = [
   { value: "tab", label: "Tab" },
 ];
 
-export const CsvUploadButton = () => {
+export const TransactionImportButton = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showNotification } = useNotification();
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -57,30 +58,32 @@ export const CsvUploadButton = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedDelimiter, setSelectedDelimiter] =
     useState<CsvDelimiterOption>("auto");
-  const [parsedCsv, setParsedCsv] = useState<ParsedCsvFile | null>(null);
-  const [mapping, setMapping] = useState<CsvImportMapping>(() =>
-    readStoredCsvImportMapping(),
+  const [parsedFile, setParsedFile] = useState<ParsedTransactionImportFile | null>(
+    null,
+  );
+  const [mapping, setMapping] = useState<TransactionImportMapping>(() =>
+    readStoredTransactionImportMapping(),
   );
 
-  // Destructure our mutation function (mutate) and the loading state (isPending)
-  const { mutateAsync, isPending } = useUploadCsv();
+  const { mutateAsync, isPending } = useUploadTransactions();
   const preview = useMemo(
-    () => (parsedCsv ? getCsvImportPreview(parsedCsv, mapping.hasHeaderRow) : null),
-    [parsedCsv, mapping.hasHeaderRow],
+    () =>
+      parsedFile ? getTransactionImportPreview(parsedFile, mapping.hasHeaderRow) : null,
+    [parsedFile, mapping.hasHeaderRow],
   );
   const validationMessage = preview
-    ? getCsvImportMappingValidationMessage(mapping, preview.columns)
+    ? getTransactionImportMappingValidationMessage(mapping, preview.columns)
     : null;
+  const isXlsxImport = parsedFile?.fileKind === "xlsx";
 
   const handleButtonClick = () => {
-    // Programmatically click the hidden file input
     fileInputRef.current?.click();
   };
 
   const closeWizard = () => {
     setIsWizardOpen(false);
     setSelectedFile(null);
-    setParsedCsv(null);
+    setParsedFile(null);
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -96,16 +99,22 @@ export const CsvUploadButton = () => {
     setIsParsingFile(true);
 
     try {
-      const storedMapping = readStoredCsvImportMapping();
-      const parsedFile = await parseCsvFile(file, selectedDelimiter);
-      const initialPreview = getCsvImportPreview(parsedFile, storedMapping.hasHeaderRow);
-      const suggestedMapping = suggestCsvImportMapping(
+      const storedMapping = readStoredTransactionImportMapping();
+      const parsedImportFile = await parseTransactionImportFile(
+        file,
+        selectedDelimiter,
+      );
+      const initialPreview = getTransactionImportPreview(
+        parsedImportFile,
+        storedMapping.hasHeaderRow,
+      );
+      const suggestedMapping = suggestTransactionImportMapping(
         initialPreview.columns,
         storedMapping,
       );
 
       setSelectedFile(file);
-      setParsedCsv(parsedFile);
+      setParsedFile(parsedImportFile);
       setMapping({
         ...suggestedMapping,
         hasHeaderRow: storedMapping.hasHeaderRow,
@@ -115,7 +124,7 @@ export const CsvUploadButton = () => {
       showNotification({
         severity: "error",
         message:
-          error instanceof Error ? error.message : "Failed to read the CSV file.",
+          error instanceof Error ? error.message : "Failed to read the file.",
       });
     } finally {
       setIsParsingFile(false);
@@ -123,7 +132,7 @@ export const CsvUploadButton = () => {
   };
 
   const handleHeaderRowChange = (hasHeaderRow: boolean) => {
-    if (!parsedCsv) {
+    if (!parsedFile) {
       setMapping((current) => ({
         ...current,
         hasHeaderRow,
@@ -131,10 +140,13 @@ export const CsvUploadButton = () => {
       return;
     }
 
-    const previewForHeaderMode = getCsvImportPreview(parsedCsv, hasHeaderRow);
+    const previewForHeaderMode = getTransactionImportPreview(
+      parsedFile,
+      hasHeaderRow,
+    );
 
     setMapping((current) =>
-      suggestCsvImportMapping(previewForHeaderMode.columns, {
+      suggestTransactionImportMapping(previewForHeaderMode.columns, {
         ...current,
         hasHeaderRow,
       }),
@@ -151,17 +163,23 @@ export const CsvUploadButton = () => {
     setIsParsingFile(true);
 
     try {
-      const parsedFile = await parseCsvFile(selectedFile, delimiter);
-      const previewForDelimiter = getCsvImportPreview(
-        parsedFile,
+      const parsedImportFile = await parseTransactionImportFile(
+        selectedFile,
+        delimiter,
+      );
+      const previewForDelimiter = getTransactionImportPreview(
+        parsedImportFile,
         mapping.hasHeaderRow,
       );
-      const suggestedMapping = suggestCsvImportMapping(previewForDelimiter.columns, {
-        ...mapping,
-        hasHeaderRow: mapping.hasHeaderRow,
-      });
+      const suggestedMapping = suggestTransactionImportMapping(
+        previewForDelimiter.columns,
+        {
+          ...mapping,
+          hasHeaderRow: mapping.hasHeaderRow,
+        },
+      );
 
-      setParsedCsv(parsedFile);
+      setParsedFile(parsedImportFile);
       setMapping(suggestedMapping);
     } catch (error) {
       showNotification({
@@ -185,20 +203,39 @@ export const CsvUploadButton = () => {
   };
 
   const handleImport = async () => {
-    if (!selectedFile || !parsedCsv || !preview || validationMessage) {
+    if (!selectedFile || !parsedFile || !preview || validationMessage) {
       return;
     }
 
     try {
-      const preparedFile = createMappedCsvFile(selectedFile, parsedCsv, mapping);
-      storeCsvImportMapping(mapping);
-      await mutateAsync({ file: preparedFile, delimiter: selectedDelimiter });
+      storeTransactionImportMapping(mapping);
+
+      if (parsedFile.fileKind === "xlsx") {
+        await mutateAsync({
+          file: selectedFile,
+          delimiter: "auto",
+          mapping: {
+            hasHeaderRow: mapping.hasHeaderRow,
+            dateColumnIndex: resolveImportColumnIndex(mapping.dateColumnKey),
+            amountColumnIndex: resolveImportColumnIndex(mapping.amountColumnKey),
+            descriptionColumnIndex: mapping.descriptionColumnKey
+              ? resolveImportColumnIndex(mapping.descriptionColumnKey)
+              : undefined,
+          },
+        });
+      } else {
+        const preparedFile = createMappedCsvFile(selectedFile, parsedFile, mapping);
+        await mutateAsync({ file: preparedFile, delimiter: selectedDelimiter });
+      }
+
       closeWizard();
     } catch (error) {
       showNotification({
         severity: "error",
         message:
-          error instanceof Error ? error.message : "Failed to prepare the CSV import.",
+          error instanceof Error
+            ? error.message
+            : "Failed to prepare the transaction import.",
       });
     }
   };
@@ -218,13 +255,16 @@ export const CsvUploadButton = () => {
         onClick={handleButtonClick}
         disabled={isPending || isParsingFile}
       >
-        {isPending ? "Uploading..." : isParsingFile ? "Reading CSV..." : "Upload CSV"}
+        {isPending
+          ? "Uploading..."
+          : isParsingFile
+            ? "Reading file..."
+            : "Upload transactions"}
       </Button>
 
-      {/* The hidden native file input */}
       <input
         type="file"
-        accept=".csv"
+        accept=".csv,.xlsx"
         ref={fileInputRef}
         onChange={handleFileChange}
         style={{ display: "none" }}
@@ -236,7 +276,7 @@ export const CsvUploadButton = () => {
         fullWidth
         maxWidth="lg"
       >
-        <DialogTitle>Import CSV</DialogTitle>
+        <DialogTitle>Import transactions</DialogTitle>
         <DialogContent dividers>
           {selectedFile && preview ? (
             <Stack spacing={2.5}>
@@ -260,28 +300,30 @@ export const CsvUploadButton = () => {
                   spacing={1.5}
                   alignItems={{ xs: "stretch", sm: "center" }}
                 >
-                  <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel id="csv-import-delimiter-label">
-                      Delimiter
-                    </InputLabel>
-                    <Select
-                      labelId="csv-import-delimiter-label"
-                      value={selectedDelimiter}
-                      label="Delimiter"
-                      onChange={(event) => {
-                        void handleDelimiterChange(
-                          event.target.value as CsvDelimiterOption,
-                        );
-                      }}
-                      disabled={isPending || isParsingFile}
-                    >
-                      {delimiterOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  {!isXlsxImport && (
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                      <InputLabel id="transaction-import-delimiter-label">
+                        Delimiter
+                      </InputLabel>
+                      <Select
+                        labelId="transaction-import-delimiter-label"
+                        value={selectedDelimiter}
+                        label="Delimiter"
+                        onChange={(event) => {
+                          void handleDelimiterChange(
+                            event.target.value as CsvDelimiterOption,
+                          );
+                        }}
+                        disabled={isPending || isParsingFile}
+                      >
+                        {delimiterOptions.map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
                   <FormControlLabel
                     control={
                       <Switch
@@ -304,9 +346,9 @@ export const CsvUploadButton = () => {
 
               <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
                 <FormControl fullWidth>
-                  <InputLabel id="csv-import-date-label">Date</InputLabel>
+                  <InputLabel id="transaction-import-date-label">Date</InputLabel>
                   <Select
-                    labelId="csv-import-date-label"
+                    labelId="transaction-import-date-label"
                     value={mapping.dateColumnKey}
                     label="Date"
                     onChange={(event) =>
@@ -324,9 +366,11 @@ export const CsvUploadButton = () => {
                 </FormControl>
 
                 <FormControl fullWidth>
-                  <InputLabel id="csv-import-amount-label">Amount</InputLabel>
+                  <InputLabel id="transaction-import-amount-label">
+                    Amount
+                  </InputLabel>
                   <Select
-                    labelId="csv-import-amount-label"
+                    labelId="transaction-import-amount-label"
                     value={mapping.amountColumnKey}
                     label="Amount"
                     onChange={(event) =>
@@ -344,11 +388,11 @@ export const CsvUploadButton = () => {
                 </FormControl>
 
                 <FormControl fullWidth>
-                  <InputLabel id="csv-import-description-label">
+                  <InputLabel id="transaction-import-description-label">
                     Description
                   </InputLabel>
                   <Select
-                    labelId="csv-import-description-label"
+                    labelId="transaction-import-description-label"
                     value={mapping.descriptionColumnKey}
                     label="Description"
                     onChange={(event) =>

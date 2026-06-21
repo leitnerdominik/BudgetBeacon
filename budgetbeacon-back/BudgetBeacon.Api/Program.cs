@@ -233,7 +233,7 @@ try
     builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
     builder.Services.AddScoped<FinanceAggregationService>();
     builder.Services.AddScoped<StatisticsAggregationService>();
-    builder.Services.AddScoped<ICsvReaderService, CsvReaderService>();
+    builder.Services.AddScoped<ITransactionImportParser, TransactionImportParser>();
 
     builder.Services.AddHttpClient<IAiAdvisorService, DeepSeekAiAdvisorService>((serviceProvider, client) =>
     {

@@ -1,22 +1,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { uploadCsv } from "../../../api/transactionsApi";
+import {
+  uploadTransactions,
+  type TransactionImportMappingRequest,
+} from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
 
-type UploadCsvInput = {
+type UploadTransactionsInput = {
   file: File;
   delimiter: string;
+  mapping?: TransactionImportMappingRequest;
 };
 
-export const useUploadCsv = () => {
+export const useUploadTransactions = () => {
   const queryClient = useQueryClient();
   const { showNotification } = useNotification();
 
   return useMutation({
-    mutationFn: ({ file, delimiter }: UploadCsvInput) => uploadCsv(file, delimiter),
+    mutationFn: ({ file, delimiter, mapping }: UploadTransactionsInput) =>
+      uploadTransactions(file, delimiter, mapping),
     onSuccess: (data) => {
-      // Magic happens here: Invalidate the transactions cache.
-      // This tells React Query to immediately refetch any active queries
-      // that start with the ['transactions'] key.
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["tips"] });
       showNotification({
@@ -25,11 +27,11 @@ export const useUploadCsv = () => {
       });
     },
     onError: (error) => {
-      console.error("Failed to upload CSV:", error);
+      console.error("Failed to upload transactions:", error);
       showNotification({
         severity: "error",
         message:
-          error instanceof Error ? error.message : "Failed to upload CSV.",
+          error instanceof Error ? error.message : "Failed to upload transactions.",
       });
     },
   });
