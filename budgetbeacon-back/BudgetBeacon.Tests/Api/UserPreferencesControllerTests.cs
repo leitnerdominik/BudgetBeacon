@@ -16,7 +16,15 @@ public sealed class UserPreferencesControllerTests
         {
             StoredPreferences = new UserPreferences
             {
-                AiLocationContext = "Bolzano, South Tyrol, Italy"
+                AiLocationContext = "Bolzano, South Tyrol, Italy",
+                TransactionImportBlacklistRules =
+                [
+                    new TransactionImportBlacklistRule
+                    {
+                        Type = TransactionImportBlacklistRule.LiteralType,
+                        Value = "private phrase"
+                    }
+                ]
             }
         };
         var controller = CreateController(repository);
@@ -26,6 +34,9 @@ public sealed class UserPreferencesControllerTests
         var ok = Assert.IsType<OkObjectResult>(result);
         var preferences = Assert.IsType<UserPreferences>(ok.Value);
         Assert.Equal("Bolzano, South Tyrol, Italy", preferences.AiLocationContext);
+        var rule = Assert.Single(preferences.TransactionImportBlacklistRules);
+        Assert.Equal(TransactionImportBlacklistRule.LiteralType, rule.Type);
+        Assert.Equal("private phrase", rule.Value);
         Assert.Equal("user-1", repository.LastGetUserId);
     }
 
@@ -36,13 +47,48 @@ public sealed class UserPreferencesControllerTests
         var controller = CreateController(repository);
 
         var result = await controller.Update(
-            new UserPreferencesController.UpdateUserPreferencesRequest("Merano, South Tyrol, Italy"));
+            new UserPreferencesController.UpdateUserPreferencesRequest(
+                "Merano, South Tyrol, Italy",
+                [
+                    new TransactionImportBlacklistRule
+                    {
+                        Type = " REGEX ",
+                        Value = @"\bIBAN\s+[A-Z0-9]+"
+                    }
+                ]));
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var preferences = Assert.IsType<UserPreferences>(ok.Value);
         Assert.Equal("Merano, South Tyrol, Italy", preferences.AiLocationContext);
+        var rule = Assert.Single(preferences.TransactionImportBlacklistRules);
+        Assert.Equal(TransactionImportBlacklistRule.RegexType, rule.Type);
+        Assert.Equal(@"\bIBAN\s+[A-Z0-9]+", rule.Value);
         Assert.Equal("user-1", repository.LastUpdateUserId);
         Assert.Equal("Merano, South Tyrol, Italy", repository.LastUpdatedAiLocationContext);
+        Assert.Same(repository.LastUpdatedRules, preferences.TransactionImportBlacklistRules);
+    }
+
+    [Fact]
+    public async Task Update_ReturnsValidationProblemForInvalidRegexRule()
+    {
+        var repository = new FakeUserPreferencesRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Update(
+            new UserPreferencesController.UpdateUserPreferencesRequest(
+                null,
+                [
+                    new TransactionImportBlacklistRule
+                    {
+                        Type = TransactionImportBlacklistRule.RegexType,
+                        Value = "["
+                    }
+                ]));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("TransactionImportBlacklistRules[0].Value", problem.Errors.Keys);
+        Assert.Null(repository.LastUpdateUserId);
     }
 
     [Fact]
@@ -88,6 +134,7 @@ public sealed class UserPreferencesControllerTests
         public string? LastGetUserId { get; private set; }
         public string? LastUpdateUserId { get; private set; }
         public string? LastUpdatedAiLocationContext { get; private set; }
+        public IReadOnlyList<TransactionImportBlacklistRule>? LastUpdatedRules { get; private set; }
 
         public Task<UserPreferences?> GetAsync(string userId)
         {
@@ -100,14 +147,19 @@ public sealed class UserPreferencesControllerTests
             return Task.FromResult(StoredPreferences?.AiLocationContext);
         }
 
-        public Task<UserPreferences?> UpdateAsync(string userId, string? aiLocationContext)
+        public Task<UserPreferences?> UpdateAsync(
+            string userId,
+            string? aiLocationContext,
+            IReadOnlyList<TransactionImportBlacklistRule>? transactionImportBlacklistRules)
         {
             LastUpdateUserId = userId;
             LastUpdatedAiLocationContext = aiLocationContext;
+            LastUpdatedRules = transactionImportBlacklistRules;
 
             return Task.FromResult<UserPreferences?>(new UserPreferences
             {
-                AiLocationContext = aiLocationContext
+                AiLocationContext = aiLocationContext,
+                TransactionImportBlacklistRules = transactionImportBlacklistRules ?? []
             });
         }
     }

@@ -21,9 +21,14 @@ export const useUploadTransactions = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["tips"] });
+      const redactionMessage =
+        data.redactedTransactions > 0
+          ? ` ${data.redactedTransactions} transaction description(s) redacted.`
+          : "";
+
       showNotification({
         severity: "success",
-        message: `${data.imported} transaction(s) imported, ${data.duplicatesSkipped} duplicate(s) skipped.`,
+        message: `${data.imported} transaction(s) imported, ${data.duplicatesSkipped} duplicate(s) skipped.${redactionMessage}`,
       });
     },
     onError: (error) => {

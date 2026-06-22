@@ -55,6 +55,7 @@ export interface TransactionImportResponse {
   totalParsed: number;
   imported: number;
   duplicatesSkipped: number;
+  redactedTransactions: number;
 }
 
 export interface TransactionImportMappingRequest {

@@ -22,8 +22,16 @@ export interface RegisterCredentials {
   password: string;
 }
 
+export type TransactionImportBlacklistRuleType = "literal" | "regex";
+
+export interface TransactionImportBlacklistRule {
+  type: TransactionImportBlacklistRuleType;
+  value: string;
+}
+
 export interface UserPreferences {
   aiLocationContext: string | null;
+  transactionImportBlacklistRules: TransactionImportBlacklistRule[];
 }
 
 export interface Transaction {

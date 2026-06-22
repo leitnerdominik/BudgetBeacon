@@ -834,6 +834,116 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task ImportTransactions_RedactsBlacklistedDescriptionTextBeforeSaving()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            ImportedCount = 2
+        };
+        var importParser = new FakeTransactionImportParser
+        {
+            ParsedTransactions =
+            [
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = "Card SECRET IBAN DE123 purchase"
+                    }
+                },
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 4),
+                    Amount = -20m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = "Safe purchase"
+                    }
+                }
+            ]
+        };
+        var preferencesRepository = new FakeUserPreferencesRepository
+        {
+            TransactionImportBlacklistRules =
+            [
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.LiteralType,
+                    Value = "secret"
+                },
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.RegexType,
+                    Value = @"IBAN\s+[A-Z0-9]+"
+                }
+            ]
+        };
+        var controller = CreateController(
+            repository,
+            preferencesRepository,
+            importParser: importParser);
+        var file = CreateFormFile("transactions.csv", "text/csv");
+
+        var result = await controller.ImportTransactions(file, delimiter: "comma");
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, GetValue<int>(ok.Value, "RedactedTransactions"));
+        Assert.Equal("Card purchase", repository.ImportAttemptedTransactions[0].Metadata.RawDescription);
+        Assert.Equal("Safe purchase", repository.ImportAttemptedTransactions[1].Metadata.RawDescription);
+        Assert.Equal(
+            TransactionImportFingerprint.Create(repository.ImportAttemptedTransactions[0]),
+            repository.ImportAttemptedTransactions[0].ImportFingerprint);
+    }
+
+    [Fact]
+    public async Task ImportTransactions_ImportsBlankDescriptionWhenRedactionRemovesEverything()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            ImportedCount = 1
+        };
+        var importParser = new FakeTransactionImportParser
+        {
+            ParsedTransactions =
+            [
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = "Sensitive"
+                    }
+                }
+            ]
+        };
+        var preferencesRepository = new FakeUserPreferencesRepository
+        {
+            TransactionImportBlacklistRules =
+            [
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.LiteralType,
+                    Value = "Sensitive"
+                }
+            ]
+        };
+        var controller = CreateController(
+            repository,
+            preferencesRepository,
+            importParser: importParser);
+        var file = CreateFormFile("transactions.csv", "text/csv");
+
+        var result = await controller.ImportTransactions(file, delimiter: "comma");
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, GetValue<int>(ok.Value, "RedactedTransactions"));
+        Assert.Equal(string.Empty, repository.ImportAttemptedTransactions.Single().Metadata.RawDescription);
+    }
+
+    [Fact]
     public async Task UpdateCategory_UpdatesCurrentUsersTransaction()
     {
         var transactionId = Guid.NewGuid();
@@ -1185,6 +1295,7 @@ public sealed class TransactionsControllerTests
             new StatisticsAggregationService(new FinanceAggregationService()),
             aiService ?? new FakeAiAdvisorService(),
             importParser ?? new FakeTransactionImportParser(),
+            new TransactionImportDescriptionRedactionService(),
             NullLogger<TransactionsController>.Instance);
 
         var httpContext = new DefaultHttpContext
@@ -1393,12 +1504,14 @@ public sealed class TransactionsControllerTests
     private sealed class FakeUserPreferencesRepository : IUserPreferencesRepository
     {
         public string? AiLocationContext { get; init; }
+        public IReadOnlyList<TransactionImportBlacklistRule> TransactionImportBlacklistRules { get; init; } = [];
 
         public Task<UserPreferences?> GetAsync(string userId)
         {
             return Task.FromResult<UserPreferences?>(new UserPreferences
             {
-                AiLocationContext = AiLocationContext
+                AiLocationContext = AiLocationContext,
+                TransactionImportBlacklistRules = TransactionImportBlacklistRules
             });
         }
 
@@ -1407,11 +1520,15 @@ public sealed class TransactionsControllerTests
             return Task.FromResult(AiLocationContext);
         }
 
-        public Task<UserPreferences?> UpdateAsync(string userId, string? aiLocationContext)
+        public Task<UserPreferences?> UpdateAsync(
+            string userId,
+            string? aiLocationContext,
+            IReadOnlyList<TransactionImportBlacklistRule>? transactionImportBlacklistRules)
         {
             return Task.FromResult<UserPreferences?>(new UserPreferences
             {
-                AiLocationContext = aiLocationContext
+                AiLocationContext = aiLocationContext,
+                TransactionImportBlacklistRules = transactionImportBlacklistRules ?? []
             });
         }
     }

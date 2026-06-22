@@ -3,6 +3,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using BudgetBeacon.Core.Interfaces;
+using BudgetBeacon.Core.Models;
+using BudgetBeacon.Core.Services;
 
 namespace BudgetBeacon.Api.Controllers;
 
@@ -45,7 +47,29 @@ public sealed class UserPreferencesController : ControllerBase
             return UnauthorizedProblem();
         }
 
-        var preferences = await _repository.UpdateAsync(userId, request.AiLocationContext);
+        var rulesValidation = TransactionImportBlacklistRuleValidation
+            .ValidateAndNormalize(request.TransactionImportBlacklistRules);
+        if (!rulesValidation.IsValid)
+        {
+            return this.ApiValidationProblem(
+                "Invalid preferences",
+                "Check the provided settings and try again.",
+                errors =>
+                {
+                    foreach (var error in rulesValidation.Errors)
+                    {
+                        foreach (var message in error.Value)
+                        {
+                            errors.AddModelError(error.Key, message);
+                        }
+                    }
+                });
+        }
+
+        var preferences = await _repository.UpdateAsync(
+            userId,
+            request.AiLocationContext,
+            rulesValidation.Rules);
         if (preferences is null)
         {
             return UnauthorizedProblem();
@@ -69,6 +93,7 @@ public sealed class UserPreferencesController : ControllerBase
     }
 
     public sealed record UpdateUserPreferencesRequest(
-        [StringLength(120)] string? AiLocationContext
+        [StringLength(120)] string? AiLocationContext,
+        IReadOnlyList<TransactionImportBlacklistRule>? TransactionImportBlacklistRules
     );
 }

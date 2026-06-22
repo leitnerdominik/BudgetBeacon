@@ -251,6 +251,11 @@ namespace BudgetBeacon.Infrastructure.Data.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("TransactionImportBlacklistRulesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 

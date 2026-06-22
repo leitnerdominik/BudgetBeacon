@@ -35,6 +35,7 @@ public class TransactionsController : ControllerBase
     private readonly StatisticsAggregationService _statisticsAggregationService;
     private readonly IAiAdvisorService _aiService;
     private readonly ITransactionImportParser _transactionImportParser;
+    private readonly TransactionImportDescriptionRedactionService _importDescriptionRedactionService;
     private readonly ILogger<TransactionsController> _logger;
 
     public TransactionsController(
@@ -43,6 +44,7 @@ public class TransactionsController : ControllerBase
         StatisticsAggregationService statisticsAggregationService,
         IAiAdvisorService aiService,
         ITransactionImportParser transactionImportParser,
+        TransactionImportDescriptionRedactionService importDescriptionRedactionService,
         ILogger<TransactionsController> logger)
     {
         _repository = repository;
@@ -50,6 +52,7 @@ public class TransactionsController : ControllerBase
         _statisticsAggregationService = statisticsAggregationService;
         _aiService = aiService;
         _transactionImportParser = transactionImportParser;
+        _importDescriptionRedactionService = importDescriptionRedactionService;
         _logger = logger;
     }
 
@@ -568,6 +571,24 @@ public class TransactionsController : ControllerBase
                         descriptionColumnIndex))
                 .ToList()
             : _transactionImportParser.ParseCsvTransactions(stream, delimiter).ToList();
+
+        var preferences = await _userPreferencesRepository.GetAsync(userId);
+        var importBlacklistRules = preferences?.TransactionImportBlacklistRules ?? [];
+        var redactedTransactions = 0;
+
+        foreach (var transaction in parsedTransactions)
+        {
+            var redactionResult = _importDescriptionRedactionService.Redact(
+                transaction.Metadata.RawDescription,
+                importBlacklistRules);
+
+            if (redactionResult.WasRedacted)
+            {
+                transaction.Metadata.RawDescription = redactionResult.Description;
+                redactedTransactions++;
+            }
+        }
+
         parsedTransactions.ForEach(transaction =>
         {
             transaction.UserId = userId;
@@ -589,7 +610,8 @@ public class TransactionsController : ControllerBase
             Message = "Import successful",
             TotalParsed = parsedTransactions.Count,
             Imported = importedCount,
-            DuplicatesSkipped = parsedTransactions.Count - importedCount
+            DuplicatesSkipped = parsedTransactions.Count - importedCount,
+            RedactedTransactions = redactedTransactions
         });
     }
 

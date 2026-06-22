@@ -39,11 +39,14 @@ export const SettingsPage = () => {
   }
 
   const aiLocationContext = data?.aiLocationContext ?? "";
+  const transactionImportBlacklistRules =
+    data?.transactionImportBlacklistRules ?? [];
 
   return (
     <SettingsForm
-      key={aiLocationContext}
+      key={`${aiLocationContext}:${JSON.stringify(transactionImportBlacklistRules)}`}
       initialAiLocationContext={aiLocationContext}
+      initialTransactionImportBlacklistRules={transactionImportBlacklistRules}
       isOnline={isOnline}
     />
   );

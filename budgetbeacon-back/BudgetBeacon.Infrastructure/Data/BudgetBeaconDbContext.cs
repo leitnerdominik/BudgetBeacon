@@ -21,6 +21,9 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(user => user.FirstName).HasMaxLength(100);
             entity.Property(user => user.LastName).HasMaxLength(100);
             entity.Property(user => user.AiLocationContext).HasMaxLength(120);
+            entity.Property(user => user.TransactionImportBlacklistRulesJson)
+                .HasColumnType("jsonb")
+                .HasDefaultValueSql("'[]'::jsonb");
         });
 
         modelBuilder.Entity<Transaction>(entity =>

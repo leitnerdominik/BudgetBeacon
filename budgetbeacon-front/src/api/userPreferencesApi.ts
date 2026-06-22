@@ -1,8 +1,9 @@
 import { apiClient } from "./httpClient";
-import type { UserPreferences } from "../types/api";
+import type { TransactionImportBlacklistRule, UserPreferences } from "../types/api";
 
 export interface UpdateUserPreferencesRequest {
   aiLocationContext: string | null;
+  transactionImportBlacklistRules: TransactionImportBlacklistRule[];
 }
 
 export const getUserPreferences = async (): Promise<UserPreferences> => {
