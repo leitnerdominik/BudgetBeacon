@@ -171,11 +171,8 @@ export const RootLayout = () => {
               {initials}
             </Avatar>
             <Box>
-              <Typography variant="subtitle1" fontWeight={700}>
+              <Typography variant="body2" fontWeight={700}>
                 {displayName}
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.84 }}>
-                {user?.email}
               </Typography>
             </Box>
           </Box>
@@ -194,13 +191,6 @@ export const RootLayout = () => {
             <CloseIcon />
           </IconButton>
         </Box>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mt: 1.5 }}
-        >
-          Quick navigation
-        </Typography>
       </Box>
       <Box sx={{ overflow: "auto", px: 1.25, py: 1.5 }}>
         <List aria-label="Primary navigation">
