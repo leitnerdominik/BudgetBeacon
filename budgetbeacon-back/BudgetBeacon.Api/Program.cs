@@ -236,6 +236,14 @@ try
     builder.Services.AddScoped<TransactionImportDescriptionRedactionService>();
     builder.Services.AddScoped<ITransactionImportParser, TransactionImportParser>();
 
+    builder.Services.AddHttpClient<ILocationSuggestionService, OpenMeteoLocationSuggestionService>((serviceProvider, client) =>
+    {
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+
+        client.BaseAddress = new Uri(configuration["OpenMeteo:GeocodingBaseUrl"] ?? "https://geocoding-api.open-meteo.com/");
+        client.Timeout = TimeSpan.FromSeconds(10);
+    });
+
     builder.Services.AddHttpClient<IAiAdvisorService, DeepSeekAiAdvisorService>((serviceProvider, client) =>
     {
         var configuration = serviceProvider.GetRequiredService<IConfiguration>();

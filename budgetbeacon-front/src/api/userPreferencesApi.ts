@@ -1,5 +1,9 @@
 import { apiClient } from "./httpClient";
-import type { TransactionImportBlacklistRule, UserPreferences } from "../types/api";
+import type {
+  LocationSuggestion,
+  TransactionImportBlacklistRule,
+  UserPreferences,
+} from "../types/api";
 
 export interface UpdateUserPreferencesRequest {
   aiLocationContext: string | null;
@@ -16,5 +20,18 @@ export const updateUserPreferences = async (
   return apiClient.put<UserPreferences, UserPreferences>(
     "/user/preferences",
     request,
+  );
+};
+
+export const getLocationSuggestions = async (
+  query: string,
+  signal?: AbortSignal,
+): Promise<LocationSuggestion[]> => {
+  return apiClient.get<LocationSuggestion[], LocationSuggestion[]>(
+    "/user/location-suggestions",
+    {
+      params: { query },
+      signal,
+    },
   );
 };

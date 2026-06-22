@@ -34,6 +34,15 @@ export interface UserPreferences {
   transactionImportBlacklistRules: TransactionImportBlacklistRule[];
 }
 
+export interface LocationSuggestion {
+  id: string;
+  label: string;
+  name: string;
+  admin1: string | null;
+  country: string;
+  countryCode: string;
+}
+
 export interface Transaction {
   id: string;
   date: string;
