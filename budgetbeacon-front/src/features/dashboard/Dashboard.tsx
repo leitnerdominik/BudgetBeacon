@@ -1,10 +1,7 @@
-import { useState } from "react";
 import {
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Divider,
   List,
@@ -15,7 +12,6 @@ import {
   useTheme,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
-import LightbulbCircleIcon from "@mui/icons-material/LightbulbCircle";
 
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
@@ -25,15 +21,12 @@ import { isTipsSourceDataNotFound } from "../tips/tipErrors";
 import { useTips } from "../tips/useTips";
 import { useMonthlySummary } from "../transactions/hooks/useMonthlySummary";
 import { useTransactions } from "../transactions/hooks/useTransactions";
-import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
-
-const MOBILE_TIP_PREVIEW_LINES = 4;
+import { TipOfTheDayCard } from "./TipOfTheDayCard";
 
 export const Dashboard = () => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
-  const [tipExpanded, setTipExpanded] = useState(false);
   const today = new Date();
   const year = today.getFullYear();
   const month = today.getMonth() + 1;
@@ -251,121 +244,18 @@ export const Dashboard = () => {
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>
-          <Card
-            sx={{
-              height: "100%",
-              backgroundColor: "primary.dark",
-              color: "primary.contrastText",
+          <TipOfTheDayCard
+            tip={tipOfTheDay}
+            isLoading={isLoadingTips}
+            isError={isTipsError}
+            hasNoTransactionsForTips={hasNoTransactionsForTips}
+            isOnline={isOnline}
+            isSmallScreen={isSmallScreen}
+            isSlow={isTipsSlow}
+            onRetry={() => {
+              void refetchTips();
             }}
-          >
-            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-              <Box
-                sx={{ display: "flex", alignItems: "center", mb: 1.5, gap: 1 }}
-              >
-                <LightbulbCircleIcon fontSize={isSmallScreen ? "medium" : "large"} />
-                <Typography variant={isSmallScreen ? "subtitle1" : "h6"}>
-                  Tip of the Day
-                </Typography>
-              </Box>
-
-              {isLoadingTips ? (
-                <LoadingState
-                  label="Loading your tip of the day..."
-                  isOffline={!isOnline}
-                  isSlow={isTipsSlow}
-                  minHeight={220}
-                  inverted
-                />
-              ) : tipOfTheDay ? (
-                <>
-                  <Typography
-                    variant={isSmallScreen ? "body1" : "subtitle1"}
-                    fontWeight="bold"
-                    gutterBottom
-                  >
-                    {tipOfTheDay.title}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    paragraph
-                    sx={
-                      isSmallScreen && !tipExpanded
-                        ? {
-                            display: "-webkit-box",
-                            WebkitLineClamp: MOBILE_TIP_PREVIEW_LINES,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                            mb: 1,
-                          }
-                        : undefined
-                    }
-                  >
-                    {tipOfTheDay.description}
-                  </Typography>
-                  {isSmallScreen && tipOfTheDay.description.length > 140 ? (
-                    <Button
-                      size="small"
-                      onClick={() => setTipExpanded((current) => !current)}
-                      sx={{
-                        mb: 1.5,
-                        px: 0,
-                        minWidth: 0,
-                        color: "inherit",
-                        textTransform: "none",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {tipExpanded ? "Show less" : "Read more"}
-                    </Button>
-                  ) : null}
-                  <Chip
-                    label={tipOfTheDay.category}
-                    icon={
-                      <TransactionCategoryIcon
-                        category={tipOfTheDay.category}
-                        fontSize="small"
-                      />
-                    }
-                    size="small"
-                    sx={{
-                      backgroundColor: "rgba(255,255,255,0.14)",
-                      color: "inherit",
-                      border: "1px solid rgba(255,255,255,0.24)",
-                    }}
-                  />
-                </>
-              ) : isTipsError && hasNoTransactionsForTips ? (
-                <StatusMessage
-                  title="No transactions for tips yet"
-                  description="Add or import transactions first to generate an AI savings tip."
-                  minHeight={220}
-                  inverted
-                />
-              ) : isTipsError ? (
-                <StatusMessage
-                  title={isOnline ? "Tip of the day is unavailable" : "You're offline"}
-                  description={
-                    isOnline
-                      ? "We couldn't load AI savings tips right now. Retry to fetch a fresh tip."
-                      : "Reconnect to the internet and retry to load your latest AI tip."
-                  }
-                  actionLabel="Retry"
-                  onAction={() => {
-                    void refetchTips();
-                  }}
-                  minHeight={220}
-                  inverted
-                />
-              ) : (
-                <StatusMessage
-                  title="No tip available right now"
-                  description="Check back later or upload more transaction data for fresh recommendations."
-                  minHeight={220}
-                  inverted
-                />
-              )}
-            </CardContent>
-          </Card>
+          />
         </Grid>
       </Grid>
     </Box>
