@@ -257,6 +257,9 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                           height: "100%",
                           minHeight: 142,
                           p: 1.5,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                           border: "1px solid",
                           borderColor: selected ? "primary.main" : "divider",
                           borderRadius: 1,
@@ -274,7 +277,12 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                           },
                         }}
                       >
-                        <Stack spacing={1} alignItems="flex-start" sx={{ width: "100%" }}>
+                        <Stack
+                          spacing={1}
+                          alignItems="center"
+                          justifyContent="center"
+                          sx={{ width: "100%", height: "100%", textAlign: "center" }}
+                        >
                           <option.Icon color="inherit" />
                           <Box>
                             <Typography variant="body2" fontWeight={700}>
