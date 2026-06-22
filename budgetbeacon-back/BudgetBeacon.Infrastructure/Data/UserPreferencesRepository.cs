@@ -25,17 +25,25 @@ public sealed partial class UserPreferencesRepository : IUserPreferencesReposito
 
     public async Task<UserPreferences?> GetAsync(string userId)
     {
-        var preferences = await _context.Users
-            .Where(user => user.Id == userId)
-            .Select(user => new
+        var userExists = await _context.Users
+            .AnyAsync(user => user.Id == userId);
+
+        if (!userExists)
+        {
+            return null;
+        }
+
+        var preferences = await _context.UserSettings
+            .Where(settings => settings.UserId == userId)
+            .Select(settings => new
             {
-                user.AiLocationContext,
-                user.TransactionImportBlacklistRulesJson
+                settings.AiLocationContext,
+                settings.TransactionImportBlacklistRulesJson
             })
             .SingleOrDefaultAsync();
 
         return preferences is null
-            ? null
+            ? new UserPreferences()
             : new UserPreferences
             {
                 AiLocationContext = preferences.AiLocationContext,
@@ -46,9 +54,9 @@ public sealed partial class UserPreferencesRepository : IUserPreferencesReposito
 
     public async Task<string?> GetAiLocationContextAsync(string userId)
     {
-        return await _context.Users
-            .Where(user => user.Id == userId)
-            .Select(user => user.AiLocationContext)
+        return await _context.UserSettings
+            .Where(settings => settings.UserId == userId)
+            .Select(settings => settings.AiLocationContext)
             .SingleOrDefaultAsync();
     }
 
@@ -57,24 +65,37 @@ public sealed partial class UserPreferencesRepository : IUserPreferencesReposito
         string? aiLocationContext,
         IReadOnlyList<TransactionImportBlacklistRule>? transactionImportBlacklistRules)
     {
-        var user = await _context.Users.SingleOrDefaultAsync(candidate => candidate.Id == userId);
+        var userExists = await _context.Users
+            .AnyAsync(candidate => candidate.Id == userId);
 
-        if (user is null)
+        if (!userExists)
             return null;
+
+        var settings = await _context.UserSettings
+            .SingleOrDefaultAsync(candidate => candidate.UserId == userId);
+
+        if (settings is null)
+        {
+            settings = new UserSettings
+            {
+                UserId = userId
+            };
+            _context.UserSettings.Add(settings);
+        }
 
         var normalizedRules = TransactionImportBlacklistRuleValidation
             .ValidateAndNormalize(transactionImportBlacklistRules)
             .Rules;
 
-        user.AiLocationContext = NormalizeAiLocationContext(aiLocationContext);
-        user.TransactionImportBlacklistRulesJson = JsonSerializer.Serialize(
+        settings.AiLocationContext = NormalizeAiLocationContext(aiLocationContext);
+        settings.TransactionImportBlacklistRulesJson = JsonSerializer.Serialize(
             normalizedRules,
             JsonOptions);
         await _context.SaveChangesAsync();
 
         return new UserPreferences
         {
-            AiLocationContext = user.AiLocationContext,
+            AiLocationContext = settings.AiLocationContext,
             TransactionImportBlacklistRules = normalizedRules
         };
     }

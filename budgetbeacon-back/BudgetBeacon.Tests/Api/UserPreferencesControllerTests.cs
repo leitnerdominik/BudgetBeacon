@@ -41,6 +41,24 @@ public sealed class UserPreferencesControllerTests
     }
 
     [Fact]
+    public async Task Get_ReturnsDefaultPreferencesForCurrentUserWithoutSettingsRow()
+    {
+        var repository = new FakeUserPreferencesRepository
+        {
+            StoredPreferences = new UserPreferences()
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.Get();
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var preferences = Assert.IsType<UserPreferences>(ok.Value);
+        Assert.Null(preferences.AiLocationContext);
+        Assert.Empty(preferences.TransactionImportBlacklistRules);
+        Assert.Equal("user-1", repository.LastGetUserId);
+    }
+
+    [Fact]
     public async Task Update_SavesPreferencesForCurrentUser()
     {
         var repository = new FakeUserPreferencesRepository();

@@ -11,6 +11,7 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
     }
 
     public DbSet<Transaction> Transactions => Set<Transaction>();
+    public DbSet<UserSettings> UserSettings => Set<UserSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +25,26 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(user => user.TransactionImportBlacklistRulesJson)
                 .HasColumnType("jsonb")
                 .HasDefaultValueSql("'[]'::jsonb");
+        });
+
+        modelBuilder.Entity<UserSettings>(entity =>
+        {
+            entity.HasKey(settings => settings.UserId);
+
+            entity.Property(settings => settings.UserId)
+                .HasMaxLength(450);
+
+            entity.Property(settings => settings.AiLocationContext)
+                .HasMaxLength(120);
+
+            entity.Property(settings => settings.TransactionImportBlacklistRulesJson)
+                .HasColumnType("jsonb")
+                .HasDefaultValueSql("'[]'::jsonb");
+
+            entity.HasOne(settings => settings.User)
+                .WithOne()
+                .HasForeignKey<UserSettings>(settings => settings.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Transaction>(entity =>
