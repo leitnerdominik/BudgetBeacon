@@ -15,7 +15,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Fab,
   FormControl,
   IconButton,
   LinearProgress,
@@ -106,6 +105,10 @@ export const TransactionList = () => {
       ...current,
       page: Math.min(current.page + 1, totalPages - 1),
     }));
+  };
+
+  const handleAddTransaction = () => {
+    navigate("/transactions/new");
   };
 
   const handlePageSizeChange = (pageSize: number) => {
@@ -217,6 +220,14 @@ export const TransactionList = () => {
             Categorize uncategorized
           </Button>
           <TransactionImportButton />
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAddTransaction}
+            disabled={!isOnline}
+          >
+            Add transaction
+          </Button>
         </Stack>
       </Box>
       {showRefreshError ? (
@@ -603,22 +614,6 @@ export const TransactionList = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      <Tooltip title="Add transaction">
-        <Fab
-          color="primary"
-          aria-label="Add transaction"
-          onClick={() => navigate("/transactions/new")}
-          disabled={!isOnline}
-          sx={{
-            position: "fixed",
-            right: { xs: 16, sm: 24 },
-            bottom: { xs: 16, sm: 24 },
-            zIndex: (currentTheme) => currentTheme.zIndex.speedDial,
-          }}
-        >
-          <AddIcon />
-        </Fab>
-      </Tooltip>
     </Box>
   );
 };
