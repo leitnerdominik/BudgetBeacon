@@ -27,6 +27,9 @@ const StatisticsPage = lazy(async () => ({
 const TipsPage = lazy(async () => ({
   default: (await import("./pages/TipsPage")).TipsPage,
 }));
+const TipDetailPage = lazy(async () => ({
+  default: (await import("./pages/TipDetailPage")).TipDetailPage,
+}));
 const SettingsPage = lazy(async () => ({
   default: (await import("./pages/SettingsPage")).SettingsPage,
 }));
@@ -81,6 +84,7 @@ export const router = createBrowserRouter([
           },
           { path: "statistics", element: withSuspense(<StatisticsPage />) },
           { path: "tips", element: withSuspense(<TipsPage />) },
+          { path: "tips/:tipId", element: withSuspense(<TipDetailPage />) },
           { path: "settings", element: withSuspense(<SettingsPage />) },
           { path: "*", element: <NotFound /> },
         ],

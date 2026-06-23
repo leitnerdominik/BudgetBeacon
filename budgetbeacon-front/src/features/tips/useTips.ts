@@ -43,7 +43,7 @@ const getLegacyTipsCacheKey = (timeframe: TipsTimeframeValue) =>
   `tips.daily.${timeframe}.v1`;
 
 const getTipsCacheKey = (userId: string, timeframe: TipsTimeframeValue) =>
-  `tips.daily.${userId}.${timeframe}.v2`;
+  `tips.daily.${userId}.${timeframe}.v3`;
 
 export const clearTipsCacheForUser = (userId: string) => {
   if (typeof window === "undefined") {
@@ -53,6 +53,7 @@ export const clearTipsCacheForUser = (userId: string) => {
   try {
     for (const timeframe of TIPS_TIMEFRAMES) {
       window.localStorage.removeItem(getTipsCacheKey(userId, timeframe.value));
+      window.localStorage.removeItem(`tips.daily.${userId}.${timeframe.value}.v2`);
       window.localStorage.removeItem(getLegacyTipsCacheKey(timeframe.value));
     }
   } catch {

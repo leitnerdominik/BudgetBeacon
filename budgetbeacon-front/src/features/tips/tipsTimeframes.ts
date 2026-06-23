@@ -14,6 +14,9 @@ export const getTipsTimeframe = (value: TipsTimeframeValue) =>
   TIPS_TIMEFRAMES.find((timeframe) => timeframe.value === value) ??
   TIPS_TIMEFRAMES.find((timeframe) => timeframe.value === DEFAULT_TIPS_TIMEFRAME)!;
 
+export const isTipsTimeframeValue = (value: string): value is TipsTimeframeValue =>
+  TIPS_TIMEFRAMES.some((timeframe) => timeframe.value === value);
+
 export const getTipsTimeframeParams = (value: TipsTimeframeValue) => {
   const timeframe = getTipsTimeframe(value);
 
@@ -22,4 +25,31 @@ export const getTipsTimeframeParams = (value: TipsTimeframeValue) => {
   }
 
   return { monthsBack: timeframe.monthsBack };
+};
+
+const formatUtcDate = (date: Date) => {
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+
+  return `${date.getUTCFullYear()}-${month}-${day}`;
+};
+
+export const getTipsTransactionDateRange = (value: TipsTimeframeValue) => {
+  const timeframe = getTipsTimeframe(value);
+
+  if ("allTime" in timeframe) {
+    return {
+      startDate: "",
+      endDate: "",
+    };
+  }
+
+  const startDate = new Date();
+  startDate.setUTCHours(0, 0, 0, 0);
+  startDate.setUTCMonth(startDate.getUTCMonth() - timeframe.monthsBack);
+
+  return {
+    startDate: formatUtcDate(startDate),
+    endDate: "",
+  };
 };

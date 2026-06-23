@@ -233,7 +233,15 @@ public sealed class DeepSeekAiAdvisorServiceTests
                 Title = "  Use a local transport pass  ",
                 Description = "  Buy a monthly pass when commuting regularly.  ",
                 Impact = "HIGH",
-                Category = "transport"
+                Category = "transport",
+                Reasoning = "  Transport is the largest category in the summary.  ",
+                SupportingSignals = new[]
+                {
+                    "Transport spending is high.",
+                    "Commuting costs appear recurring.",
+                    "A pass may reduce repeat fares.",
+                    "This extra signal should be ignored."
+                }
             },
             new
             {
@@ -278,6 +286,14 @@ public sealed class DeepSeekAiAdvisorServiceTests
                 Assert.Equal("Buy a monthly pass when commuting regularly.", first.Description);
                 Assert.Equal("High", first.Impact);
                 Assert.Equal("Transport", first.Category);
+                Assert.Equal("Transport is the largest category in the summary.", first.Reasoning);
+                Assert.Equal(
+                    [
+                        "Transport spending is high.",
+                        "Commuting costs appear recurring.",
+                        "A pass may reduce repeat fares."
+                    ],
+                    first.SupportingSignals);
             },
             second =>
             {
@@ -285,6 +301,8 @@ public sealed class DeepSeekAiAdvisorServiceTests
                 Assert.Equal("Savings Tip 2", second.Title);
                 Assert.Equal("Medium", second.Impact);
                 Assert.Equal("Shopping & Personal", second.Category);
+                Assert.NotEmpty(second.Reasoning);
+                Assert.Single(second.SupportingSignals);
             },
             third =>
             {
@@ -301,6 +319,9 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var prompt = GetPrompt(request.Body);
         Assert.Contains("Subscriptions & Services", prompt);
         Assert.Contains("Savings & Investments", prompt);
+        Assert.Contains("Reasoning", prompt);
+        Assert.Contains("SupportingSignals", prompt);
+        Assert.Contains("aggregated category totals", prompt);
         Assert.DoesNotContain("Energy, Groceries", prompt);
     }
 

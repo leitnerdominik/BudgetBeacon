@@ -258,13 +258,20 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                    ""Title"": ""Short headline"",
                    ""Description"": ""One practical paragraph with the recommendation."",
                    ""Impact"": ""High"",
-                   ""Category"": ""Transport""
+                   ""Category"": ""Transport"",
+                   ""Reasoning"": ""One short paragraph explaining why this tip follows from the aggregated category totals."",
+                   ""SupportingSignals"": [
+                     ""Transport is one of the highest expense categories in the selected period."",
+                     ""The spending pattern suggests recurring costs in this category.""
+                   ]
                  }}
                ]
             3. Allowed Impact values: High, Medium, Low.
             4. Allowed Category values: {AllowedCategoryValues}.
             5. Keep each title under 60 characters.
             6. Description must be plain text, readable in a web UI, and may include the EUR symbol.
+            7. Reasoning must explain the recommendation using only the provided aggregated expense summary and must not imply access to individual transactions.
+            8. SupportingSignals must contain 1 to 3 short plain-text observations from the aggregated category totals.
 
             Expense Summary (Absolute Values):
             {jsonPayload}";
@@ -297,6 +304,12 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
     {
         var description = (tip.Description ?? string.Empty).Trim();
         var title = (tip.Title ?? string.Empty).Trim();
+        var reasoning = (tip.Reasoning ?? string.Empty).Trim();
+        var supportingSignals = tip.SupportingSignals?
+            .Select(signal => signal.Trim())
+            .Where(signal => !string.IsNullOrWhiteSpace(signal))
+            .Take(3)
+            .ToArray() ?? [];
 
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -308,13 +321,28 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
             title = title[..60].TrimEnd();
         }
 
+        if (string.IsNullOrWhiteSpace(reasoning))
+        {
+            reasoning = "This recommendation was generated from the aggregated spending summary for the selected timeframe.";
+        }
+
+        if (supportingSignals.Length == 0)
+        {
+            supportingSignals =
+            [
+                "The AI used category-level expense totals rather than raw transaction details."
+            ];
+        }
+
         return new SavingsTip
         {
             Id = $"tip-{index + 1}",
             Title = title,
             Description = description,
             Impact = NormalizeImpact(tip.Impact),
-            Category = NormalizeCategory(tip.Category)
+            Category = NormalizeCategory(tip.Category),
+            Reasoning = reasoning,
+            SupportingSignals = supportingSignals
         };
     }
 

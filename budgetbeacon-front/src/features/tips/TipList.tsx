@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
   Box,
   Button,
@@ -15,6 +15,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
@@ -26,6 +27,7 @@ import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { isTipsSourceDataNotFound } from "./tipErrors";
 import { TIPS_TIMEFRAMES, type TipsTimeframeValue } from "./tipsTimeframes";
 import { useTips } from "./useTips";
+import type { RegionalTip } from "../../types/api";
 
 const MOBILE_DESCRIPTION_LINES = 5;
 
@@ -38,6 +40,7 @@ export const TipList = ({
   onSelectedTimeframeChange,
   selectedTimeframe,
 }: TipListProps) => {
+  const navigate = useNavigate();
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
@@ -69,6 +72,20 @@ export const TipList = ({
       ...current,
       [tipId]: !current[tipId],
     }));
+  };
+
+  const openTipDetail = (tip: RegionalTip) => {
+    navigate(`/tips/${tip.id}?timeframe=${selectedTimeframe}`);
+  };
+
+  const handleTipKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    tip: RegionalTip,
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openTipDetail(tip);
+    }
   };
 
   const renderHeader = () => (
@@ -236,11 +253,22 @@ export const TipList = ({
           return (
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={tip.id}>
               <Card
+                role="button"
+                tabIndex={0}
+                aria-label={`View reasoning for ${tip.title}`}
+                onClick={() => openTipDetail(tip)}
+                onKeyDown={(event) => handleTipKeyDown(event, tip)}
                 sx={{
                   height: "100%",
                   display: "flex",
                   flexDirection: "column",
+                  cursor: "pointer",
                   transition: "border-color 0.2s ease, transform 0.2s ease",
+                  "&:focus-visible": {
+                    outline: "3px solid",
+                    outlineColor: "primary.light",
+                    outlineOffset: 2,
+                  },
                   "&:hover": {
                     transform: isSmallScreen ? "none" : "translateY(-4px)",
                     borderColor: "primary.main",
@@ -279,7 +307,11 @@ export const TipList = ({
                   {shouldCollapse ? (
                     <Button
                       size="small"
-                      onClick={() => toggleExpanded(tip.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleExpanded(tip.id);
+                      }}
+                      onKeyDown={(event) => event.stopPropagation()}
                       sx={{
                         mb: 1.5,
                         px: 0,
@@ -316,6 +348,21 @@ export const TipList = ({
                       size="small"
                       color={tip.impact === "High" ? "success" : "default"}
                     />
+                    <Button
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openTipDetail(tip);
+                      }}
+                      sx={{
+                        ml: "auto",
+                        px: 0,
+                        minWidth: 0,
+                        fontWeight: 700,
+                      }}
+                    >
+                      View reasoning
+                    </Button>
                   </Stack>
                 </CardContent>
               </Card>

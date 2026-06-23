@@ -141,4 +141,6 @@ export interface RegionalTip {
   description: string;
   impact: "High" | "Medium" | "Low";
   category: RegionalTipCategory;
+  reasoning: string;
+  supportingSignals: string[];
 }
