@@ -89,6 +89,7 @@ public sealed class TransactionQueryTests
             Date = date,
             Amount = amount,
             Category = category,
+            Treatment = TransactionTreatment.GetDefault(amount, category),
             Notes = notes,
             Metadata = new TransactionMetadata
             {

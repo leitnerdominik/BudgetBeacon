@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using BudgetBeacon.Core.Entities;
+using BudgetBeacon.Core.Models;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 namespace BudgetBeacon.Infrastructure.Data;
@@ -59,6 +60,10 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
 
             entity.Property(transaction => transaction.Notes)
                 .HasMaxLength(500);
+
+            entity.Property(transaction => transaction.Treatment)
+                .HasMaxLength(32)
+                .HasDefaultValue(TransactionTreatment.Expense);
 
             entity.Property(transaction => transaction.Date)
                 .HasConversion(

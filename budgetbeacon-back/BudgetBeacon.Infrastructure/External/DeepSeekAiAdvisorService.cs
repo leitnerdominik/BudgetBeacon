@@ -98,6 +98,9 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                     {
                         var category = NormalizeCategory(result.Category);
                         target.Category = category;
+                        target.Treatment = TransactionTreatment.GetDefault(
+                            target.Amount,
+                            category);
                         target.Metadata.AiSuggestedCategory = category;
                         target.Metadata.AiConfidenceScore = Math.Clamp(result.Confidence, 0.0, 1.0);
                     }
@@ -131,7 +134,11 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
             _model);
 
         var expensesByCategory = transactionList
-            .Where(t => t.Amount < 0)
+            .Where(t => string.Equals(
+                TransactionTreatment.Normalize(t.Treatment) ??
+                TransactionTreatment.GetDefault(t.Amount, t.Category),
+                TransactionTreatment.Expense,
+                StringComparison.Ordinal))
             .GroupBy(t => t.Category)
             .Select(g => new
             {

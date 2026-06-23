@@ -1,7 +1,7 @@
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { Box, IconButton, Tooltip, Typography } from "@mui/material";
+import { Box, Chip, IconButton, Tooltip, Typography } from "@mui/material";
 import {
   DataGrid,
   type GridColDef,
@@ -15,6 +15,7 @@ import type {
   TransactionSortField,
 } from "../../../api/transactionsApi";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
+import { getTransactionTreatmentLabel } from "../transactionTreatment";
 import type { PaginatedTransactions } from "../types";
 
 const formatConfidenceScore = (value: number | null | undefined) =>
@@ -103,6 +104,21 @@ export const DesktopTransactionGrid = ({
             color="action"
           />
           <Typography variant="body2">{params.row.category}</Typography>
+        </Box>
+      ),
+    },
+    {
+      field: "treatment",
+      headerName: "Treatment",
+      width: 160,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+          <Chip
+            label={getTransactionTreatmentLabel(params.row.treatment)}
+            size="small"
+            variant="outlined"
+          />
         </Box>
       ),
     },

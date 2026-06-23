@@ -84,9 +84,13 @@ public sealed partial class StatisticsAggregationService
             summary.TotalIncome,
             summary.TotalExpense,
             summary.NetBalance,
+            summary.TotalSavedOrInvested,
+            summary.InternalTransferTotal,
+            summary.AdjustmentTotal,
             summary.AverageExpense,
             summary.MedianExpense,
-            summary.TransactionCount);
+            summary.TransactionCount,
+            summary.AnalyticsTransactionCount);
     }
 
     public IReadOnlyList<MonthlySummary> BuildMonthlySummaries(
@@ -115,16 +119,27 @@ public sealed partial class StatisticsAggregationService
 
     private StatisticsSummary BuildSummary(IReadOnlyCollection<Transaction> transactions)
     {
-        var incomes = transactions.Where(transaction => transaction.Amount > 0).ToList();
-        var expenses = transactions.Where(transaction => transaction.Amount < 0).ToList();
+        var incomes = transactions.Where(IsIncome).ToList();
+        var expenses = transactions.Where(IsExpense).ToList();
+        var analyticsTransactions = transactions
+            .Where(transaction => IsIncome(transaction) || IsExpense(transaction) || IsRefund(transaction))
+            .ToList();
+        var expenseImpact = transactions
+            .Where(transaction => IsExpense(transaction) || IsRefund(transaction))
+            .Sum(GetExpenseImpact);
+        var totalExpense = -Math.Max(0, expenseImpact);
 
         return new StatisticsSummary(
             _financeAggregationService.CalculateTotal(incomes),
-            _financeAggregationService.CalculateTotal(expenses),
-            _financeAggregationService.CalculateTotal(transactions),
+            totalExpense,
+            _financeAggregationService.CalculateTotal(incomes) + totalExpense,
+            SumAbsolute(transactions.Where(IsSavingsInvestment)),
+            SumAbsolute(transactions.Where(IsInternalTransfer)),
+            SumAbsolute(transactions.Where(IsAdjustment)),
             _financeAggregationService.CalculateAverage(expenses),
             _financeAggregationService.CalculateMedian(expenses),
-            transactions.Count);
+            transactions.Count,
+            analyticsTransactions.Count);
     }
 
     private IReadOnlyList<StatisticsTrendPoint> BuildMonthlyTrend(
@@ -181,13 +196,19 @@ public sealed partial class StatisticsAggregationService
             summary.TotalIncome,
             summary.TotalExpense,
             summary.NetBalance,
-            summary.TransactionCount);
+            summary.TotalSavedOrInvested,
+            summary.InternalTransferTotal,
+            summary.AdjustmentTotal,
+            summary.TransactionCount,
+            summary.AnalyticsTransactionCount);
 
     public IReadOnlyList<StatisticsCategorySummary> BuildCategorySummaries(
         IReadOnlyCollection<Transaction> transactions)
     {
-        var expenses = transactions.Where(transaction => transaction.Amount < 0).ToList();
-        var totalExpense = Math.Abs(_financeAggregationService.CalculateTotal(expenses));
+        var expenses = transactions
+            .Where(transaction => IsExpense(transaction) || IsRefund(transaction))
+            .ToList();
+        var totalExpense = Math.Max(0, expenses.Sum(GetExpenseImpact));
 
         return expenses
             .GroupBy(transaction =>
@@ -196,14 +217,15 @@ public sealed partial class StatisticsAggregationService
                     : transaction.Category)
             .Select(group =>
             {
-                var categoryTotal = Math.Abs(_financeAggregationService.CalculateTotal(group));
+                var categoryTotal = Math.Max(0, group.Sum(GetExpenseImpact));
 
                 return new StatisticsCategorySummary(
                     group.Key,
                     categoryTotal,
                     totalExpense > 0 ? categoryTotal / totalExpense * 100 : 0,
-                    group.Count());
+                    group.Count(IsExpense));
             })
+            .Where(summary => summary.TotalExpense > 0)
             .OrderByDescending(summary => summary.TotalExpense)
             .ThenBy(summary => summary.Category)
             .ToList();
@@ -213,7 +235,7 @@ public sealed partial class StatisticsAggregationService
         IReadOnlyCollection<Transaction> transactions,
         int limit) =>
         transactions
-            .Where(transaction => transaction.Amount < 0)
+            .Where(IsExpense)
             .OrderBy(transaction => transaction.Amount)
             .ThenByDescending(transaction => transaction.Date)
             .Take(limit)
@@ -229,7 +251,7 @@ public sealed partial class StatisticsAggregationService
         IReadOnlyCollection<Transaction> transactions,
         int limit) =>
         transactions
-            .Where(transaction => transaction.Amount < 0)
+            .Where(IsExpense)
             .Select(transaction => new
             {
                 Transaction = transaction,
@@ -323,4 +345,34 @@ public sealed partial class StatisticsAggregationService
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    private static bool IsIncome(Transaction transaction) =>
+        string.Equals(GetEffectiveTreatment(transaction), TransactionTreatment.Income, StringComparison.Ordinal);
+
+    private static bool IsExpense(Transaction transaction) =>
+        string.Equals(GetEffectiveTreatment(transaction), TransactionTreatment.Expense, StringComparison.Ordinal);
+
+    private static bool IsRefund(Transaction transaction) =>
+        string.Equals(GetEffectiveTreatment(transaction), TransactionTreatment.Refund, StringComparison.Ordinal);
+
+    private static bool IsInternalTransfer(Transaction transaction) =>
+        string.Equals(GetEffectiveTreatment(transaction), TransactionTreatment.InternalTransfer, StringComparison.Ordinal);
+
+    private static bool IsSavingsInvestment(Transaction transaction) =>
+        string.Equals(GetEffectiveTreatment(transaction), TransactionTreatment.SavingsInvestment, StringComparison.Ordinal);
+
+    private static bool IsAdjustment(Transaction transaction) =>
+        string.Equals(GetEffectiveTreatment(transaction), TransactionTreatment.Adjustment, StringComparison.Ordinal);
+
+    private static string GetEffectiveTreatment(Transaction transaction) =>
+        TransactionTreatment.Normalize(transaction.Treatment) ??
+        TransactionTreatment.GetDefault(transaction.Amount, transaction.Category);
+
+    private static decimal GetExpenseImpact(Transaction transaction) =>
+        IsRefund(transaction)
+            ? -Math.Abs(transaction.Amount)
+            : Math.Abs(transaction.Amount);
+
+    private static decimal SumAbsolute(IEnumerable<Transaction> transactions) =>
+        transactions.Sum(transaction => Math.Abs(transaction.Amount));
 }

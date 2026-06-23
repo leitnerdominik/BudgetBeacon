@@ -4,6 +4,7 @@ import type {
   PaginatedTransactions,
   StatisticsOverview,
   Transaction,
+  TransactionTreatment,
 } from "../types/api";
 
 interface TransactionsApiResponse {
@@ -16,6 +17,7 @@ interface TransactionApiResponse {
     date: string;
     amount: number;
     category: string;
+    treatment?: TransactionTreatment | null;
     notes?: string | null;
     metadata?: {
       rawDescription?: string;
@@ -28,6 +30,7 @@ const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
   date: transaction.date,
   amount: transaction.amount,
   category: transaction.category,
+  treatment: transaction.treatment ?? "Expense",
   notes: transaction.notes?.trim() || null,
   aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
   description:
@@ -45,6 +48,7 @@ export interface TransactionWriteRequest {
   amount: number;
   description: string;
   category: string;
+  treatment: TransactionTreatment;
   notes: string | null;
 }
 

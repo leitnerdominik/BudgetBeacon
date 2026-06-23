@@ -166,6 +166,7 @@ export const MonthlyOverview = () => {
     const income = summary?.totalIncome ?? 0;
     const expenses = Math.abs(summary?.totalExpense ?? 0);
     const netBalance = summary?.netBalance ?? 0;
+    const savedOrInvested = summary?.totalSavedOrInvested ?? 0;
     const savingsRate = income > 0 ? (netBalance / income) * 100 : null;
 
     return [
@@ -194,6 +195,12 @@ export const MonthlyOverview = () => {
         icon: <SavingsIcon />,
       },
       {
+        label: "Saved / Invested",
+        value: formatCurrency(savedOrInvested),
+        color: "primary.main",
+        icon: <SavingsIcon />,
+      },
+      {
         label: "Transactions",
         value: summary?.transactionCount ?? 0,
         color: "text.primary",
@@ -203,6 +210,8 @@ export const MonthlyOverview = () => {
   }, [summary]);
 
   const hasTransactions = (summary?.transactionCount ?? 0) > 0;
+  const excludedTotal =
+    (summary?.internalTransferTotal ?? 0) + (summary?.adjustmentTotal ?? 0);
 
   const handleMonthChange = (value: string) => {
     const parsedMonth = parseMonthInputValue(value);
@@ -377,7 +386,7 @@ export const MonthlyOverview = () => {
 
           <Grid container spacing={{ xs: 1.25, sm: 2 }}>
             {metrics.map((metric) => (
-              <Grid size={{ xs: 6, sm: 6, lg: 2.4 }} key={metric.label}>
+              <Grid size={{ xs: 6, sm: 6, lg: 2 }} key={metric.label}>
                 <Card
                   elevation={1}
                   sx={{
@@ -449,11 +458,23 @@ export const MonthlyOverview = () => {
                   </Typography>
                 </Box>
                 <Chip
-                  label={hasTransactions ? "Data available" : "No data"}
-                  color={hasTransactions ? "success" : "default"}
-                  variant={hasTransactions ? "filled" : "outlined"}
+                  label={
+                    excludedTotal > 0
+                      ? `Excluded ${formatCurrency(excludedTotal)}`
+                      : hasTransactions
+                        ? "Data available"
+                        : "No data"
+                  }
+                  color={excludedTotal > 0 ? "default" : hasTransactions ? "success" : "default"}
+                  variant={hasTransactions && excludedTotal === 0 ? "filled" : "outlined"}
                 />
               </Stack>
+              {excludedTotal > 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Internal transfers and adjustments are excluded from income,
+                  expenses, net balance, savings rate, and spending charts.
+                </Typography>
+              ) : null}
 
               <Divider sx={{ my: 2 }} />
 

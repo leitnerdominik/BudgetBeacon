@@ -10,6 +10,7 @@ import {
   CardContent,
   CircularProgress,
   Divider,
+  MenuItem,
   Stack,
   TextField,
   ToggleButton,
@@ -21,6 +22,10 @@ import { useNavigate } from "react-router-dom";
 
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { transactionCategoryOptions } from "../transactionCategories";
+import {
+  getDefaultTransactionTreatment,
+  transactionTreatmentOptions,
+} from "../transactionTreatment";
 import { useCreateTransaction } from "../hooks/useCreateTransaction";
 import { useUpdateTransaction } from "../hooks/useUpdateTransaction";
 import type { Transaction } from "../types";
@@ -53,6 +58,13 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
   const [category, setCategory] = useState(
     transaction?.category ?? "Food & Groceries",
   );
+  const [treatment, setTreatment] = useState(
+    transaction?.treatment ??
+      getDefaultTransactionTreatment(
+        transaction?.amount ?? -1,
+        transaction?.category ?? "Food & Groceries",
+      ),
+  );
 
   const parsedAmount = Number(amount);
   const signedAmount =
@@ -75,7 +87,18 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
   ) => {
     if (value) {
       setDirection(value);
+      setTreatment(
+        getDefaultTransactionTreatment(
+          value === "expense" ? -1 : 1,
+          category,
+        ),
+      );
     }
+  };
+
+  const handleCategoryChange = (value: string) => {
+    setCategory(value);
+    setTreatment(getDefaultTransactionTreatment(signedAmount, value));
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -90,6 +113,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
       amount: signedAmount,
       description: normalizedDescription,
       category,
+      treatment,
       notes: normalizedNotes || null,
     };
     const options = {
@@ -249,7 +273,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                   return (
                     <Grid key={option.value} size={{ xs: 12, sm: 6, md: 4 }}>
                       <ButtonBase
-                        onClick={() => setCategory(option.value)}
+                        onClick={() => handleCategoryChange(option.value)}
                         disabled={isPending}
                         aria-pressed={selected}
                         sx={{
@@ -303,6 +327,29 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                 })}
               </Grid>
             </Box>
+
+            <TextField
+              label="Statistics treatment"
+              select
+              value={treatment}
+              onChange={(event) =>
+                setTreatment(event.target.value as Transaction["treatment"])
+              }
+              disabled={isPending}
+              helperText="Expenses affect spending charts; transfers do not; savings and investments are tracked separately."
+              fullWidth
+            >
+              {transactionTreatmentOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  <Box>
+                    <Typography variant="body2">{option.label}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {option.description}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </TextField>
 
             {!isOnline ? (
               <Typography variant="body2" color="error">

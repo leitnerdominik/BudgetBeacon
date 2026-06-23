@@ -55,8 +55,10 @@ public static class TransactionQuery
 
         query = options.TransactionType switch
         {
-            TransactionTypeFilter.Income => query.Where(transaction => transaction.Amount > 0),
-            TransactionTypeFilter.Expense => query.Where(transaction => transaction.Amount < 0),
+            TransactionTypeFilter.Income => query.Where(transaction => transaction.Treatment == TransactionTreatment.Income),
+            TransactionTypeFilter.Expense => query.Where(transaction =>
+                transaction.Treatment == TransactionTreatment.Expense ||
+                transaction.Treatment == TransactionTreatment.Refund),
             _ => query
         };
 

@@ -47,6 +47,13 @@ namespace BudgetBeacon.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("Treatment")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Expense");
+
                     b.Property<string>("UserId")
                         .HasMaxLength(450)
                         .HasColumnType("character varying(450)");

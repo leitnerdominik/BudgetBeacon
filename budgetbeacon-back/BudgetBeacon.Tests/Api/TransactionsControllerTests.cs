@@ -146,6 +146,7 @@ public sealed class TransactionsControllerTests
         var transaction = Assert.IsType<Transaction>(created.Value);
         Assert.Equal("user-1", transaction.UserId);
         Assert.Equal("Food & Groceries", transaction.Category);
+        Assert.Equal(TransactionTreatment.Expense, transaction.Treatment);
         Assert.Equal("Weekly shopping", transaction.Notes);
         Assert.Equal("Grocery store", transaction.Metadata.RawDescription);
         Assert.Same(transaction, Assert.Single(repository.AddedTransactions));
@@ -167,6 +168,46 @@ public sealed class TransactionsControllerTests
         var created = Assert.IsType<CreatedResult>(result);
         var transaction = Assert.IsType<Transaction>(created.Value);
         Assert.Null(transaction.Notes);
+        Assert.Equal(TransactionTreatment.Income, transaction.Treatment);
+    }
+
+    [Fact]
+    public async Task Create_AcceptsExplicitTreatment()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(2026, 6, 4),
+            -500m,
+            "ETF savings",
+            "Savings & Investments",
+            null,
+            "SavingsInvestment"));
+
+        var created = Assert.IsType<CreatedResult>(result);
+        var transaction = Assert.IsType<Transaction>(created.Value);
+        Assert.Equal(TransactionTreatment.SavingsInvestment, transaction.Treatment);
+    }
+
+    [Fact]
+    public async Task Create_ReturnsValidationProblemForInvalidTreatment()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(2026, 6, 4),
+            -12.34m,
+            "Grocery store",
+            "Food & Groceries",
+            null,
+            "NotSupported"));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Treatment", problem.Errors.Keys);
+        Assert.Empty(repository.AddedTransactions);
     }
 
     [Fact]
@@ -229,6 +270,7 @@ public sealed class TransactionsControllerTests
         Assert.Equal(new DateTime(2026, 6, 4, 0, 0, 0, DateTimeKind.Utc), updatedTransaction.Date);
         Assert.Equal(1250m, updatedTransaction.Amount);
         Assert.Equal("Income", updatedTransaction.Category);
+        Assert.Equal(TransactionTreatment.Income, updatedTransaction.Treatment);
         Assert.Equal("Updated note", updatedTransaction.Notes);
         Assert.Equal("Updated salary", updatedTransaction.Metadata.RawDescription);
         Assert.Equal(fingerprint, updatedTransaction.ImportFingerprint);
@@ -290,7 +332,8 @@ public sealed class TransactionsControllerTests
                 0m,
                 " ",
                 "Not real",
-                new string('a', 501)));
+                new string('a', 501),
+                "NotSupported"));
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
@@ -299,6 +342,7 @@ public sealed class TransactionsControllerTests
         Assert.Contains("Description", problem.Errors.Keys);
         Assert.Contains("Category", problem.Errors.Keys);
         Assert.Contains("Notes", problem.Errors.Keys);
+        Assert.Contains("Treatment", problem.Errors.Keys);
         Assert.Null(repository.LastUpdateTransactionId);
     }
 

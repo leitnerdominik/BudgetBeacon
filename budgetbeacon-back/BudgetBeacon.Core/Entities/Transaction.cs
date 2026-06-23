@@ -14,6 +14,7 @@ namespace BudgetBeacon.Core.Entities
         public DateTime Date { get; set; }
         public decimal Amount { get; set; }
         public string Category { get; set; } = "Uncategorized";
+        public string Treatment { get; set; } = string.Empty;
         public string? Notes { get; set; }
         public string? ImportFingerprint { get; set; }
 
@@ -28,6 +29,7 @@ namespace BudgetBeacon.Core.Entities
             Date = update.Date;
             Amount = update.Amount;
             Category = update.Category;
+            Treatment = update.Treatment;
             Notes = update.Notes;
             Metadata.RawDescription = update.Description;
 

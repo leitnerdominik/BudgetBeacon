@@ -17,9 +17,13 @@ public sealed record StatisticsSummary(
     decimal TotalIncome,
     decimal TotalExpense,
     decimal NetBalance,
+    decimal TotalSavedOrInvested,
+    decimal InternalTransferTotal,
+    decimal AdjustmentTotal,
     decimal AverageExpense,
     decimal MedianExpense,
-    int TransactionCount);
+    int TransactionCount,
+    int AnalyticsTransactionCount);
 
 public sealed record MonthlySummary(
     int Year,
@@ -27,9 +31,13 @@ public sealed record MonthlySummary(
     decimal TotalIncome,
     decimal TotalExpense,
     decimal NetBalance,
+    decimal TotalSavedOrInvested,
+    decimal InternalTransferTotal,
+    decimal AdjustmentTotal,
     decimal AverageExpense,
     decimal MedianExpense,
-    int TransactionCount);
+    int TransactionCount,
+    int AnalyticsTransactionCount);
 
 public sealed record StatisticsTrendPoint(
     int Year,
@@ -37,7 +45,11 @@ public sealed record StatisticsTrendPoint(
     decimal TotalIncome,
     decimal TotalExpense,
     decimal NetBalance,
-    int TransactionCount);
+    decimal TotalSavedOrInvested,
+    decimal InternalTransferTotal,
+    decimal AdjustmentTotal,
+    int TransactionCount,
+    int AnalyticsTransactionCount);
 
 public sealed record StatisticsCategorySummary(
     string Category,

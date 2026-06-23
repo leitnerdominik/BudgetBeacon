@@ -51,6 +51,7 @@ import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransact
 import { useTransactions } from "../hooks/useTransactions";
 import { TransactionImportButton } from "./TransactionImportButton";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
+import { getTransactionTreatmentLabel } from "../transactionTreatment";
 import type { PaginatedTransactions, Transaction } from "../types";
 
 type GridPaginationModel = {
@@ -853,6 +854,11 @@ export const TransactionList = () => {
                                 fontSize="small"
                               />
                             }
+                            size="medium"
+                            variant="outlined"
+                          />
+                          <Chip
+                            label={getTransactionTreatmentLabel(transaction.treatment)}
                             size="medium"
                             variant="outlined"
                           />

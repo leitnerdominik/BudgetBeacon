@@ -1,4 +1,5 @@
 using BudgetBeacon.Core.Entities;
+using BudgetBeacon.Core.Models;
 using BudgetBeacon.Core.Services;
 
 namespace BudgetBeacon.Tests.Core;
@@ -157,18 +158,52 @@ public sealed class StatisticsAggregationServiceTests
         Assert.Equal(100m, topExpense.Amount);
     }
 
+    [Fact]
+    public void BuildFixedPeriod_UsesTreatmentForAnalyticsTotals()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(new DateTime(2026, 4, 1), 2500m, "Income", "Salary", treatment: TransactionTreatment.Income),
+            CreateTransaction(new DateTime(2026, 4, 2), -100m, "Food & Groceries", "Market", treatment: TransactionTreatment.Expense),
+            CreateTransaction(new DateTime(2026, 4, 3), 20m, "Food & Groceries", "Refund", treatment: TransactionTreatment.Refund),
+            CreateTransaction(new DateTime(2026, 4, 4), -500m, "Savings & Investments", "ETF", treatment: TransactionTreatment.SavingsInvestment),
+            CreateTransaction(new DateTime(2026, 4, 5), -700m, "Transfers & Adjustments", "Own account", treatment: TransactionTreatment.InternalTransfer),
+            CreateTransaction(new DateTime(2026, 4, 6), -15m, "Transfers & Adjustments", "Correction", treatment: TransactionTreatment.Adjustment)
+        };
+
+        var result = _sut.BuildFixedPeriod(
+            transactions,
+            new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 4, 30, 23, 59, 59, DateTimeKind.Utc),
+            monthsBack: 1);
+
+        Assert.Equal(2500m, result.Summary.TotalIncome);
+        Assert.Equal(-80m, result.Summary.TotalExpense);
+        Assert.Equal(2420m, result.Summary.NetBalance);
+        Assert.Equal(500m, result.Summary.TotalSavedOrInvested);
+        Assert.Equal(700m, result.Summary.InternalTransferTotal);
+        Assert.Equal(15m, result.Summary.AdjustmentTotal);
+        Assert.Equal(3, result.Summary.AnalyticsTransactionCount);
+        var category = Assert.Single(result.Categories);
+        Assert.Equal("Food & Groceries", category.Category);
+        Assert.Equal(80m, category.TotalExpense);
+        Assert.DoesNotContain(result.TopExpenses, expense => expense.Category == "Savings & Investments");
+    }
+
     private static Transaction CreateTransaction(
         DateTime date,
         decimal amount,
         string category,
         string description,
-        Guid? id = null) =>
+        Guid? id = null,
+        string? treatment = null) =>
         new()
         {
             Id = id ?? Guid.NewGuid(),
             Date = date,
             Amount = amount,
             Category = category,
+            Treatment = treatment ?? TransactionTreatment.GetDefault(amount, category),
             Metadata = new TransactionMetadata { RawDescription = description }
         };
 }

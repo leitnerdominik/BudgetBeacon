@@ -193,6 +193,10 @@ public class TransactionsController : ControllerBase
         var notes = string.IsNullOrWhiteSpace(request.Notes)
             ? null
             : request.Notes.Trim();
+        var treatment = string.IsNullOrWhiteSpace(request.Treatment)
+            ? TransactionTreatment.GetDefault(request.Amount, category)
+            : TransactionTreatment.Normalize(request.Treatment);
+        var hasInvalidTreatment = treatment is null;
 
         if (request.Date.Year < 2000 ||
             request.Date.Year > 2100 ||
@@ -200,7 +204,8 @@ public class TransactionsController : ControllerBase
             string.IsNullOrWhiteSpace(description) ||
             description.Length > 200 ||
             notes?.Length > 500 ||
-            category is null)
+            category is null ||
+            hasInvalidTreatment)
         {
             return this.ApiValidationProblem(
                 "Invalid transaction",
@@ -236,6 +241,11 @@ public class TransactionsController : ControllerBase
                     {
                         errors.AddModelError(nameof(request.Category), "Unsupported transaction category.");
                     }
+
+                    if (hasInvalidTreatment)
+                    {
+                        errors.AddModelError(nameof(request.Treatment), "Unsupported transaction statistics treatment.");
+                    }
                 });
         }
 
@@ -245,6 +255,7 @@ public class TransactionsController : ControllerBase
             Date = request.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             Amount = request.Amount,
             Category = category,
+            Treatment = treatment!,
             Notes = notes,
             Metadata = new TransactionMetadata
             {
@@ -655,6 +666,9 @@ public class TransactionsController : ControllerBase
         {
             transaction.UserId = userId;
             transaction.ImportFingerprint = TransactionImportFingerprint.Create(transaction);
+            transaction.Treatment = TransactionTreatment.GetDefault(
+                transaction.Amount,
+                transaction.Category);
         });
 
         if (!parsedTransactions.Any())
@@ -705,6 +719,10 @@ public class TransactionsController : ControllerBase
         var notes = string.IsNullOrWhiteSpace(request.Notes)
             ? null
             : request.Notes.Trim();
+        var treatment = string.IsNullOrWhiteSpace(request.Treatment)
+            ? TransactionTreatment.GetDefault(request.Amount, category)
+            : TransactionTreatment.Normalize(request.Treatment);
+        var hasInvalidTreatment = treatment is null;
 
         if (request.Date.Year < 2000 ||
             request.Date.Year > 2100 ||
@@ -712,7 +730,8 @@ public class TransactionsController : ControllerBase
             string.IsNullOrWhiteSpace(description) ||
             description.Length > 200 ||
             notes?.Length > 500 ||
-            category is null)
+            category is null ||
+            hasInvalidTreatment)
         {
             return this.ApiValidationProblem(
                 "Invalid transaction",
@@ -748,6 +767,11 @@ public class TransactionsController : ControllerBase
                     {
                         errors.AddModelError(nameof(request.Category), "Unsupported transaction category.");
                     }
+
+                    if (hasInvalidTreatment)
+                    {
+                        errors.AddModelError(nameof(request.Treatment), "Unsupported transaction statistics treatment.");
+                    }
                 });
         }
 
@@ -760,6 +784,7 @@ public class TransactionsController : ControllerBase
                 Amount = request.Amount,
                 Description = description,
                 Category = category,
+                Treatment = treatment!,
                 Notes = notes
             });
 
@@ -1126,12 +1151,14 @@ public class TransactionsController : ControllerBase
         decimal Amount,
         string? Description,
         string? Category,
-        string? Notes);
+        string? Notes,
+        string? Treatment = null);
     public sealed record UpdateTransactionRequest(
         DateOnly Date,
         decimal Amount,
         string? Description,
         string? Category,
-        string? Notes);
+        string? Notes,
+        string? Treatment = null);
 
 }

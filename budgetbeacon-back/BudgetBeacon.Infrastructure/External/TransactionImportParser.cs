@@ -345,6 +345,7 @@ public sealed class TransactionMap : ClassMap<Transaction>
 
         Map(m => m.Category).Constant("Uncategorized");
         Map(m => m.Id).Ignore();
+        Map(m => m.Treatment).Ignore();
         Map(m => m.ImportFingerprint).Ignore();
         Map(m => m.Metadata.AiConfidenceScore).Ignore();
         Map(m => m.Metadata.AiSuggestedCategory).Ignore();

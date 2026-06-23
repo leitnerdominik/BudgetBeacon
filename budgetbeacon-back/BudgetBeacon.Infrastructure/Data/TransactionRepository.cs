@@ -20,7 +20,10 @@ public class TransactionRepository : ITransactionRepository
 
     public async Task AddRangeAsync(IEnumerable<Transaction> transactions)
     {
-        await _context.Transactions.AddRangeAsync(transactions);
+        var transactionList = transactions.ToList();
+        ApplyDefaultTreatment(transactionList);
+
+        await _context.Transactions.AddRangeAsync(transactionList);
         await _context.SaveChangesAsync();
     }
 
@@ -40,6 +43,9 @@ public class TransactionRepository : ITransactionRepository
                     Date = transaction.Date.ToUniversalTime(),
                     Amount = transaction.Amount,
                     Category = transaction.Category,
+                    Treatment = string.IsNullOrWhiteSpace(transaction.Treatment)
+                        ? TransactionTreatment.GetDefault(transaction.Amount, transaction.Category)
+                        : transaction.Treatment,
                     Notes = transaction.Notes,
                     ImportFingerprint = transaction.ImportFingerprint,
                     Metadata = transaction.Metadata
@@ -57,13 +63,14 @@ public class TransactionRepository : ITransactionRepository
         };
 
         const string sql = """
-            INSERT INTO "Transactions" ("Id", "UserId", "Date", "Amount", "Category", "Notes", "ImportFingerprint", "Metadata")
+            INSERT INTO "Transactions" ("Id", "UserId", "Date", "Amount", "Category", "Treatment", "Notes", "ImportFingerprint", "Metadata")
             SELECT
                 input."Id",
                 input."UserId",
                 input."Date",
                 input."Amount",
                 input."Category",
+                input."Treatment",
                 input."Notes",
                 input."ImportFingerprint",
                 input."Metadata"
@@ -73,6 +80,7 @@ public class TransactionRepository : ITransactionRepository
                 "Date" timestamp with time zone,
                 "Amount" numeric,
                 "Category" text,
+                "Treatment" character varying(32),
                 "Notes" character varying(500),
                 "ImportFingerprint" character varying(64),
                 "Metadata" jsonb
@@ -81,6 +89,19 @@ public class TransactionRepository : ITransactionRepository
             """;
 
         return await _context.Database.ExecuteSqlRawAsync(sql, parameter);
+    }
+
+    private static void ApplyDefaultTreatment(IEnumerable<Transaction> transactions)
+    {
+        foreach (var transaction in transactions)
+        {
+            if (string.IsNullOrWhiteSpace(transaction.Treatment))
+            {
+                transaction.Treatment = TransactionTreatment.GetDefault(
+                    transaction.Amount,
+                    transaction.Category);
+            }
+        }
     }
 
     public async Task<bool> DeleteAsync(string userId, Guid transactionId)
@@ -132,6 +153,7 @@ public class TransactionRepository : ITransactionRepository
             return null;
 
         transaction.Category = category;
+        transaction.Treatment = TransactionTreatment.GetDefault(transaction.Amount, category);
         transaction.Metadata.AiSuggestedCategory = null;
         transaction.Metadata.AiConfidenceScore = null;
 
@@ -204,6 +226,7 @@ public class TransactionRepository : ITransactionRepository
         public DateTime Date { get; init; }
         public decimal Amount { get; init; }
         public string Category { get; init; } = string.Empty;
+        public string Treatment { get; init; } = string.Empty;
         public string? Notes { get; init; }
         public string? ImportFingerprint { get; init; }
         public TransactionMetadata Metadata { get; init; } = new();
