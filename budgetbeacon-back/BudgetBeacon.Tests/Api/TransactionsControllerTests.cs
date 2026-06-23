@@ -40,6 +40,61 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task GetAllTransactions_ReturnsValidationProblemForInvalidFilterAndSortValues()
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetAllTransactions(
+            startDate: new DateOnly(2026, 2, 1),
+            endDate: new DateOnly(2026, 1, 1),
+            searchTerm: new string('a', 101),
+            category: "Not a category",
+            transactionType: "refund",
+            sortBy: "balance",
+            sortDirection: "sideways");
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("endDate", problem.Errors.Keys);
+        Assert.Contains("searchTerm", problem.Errors.Keys);
+        Assert.Contains("category", problem.Errors.Keys);
+        Assert.Contains("transactionType", problem.Errors.Keys);
+        Assert.Contains("sortBy", problem.Errors.Keys);
+        Assert.Contains("sortDirection", problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task GetAllTransactions_PassesValidatedQueryOptionsToRepository()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.GetAllTransactions(
+            startDate: new DateOnly(2026, 1, 1),
+            endDate: new DateOnly(2026, 1, 31),
+            searchTerm: "  market  ",
+            category: "food & groceries",
+            transactionType: "expense",
+            sortBy: "amount",
+            sortDirection: "asc",
+            page: 2,
+            pageSize: 25);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("user-1", repository.LastPagedUserId);
+        Assert.NotNull(repository.LastPagedOptions);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), repository.LastPagedOptions.StartDate);
+        Assert.Equal(new DateTime(2026, 1, 31, 23, 59, 59, 999, DateTimeKind.Utc).AddTicks(9999), repository.LastPagedOptions.EndDate);
+        Assert.Equal("market", repository.LastPagedOptions.SearchTerm);
+        Assert.Equal("Food & Groceries", repository.LastPagedOptions.Category);
+        Assert.Equal(TransactionTypeFilter.Expense, repository.LastPagedOptions.TransactionType);
+        Assert.Equal(TransactionSortField.Amount, repository.LastPagedOptions.SortBy);
+        Assert.Equal(TransactionSortDirection.Asc, repository.LastPagedOptions.SortDirection);
+        Assert.Equal(2, repository.LastPagedPageNumber);
+        Assert.Equal(25, repository.LastPagedPageSize);
+    }
+
+    [Fact]
     public async Task GetById_ReturnsCurrentUsersTransaction()
     {
         var transactionId = Guid.NewGuid();
@@ -1274,10 +1329,10 @@ public sealed class TransactionsControllerTests
             .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
         Assert.Equal("user-1", repository.LastPagedUserId);
-        Assert.NotNull(repository.LastPagedStartDate);
-        Assert.Equal(DateTimeKind.Utc, repository.LastPagedStartDate.Value.Kind);
-        Assert.Equal(TimeSpan.Zero, repository.LastPagedStartDate.Value.TimeOfDay);
-        Assert.InRange(repository.LastPagedStartDate.Value, earliestExpectedStartDate, latestExpectedStartDate);
+        Assert.NotNull(repository.LastPagedOptions?.StartDate);
+        Assert.Equal(DateTimeKind.Utc, repository.LastPagedOptions.StartDate.Value.Kind);
+        Assert.Equal(TimeSpan.Zero, repository.LastPagedOptions.StartDate.Value.TimeOfDay);
+        Assert.InRange(repository.LastPagedOptions.StartDate.Value, earliestExpectedStartDate, latestExpectedStartDate);
         Assert.Equal(1, repository.LastPagedPageNumber);
         Assert.Equal(10000, repository.LastPagedPageSize);
     }
@@ -1372,7 +1427,7 @@ public sealed class TransactionsControllerTests
         public DateTime? LastDateRangeStartDate { get; private set; }
         public DateTime? LastDateRangeEndDate { get; private set; }
         public string? LastPagedUserId { get; private set; }
-        public DateTime? LastPagedStartDate { get; private set; }
+        public TransactionQueryOptions? LastPagedOptions { get; private set; }
         public int? LastPagedPageNumber { get; private set; }
         public int? LastPagedPageSize { get; private set; }
 
@@ -1488,13 +1543,13 @@ public sealed class TransactionsControllerTests
 
         public Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(
             string userId,
-            DateTime? startDate,
+            TransactionQueryOptions options,
             int pageNumber,
             int pageSize)
         {
             PagedCalls++;
             LastPagedUserId = userId;
-            LastPagedStartDate = startDate;
+            LastPagedOptions = options;
             LastPagedPageNumber = pageNumber;
             LastPagedPageSize = pageSize;
             return Task.FromResult((PagedTransactions, PagedTotalCount));

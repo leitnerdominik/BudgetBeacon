@@ -6,9 +6,14 @@ import {
   DataGrid,
   type GridColDef,
   type GridPaginationModel,
+  type GridSortModel,
 } from "@mui/x-data-grid";
 
 import { formatCurrency, formatDate } from "../../../utils/formatDate";
+import type {
+  TransactionSortDirection,
+  TransactionSortField,
+} from "../../../api/transactionsApi";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import type { PaginatedTransactions } from "../types";
 
@@ -20,8 +25,14 @@ type DesktopTransactionGridProps = {
   onDeleteRequest: (transactionId: string) => void;
   onEditRequest: (transactionId: string) => void;
   onRegenerateCategory: (transactionId: string) => void;
+  onSortChange: (
+    sortBy: TransactionSortField,
+    sortDirection: TransactionSortDirection,
+  ) => void;
   paginationModel: GridPaginationModel;
   setPaginationModel: (model: GridPaginationModel) => void;
+  sortBy: TransactionSortField;
+  sortDirection: TransactionSortDirection;
   totalCount: number;
   transactions: PaginatedTransactions["data"];
   deletingTransactionId?: string;
@@ -33,13 +44,36 @@ export const DesktopTransactionGrid = ({
   onDeleteRequest,
   onEditRequest,
   onRegenerateCategory,
+  onSortChange,
   paginationModel,
   setPaginationModel,
+  sortBy,
+  sortDirection,
   totalCount,
   transactions,
   deletingTransactionId,
   regeneratingCategoryId,
 }: DesktopTransactionGridProps) => {
+  const sortModel: GridSortModel = [{ field: sortBy, sort: sortDirection }];
+
+  const handleSortModelChange = (model: GridSortModel) => {
+    const nextSort = model[0];
+
+    if (
+      !nextSort ||
+      !nextSort.sort ||
+      !["date", "amount", "category", "description"].includes(nextSort.field)
+    ) {
+      onSortChange("date", "desc");
+      return;
+    }
+
+    onSortChange(
+      nextSort.field as TransactionSortField,
+      nextSort.sort as TransactionSortDirection,
+    );
+  };
+
   const columns: GridColDef[] = [
     {
       field: "date",
@@ -53,6 +87,7 @@ export const DesktopTransactionGrid = ({
       headerName: "Notes",
       flex: 1,
       minWidth: 180,
+      sortable: false,
       valueFormatter: (value: string | null | undefined) =>
         value && value.length > 0 ? value : "-",
     },
@@ -77,6 +112,7 @@ export const DesktopTransactionGrid = ({
       width: 130,
       align: "right",
       headerAlign: "right",
+      sortable: false,
       valueFormatter: (value) => formatConfidenceScore(value as number | null),
     },
     {
@@ -169,6 +205,9 @@ export const DesktopTransactionGrid = ({
         paginationModel={paginationModel}
         paginationMode="server"
         onPaginationModelChange={setPaginationModel}
+        sortingMode="server"
+        sortModel={sortModel}
+        onSortModelChange={handleSortModelChange}
         disableRowSelectionOnClick
         sx={{
           borderRadius: 1,

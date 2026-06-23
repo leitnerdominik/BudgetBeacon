@@ -65,9 +65,34 @@ export interface TransactionImportMappingRequest {
   descriptionColumnIndex?: number;
 }
 
+export type TransactionTypeFilter = "all" | "income" | "expense";
+export type TransactionSortField = "date" | "amount" | "category" | "description";
+export type TransactionSortDirection = "asc" | "desc";
+
+export interface TransactionQueryRequest {
+  searchTerm: string;
+  category: string;
+  transactionType: TransactionTypeFilter;
+  startDate: string;
+  endDate: string;
+  sortBy: TransactionSortField;
+  sortDirection: TransactionSortDirection;
+}
+
+export const defaultTransactionQuery: TransactionQueryRequest = {
+  searchTerm: "",
+  category: "",
+  transactionType: "all",
+  startDate: "",
+  endDate: "",
+  sortBy: "date",
+  sortDirection: "desc",
+};
+
 export const getTransactions = async (
   page: number,
   pageSize: number,
+  query: TransactionQueryRequest,
 ): Promise<PaginatedTransactions> => {
   const response = await apiClient.get<
     TransactionsApiResponse,
@@ -76,6 +101,13 @@ export const getTransactions = async (
     params: {
       page,
       pageSize,
+      searchTerm: query.searchTerm.trim() || undefined,
+      category: query.category || undefined,
+      transactionType: query.transactionType,
+      startDate: query.startDate || undefined,
+      endDate: query.endDate || undefined,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
     },
   });
 

@@ -175,22 +175,21 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync();
     }
 
-    public async Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(string userId, DateTime? startDate, int pageNumber, int pageSize)
+    public async Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(
+        string userId,
+        TransactionQueryOptions options,
+        int pageNumber,
+        int pageSize)
     {
         var query = _context.Transactions
             .Where(t => t.UserId == userId)
             .AsQueryable();
 
-        if (startDate.HasValue)
-        {
-            var startUtc = startDate.Value.ToUniversalTime();
-            query = query.Where(t => t.Date >= startUtc);
-        }
+        query = TransactionQuery.ApplyFilters(query, options);
 
         int totalCount = await query.CountAsync();
 
-        var items = await query
-            .OrderByDescending(t => t.Date)
+        var items = await TransactionQuery.ApplySorting(query, options)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();

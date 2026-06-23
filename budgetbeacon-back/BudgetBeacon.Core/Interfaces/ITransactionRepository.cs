@@ -18,7 +18,7 @@ namespace BudgetBeacon.Core.Interfaces
         Task<IEnumerable<Transaction>> GetByDateRangeAsync(string userId, DateTime startDate, DateTime endDate);
         Task<(IEnumerable<Transaction> Items, int TotalCount)> GetTransactionsPagedAsync(
             string userId,
-            DateTime? startDate,
+            TransactionQueryOptions options,
             int pageNumber,
             int pageSize);
     }

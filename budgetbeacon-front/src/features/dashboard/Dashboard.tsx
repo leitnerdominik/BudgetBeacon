@@ -14,6 +14,7 @@ import {
 import Grid from "@mui/material/Grid";
 
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
+import { defaultTransactionQuery } from "../../api/transactionsApi";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
@@ -43,7 +44,7 @@ export const Dashboard = () => {
     isFetching: isFetchingTransactions,
     isLoading: isLoadingTransactions,
     refetch: refetchTransactions,
-  } = useTransactions(1, 5);
+  } = useTransactions(1, 5, defaultTransactionQuery);
   const {
     data: tips,
     error: tipsError,

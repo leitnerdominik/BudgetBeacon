@@ -1,15 +1,19 @@
 import { lazy, Suspense, useState } from "react";
 import AddIcon from "@mui/icons-material/Add";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import ClearIcon from "@mui/icons-material/Clear";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
   Box,
+  Badge,
   Button,
   Card,
   CardContent,
   Chip,
   CircularProgress,
+  Collapse,
+  Divider,
   Dialog,
   DialogActions,
   DialogContent,
@@ -17,10 +21,12 @@ import {
   DialogTitle,
   FormControl,
   IconButton,
+  InputLabel,
   LinearProgress,
   MenuItem,
   Select,
   Stack,
+  TextField,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -29,9 +35,16 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { LoadingState, StatusMessage } from "../../../components/AsyncState";
+import {
+  defaultTransactionQuery,
+  type TransactionQueryRequest,
+  type TransactionSortDirection,
+  type TransactionSortField,
+} from "../../../api/transactionsApi";
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../../hooks/useSlowLoading";
 import { formatCurrency, formatDate } from "../../../utils/formatDate";
+import { transactionCategories } from "../transactionCategories";
 import { useCategorizeUncategorizedTransactions } from "../hooks/useCategorizeUncategorizedTransactions";
 import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
@@ -71,6 +84,10 @@ export const TransactionList = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const isOnline = useNetworkStatus();
+  const [transactionQuery, setTransactionQuery] = useState<TransactionQueryRequest>({
+    ...defaultTransactionQuery,
+  });
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 10,
@@ -81,6 +98,7 @@ export const TransactionList = () => {
   const { data, isError, isFetching, isLoading, refetch } = useTransactions(
     paginationModel.page + 1,
     paginationModel.pageSize,
+    transactionQuery,
   );
   const categorizeMutation = useCategorizeUncategorizedTransactions();
   const deleteTransactionMutation = useDeleteTransaction();
@@ -92,6 +110,58 @@ export const TransactionList = () => {
   const totalPages = Math.max(1, Math.ceil(totalCount / paginationModel.pageSize));
   const hasTransactions = transactions.length > 0;
   const showRefreshError = isError && hasTransactions;
+  const hasActiveFilters =
+    transactionQuery.searchTerm.trim().length > 0 ||
+    transactionQuery.category.length > 0 ||
+    transactionQuery.transactionType !== "all" ||
+    transactionQuery.startDate.length > 0 ||
+    transactionQuery.endDate.length > 0;
+  const activeFilterCount = [
+    transactionQuery.searchTerm.trim(),
+    transactionQuery.category,
+    transactionQuery.transactionType !== "all" ? transactionQuery.transactionType : "",
+    transactionQuery.startDate,
+    transactionQuery.endDate,
+  ].filter(Boolean).length;
+  const activeFilterChips = [
+    transactionQuery.searchTerm.trim().length > 0
+      ? {
+          key: "search",
+          label: `Search: ${transactionQuery.searchTerm.trim()}`,
+          onDelete: () => handleQueryChange("searchTerm", ""),
+        }
+      : null,
+    transactionQuery.category.length > 0
+      ? {
+          key: "category",
+          label: `Category: ${transactionQuery.category}`,
+          onDelete: () => handleQueryChange("category", ""),
+        }
+      : null,
+    transactionQuery.transactionType !== "all"
+      ? {
+          key: "transactionType",
+          label: `Type: ${
+            transactionQuery.transactionType === "income" ? "Income" : "Expense"
+          }`,
+          onDelete: () => handleQueryChange("transactionType", "all"),
+        }
+      : null,
+    transactionQuery.startDate.length > 0
+      ? {
+          key: "startDate",
+          label: `From: ${transactionQuery.startDate}`,
+          onDelete: () => handleQueryChange("startDate", ""),
+        }
+      : null,
+    transactionQuery.endDate.length > 0
+      ? {
+          key: "endDate",
+          label: `To: ${transactionQuery.endDate}`,
+          onDelete: () => handleQueryChange("endDate", ""),
+        }
+      : null,
+  ].filter((chip) => chip !== null);
 
   const handlePreviousPage = () => {
     setPaginationModel((current) => ({
@@ -116,6 +186,57 @@ export const TransactionList = () => {
       page: 0,
       pageSize,
     });
+  };
+
+  const handlePaginationModelChange = (model: GridPaginationModel) => {
+    setPaginationModel((current) => ({
+      page: model.pageSize === current.pageSize ? model.page : 0,
+      pageSize: model.pageSize,
+    }));
+  };
+
+  const handleQueryChange = <Key extends keyof TransactionQueryRequest>(
+    key: Key,
+    value: TransactionQueryRequest[Key],
+  ) => {
+    setTransactionQuery((current) => ({
+      ...current,
+      [key]: value,
+    }));
+    setPaginationModel((current) => ({
+      ...current,
+      page: 0,
+    }));
+  };
+
+  const handleSortChange = (
+    sortBy: TransactionSortField,
+    sortDirection: TransactionSortDirection,
+  ) => {
+    setTransactionQuery((current) => ({
+      ...current,
+      sortBy,
+      sortDirection,
+    }));
+    setPaginationModel((current) => ({
+      ...current,
+      page: 0,
+    }));
+  };
+
+  const handleClearFilters = () => {
+    setTransactionQuery((current) => ({
+      ...current,
+      searchTerm: "",
+      category: "",
+      transactionType: "all",
+      startDate: "",
+      endDate: "",
+    }));
+    setPaginationModel((current) => ({
+      ...current,
+      page: 0,
+    }));
   };
 
   const handleRegenerateCategory = (transactionId: string) => {
@@ -248,6 +369,360 @@ export const TransactionList = () => {
         </Box>
       ) : null}
 
+      <Box
+        sx={{
+          p: 2,
+          mb: 2,
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 1,
+          bgcolor: "background.paper",
+        }}
+      >
+        <Stack spacing={1.5}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1.5}
+            alignItems="stretch"
+            sx={{ display: { xs: "flex", md: "none" } }}
+          >
+            <TextField
+              label="Search"
+              size="small"
+              value={transactionQuery.searchTerm}
+              onChange={(event) =>
+                handleQueryChange("searchTerm", event.target.value)
+              }
+              placeholder="Description or notes"
+              fullWidth
+            />
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ width: { xs: "100%", sm: "auto" } }}
+            >
+              <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+                <InputLabel id="mobile-transaction-sort-field-label">
+                  Sort by
+                </InputLabel>
+                <Select
+                  labelId="mobile-transaction-sort-field-label"
+                  label="Sort by"
+                  value={transactionQuery.sortBy}
+                  onChange={(event) =>
+                    handleSortChange(
+                      event.target.value as TransactionSortField,
+                      transactionQuery.sortDirection,
+                    )
+                  }
+                >
+                  <MenuItem value="date">Date</MenuItem>
+                  <MenuItem value="amount">Amount</MenuItem>
+                  <MenuItem value="category">Category</MenuItem>
+                  <MenuItem value="description">Description</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+                <InputLabel id="mobile-transaction-sort-direction-label">
+                  Direction
+                </InputLabel>
+                <Select
+                  labelId="mobile-transaction-sort-direction-label"
+                  label="Direction"
+                  value={transactionQuery.sortDirection}
+                  onChange={(event) =>
+                    handleSortChange(
+                      transactionQuery.sortBy,
+                      event.target.value as TransactionSortDirection,
+                    )
+                  }
+                >
+                  <MenuItem value="desc">Descending</MenuItem>
+                  <MenuItem value="asc">Ascending</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+          </Stack>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ display: { xs: "flex", md: "none" } }}
+          >
+            <Badge
+              badgeContent={activeFilterCount}
+              color="primary"
+              invisible={activeFilterCount === 0}
+              sx={{
+                flex: 1,
+                "& .MuiBadge-badge": {
+                  right: 10,
+                  top: 8,
+                },
+              }}
+            >
+              <Button
+                fullWidth
+                variant="outlined"
+                aria-expanded={isMobileFilterOpen}
+                onClick={() => setIsMobileFilterOpen((current) => !current)}
+              >
+                Filters
+              </Button>
+            </Badge>
+            <Button
+              variant="outlined"
+              startIcon={<ClearIcon />}
+              onClick={handleClearFilters}
+              disabled={!hasActiveFilters}
+              sx={{ flex: 1 }}
+            >
+              Clear
+            </Button>
+          </Stack>
+          <Collapse in={isMobileFilterOpen} timeout="auto" unmountOnExit>
+            <Stack
+              spacing={1.5}
+              sx={{ display: { xs: "flex", md: "none" }, pt: 0.5 }}
+            >
+              <Divider />
+              <FormControl size="small" fullWidth>
+                <InputLabel id="mobile-transaction-category-filter-label">
+                  Category
+                </InputLabel>
+                <Select
+                  labelId="mobile-transaction-category-filter-label"
+                  label="Category"
+                  value={transactionQuery.category}
+                  onChange={(event) =>
+                    handleQueryChange("category", event.target.value)
+                  }
+                >
+                  <MenuItem value="">All categories</MenuItem>
+                  {transactionCategories.map((category) => (
+                    <MenuItem key={category} value={category}>
+                      {category}
+                    </MenuItem>
+                  ))}
+                  <MenuItem value="Uncategorized">Uncategorized</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" fullWidth>
+                <InputLabel id="mobile-transaction-type-filter-label">
+                  Type
+                </InputLabel>
+                <Select
+                  labelId="mobile-transaction-type-filter-label"
+                  label="Type"
+                  value={transactionQuery.transactionType}
+                  onChange={(event) =>
+                    handleQueryChange(
+                      "transactionType",
+                      event.target.value as TransactionQueryRequest["transactionType"],
+                    )
+                  }
+                >
+                  <MenuItem value="all">All</MenuItem>
+                  <MenuItem value="income">Income</MenuItem>
+                  <MenuItem value="expense">Expense</MenuItem>
+                </Select>
+              </FormControl>
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  label="Start date"
+                  type="date"
+                  size="small"
+                  value={transactionQuery.startDate}
+                  onChange={(event) =>
+                    handleQueryChange("startDate", event.target.value)
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1, minWidth: 0 }}
+                />
+                <TextField
+                  label="End date"
+                  type="date"
+                  size="small"
+                  value={transactionQuery.endDate}
+                  onChange={(event) =>
+                    handleQueryChange("endDate", event.target.value)
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1, minWidth: 0 }}
+                />
+              </Stack>
+            </Stack>
+          </Collapse>
+
+          <Stack
+            direction="column"
+            spacing={1.5}
+            sx={{ display: { xs: "none", md: "flex" } }}
+          >
+            <Stack
+              direction="row"
+              spacing={1.5}
+              alignItems="center"
+            >
+              <TextField
+                label="Search"
+                size="small"
+                value={transactionQuery.searchTerm}
+                onChange={(event) =>
+                  handleQueryChange("searchTerm", event.target.value)
+                }
+                placeholder="Description or notes"
+                sx={{ flex: 1.2 }}
+              />
+              <FormControl size="small" sx={{ minWidth: 190 }}>
+                <InputLabel id="transaction-category-filter-label">
+                  Category
+                </InputLabel>
+                <Select
+                  labelId="transaction-category-filter-label"
+                  label="Category"
+                  value={transactionQuery.category}
+                  onChange={(event) =>
+                    handleQueryChange("category", event.target.value)
+                  }
+                >
+                  <MenuItem value="">All categories</MenuItem>
+                  {transactionCategories.map((category) => (
+                    <MenuItem key={category} value={category}>
+                      {category}
+                    </MenuItem>
+                  ))}
+                  <MenuItem value="Uncategorized">Uncategorized</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id="transaction-type-filter-label">Type</InputLabel>
+                <Select
+                  labelId="transaction-type-filter-label"
+                  label="Type"
+                  value={transactionQuery.transactionType}
+                  onChange={(event) =>
+                    handleQueryChange(
+                      "transactionType",
+                      event.target.value as TransactionQueryRequest["transactionType"],
+                    )
+                  }
+                >
+                  <MenuItem value="all">All</MenuItem>
+                  <MenuItem value="income">Income</MenuItem>
+                  <MenuItem value="expense">Expense</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                label="Start date"
+                type="date"
+                size="small"
+                value={transactionQuery.startDate}
+                onChange={(event) =>
+                  handleQueryChange("startDate", event.target.value)
+                }
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 160 }}
+              />
+              <TextField
+                label="End date"
+                type="date"
+                size="small"
+                value={transactionQuery.endDate}
+                onChange={(event) =>
+                  handleQueryChange("endDate", event.target.value)
+                }
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 160 }}
+              />
+            </Stack>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              alignItems="center"
+              justifyContent="space-between"
+            >
+              <Stack direction="row" spacing={1.5} sx={{ flex: 1 }}>
+                <FormControl size="small" sx={{ minWidth: 180 }}>
+                  <InputLabel id="transaction-sort-field-label">
+                    Sort by
+                  </InputLabel>
+                  <Select
+                    labelId="transaction-sort-field-label"
+                    label="Sort by"
+                    value={transactionQuery.sortBy}
+                    onChange={(event) =>
+                      handleSortChange(
+                        event.target.value as TransactionSortField,
+                        transactionQuery.sortDirection,
+                      )
+                    }
+                  >
+                    <MenuItem value="date">Date</MenuItem>
+                    <MenuItem value="amount">Amount</MenuItem>
+                    <MenuItem value="category">Category</MenuItem>
+                    <MenuItem value="description">Description</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel id="transaction-sort-direction-label">
+                    Direction
+                  </InputLabel>
+                  <Select
+                    labelId="transaction-sort-direction-label"
+                    label="Direction"
+                    value={transactionQuery.sortDirection}
+                    onChange={(event) =>
+                      handleSortChange(
+                        transactionQuery.sortBy,
+                        event.target.value as TransactionSortDirection,
+                      )
+                    }
+                  >
+                    <MenuItem value="desc">Descending</MenuItem>
+                    <MenuItem value="asc">Ascending</MenuItem>
+                  </Select>
+                </FormControl>
+              </Stack>
+              <Button
+                variant="outlined"
+                startIcon={<ClearIcon />}
+                onClick={handleClearFilters}
+                disabled={!hasActiveFilters}
+              >
+                Clear filters
+              </Button>
+            </Stack>
+          </Stack>
+        </Stack>
+      </Box>
+
+      {isMobile && activeFilterChips.length > 0 ? (
+        <Stack
+          direction="row"
+          spacing={1}
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ mb: 2 }}
+        >
+          {activeFilterChips.map((chip) => (
+            <Chip
+              key={chip.key}
+              label={chip.label}
+              onDelete={chip.onDelete}
+              size="small"
+              variant="outlined"
+              sx={{
+                maxWidth: "100%",
+                "& .MuiChip-label": {
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                },
+              }}
+            />
+          ))}
+        </Stack>
+      ) : null}
+
       {isLoading && !hasTransactions ? (
         <LoadingState
           label="Loading transactions..."
@@ -271,8 +746,18 @@ export const TransactionList = () => {
         />
       ) : !hasTransactions ? (
         <StatusMessage
-          title="No transactions available yet"
-          description="Add a transaction manually or import a CSV/XLSX file to populate your transaction history."
+          title={
+            hasActiveFilters
+              ? "No transactions match your filters"
+              : "No transactions available yet"
+          }
+          description={
+            hasActiveFilters
+              ? "Try adjusting or clearing the filters to widen your transaction list."
+              : "Add a transaction manually or import a CSV/XLSX file to populate your transaction history."
+          }
+          actionLabel={hasActiveFilters ? "Clear filters" : undefined}
+          onAction={hasActiveFilters ? handleClearFilters : undefined}
           minHeight={280}
         />
       ) : isMobile ? (
@@ -487,13 +972,16 @@ export const TransactionList = () => {
               navigate(`/transactions/${transactionId}/edit`)
             }
             onRegenerateCategory={handleRegenerateCategory}
+            onSortChange={handleSortChange}
             paginationModel={paginationModel}
             regeneratingCategoryId={
               regenerateCategoryMutation.isPending
                 ? regenerateCategoryMutation.variables
                 : undefined
             }
-            setPaginationModel={setPaginationModel}
+            setPaginationModel={handlePaginationModelChange}
+            sortBy={transactionQuery.sortBy}
+            sortDirection={transactionQuery.sortDirection}
           />
         </Suspense>
       )}

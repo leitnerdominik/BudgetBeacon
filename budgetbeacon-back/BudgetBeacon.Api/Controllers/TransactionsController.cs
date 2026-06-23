@@ -58,7 +58,13 @@ public class TransactionsController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAllTransactions(
-        [FromQuery] DateTime? startDate,
+        [FromQuery] DateOnly? startDate = null,
+        [FromQuery] DateOnly? endDate = null,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? category = null,
+        [FromQuery] string transactionType = "all",
+        [FromQuery] string sortBy = "date",
+        [FromQuery] string sortDirection = "desc",
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 15)
     {
@@ -68,11 +74,29 @@ public class TransactionsController : ControllerBase
             return UnauthorizedProblem("A valid authenticated user is required to access transactions.");
         }
 
-        if (page < 1 || pageSize < 1 || pageSize > 200)
+        var normalizedCategory = string.IsNullOrWhiteSpace(category)
+            ? null
+            : TransactionCategories.Normalize(category);
+        var hasInvalidCategory = !string.IsNullOrWhiteSpace(category) && normalizedCategory is null;
+        var hasInvalidTransactionType = !TryParseTransactionTypeFilter(transactionType, out var parsedTransactionType);
+        var hasInvalidSortBy = !TryParseTransactionSortField(sortBy, out var parsedSortBy);
+        var hasInvalidSortDirection = !TryParseTransactionSortDirection(sortDirection, out var parsedSortDirection);
+        var hasInvalidDateRange = startDate.HasValue && endDate.HasValue && startDate.Value > endDate.Value;
+        var hasInvalidSearchTerm = searchTerm?.Length > 100;
+
+        if (page < 1 ||
+            pageSize < 1 ||
+            pageSize > 200 ||
+            hasInvalidCategory ||
+            hasInvalidTransactionType ||
+            hasInvalidSortBy ||
+            hasInvalidSortDirection ||
+            hasInvalidDateRange ||
+            hasInvalidSearchTerm)
         {
             return this.ApiValidationProblem(
                 "Invalid transaction query",
-                "Check the provided pagination values and try again.",
+                "Check the provided filter, sort, and pagination values and try again.",
                 errors =>
                 {
                     if (page < 1)
@@ -84,11 +108,49 @@ public class TransactionsController : ControllerBase
                     {
                         errors.AddModelError(nameof(pageSize), "Page size must be between 1 and 200.");
                     }
+
+                    if (hasInvalidCategory)
+                    {
+                        errors.AddModelError(nameof(category), "Unsupported transaction category.");
+                    }
+
+                    if (hasInvalidTransactionType)
+                    {
+                        errors.AddModelError(nameof(transactionType), "Transaction type must be all, income, or expense.");
+                    }
+
+                    if (hasInvalidSortBy)
+                    {
+                        errors.AddModelError(nameof(sortBy), "Sort field must be date, amount, category, or description.");
+                    }
+
+                    if (hasInvalidSortDirection)
+                    {
+                        errors.AddModelError(nameof(sortDirection), "Sort direction must be asc or desc.");
+                    }
+
+                    if (hasInvalidDateRange)
+                    {
+                        errors.AddModelError(nameof(endDate), "End date must not be before start date.");
+                    }
+
+                    if (hasInvalidSearchTerm)
+                    {
+                        errors.AddModelError(nameof(searchTerm), "Search term must be 100 characters or fewer.");
+                    }
                 });
         }
 
         _logger.LogInformation("API requested paginated transactions. Page: {Page}", page);
-        var (items, totalCount) = await _repository.GetTransactionsPagedAsync(userId, startDate, page, pageSize);
+        var queryOptions = new TransactionQueryOptions(
+            StartDate: startDate?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            EndDate: endDate?.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
+            SearchTerm: searchTerm?.Trim(),
+            Category: normalizedCategory,
+            TransactionType: parsedTransactionType,
+            SortBy: parsedSortBy,
+            SortDirection: parsedSortDirection);
+        var (items, totalCount) = await _repository.GetTransactionsPagedAsync(userId, queryOptions, page, pageSize);
 
         return Ok(new
         {
@@ -849,7 +911,11 @@ public class TransactionsController : ControllerBase
         {
             _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
             var startDate = GetUtcTipsStartDate(monthsBack);
-            (transactions, _) = await _repository.GetTransactionsPagedAsync(userId, startDate, 1, 10000);
+            (transactions, _) = await _repository.GetTransactionsPagedAsync(
+                userId,
+                new TransactionQueryOptions(StartDate: startDate),
+                1,
+                10000);
             timeframe = FormatTipsTimeframe(monthsBack);
         }
 
@@ -978,6 +1044,81 @@ public class TransactionsController : ControllerBase
             12 => "Last 1 year",
             _ => $"Last {monthsBack} months"
         };
+
+    private static bool TryParseTransactionTypeFilter(string? value, out TransactionTypeFilter transactionType)
+    {
+        transactionType = TransactionTypeFilter.All;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "all":
+                transactionType = TransactionTypeFilter.All;
+                return true;
+            case "income":
+                transactionType = TransactionTypeFilter.Income;
+                return true;
+            case "expense":
+                transactionType = TransactionTypeFilter.Expense;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryParseTransactionSortField(string? value, out TransactionSortField sortBy)
+    {
+        sortBy = TransactionSortField.Date;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "date":
+                sortBy = TransactionSortField.Date;
+                return true;
+            case "amount":
+                sortBy = TransactionSortField.Amount;
+                return true;
+            case "category":
+                sortBy = TransactionSortField.Category;
+                return true;
+            case "description":
+                sortBy = TransactionSortField.Description;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryParseTransactionSortDirection(string? value, out TransactionSortDirection sortDirection)
+    {
+        sortDirection = TransactionSortDirection.Desc;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "asc":
+                sortDirection = TransactionSortDirection.Asc;
+                return true;
+            case "desc":
+                sortDirection = TransactionSortDirection.Desc;
+                return true;
+            default:
+                return false;
+        }
+    }
 
     public sealed record UpdateTransactionCategoryRequest(string? Category);
     public sealed record CreateTransactionRequest(
