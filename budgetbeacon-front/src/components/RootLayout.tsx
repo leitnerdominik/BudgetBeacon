@@ -14,10 +14,12 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  SvgIcon,
   Toolbar,
   Typography,
   AppBar,
 } from "@mui/material";
+import type { SvgIconProps } from "@mui/material";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import ReceiptIcon from "@mui/icons-material/Receipt";
@@ -28,7 +30,6 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
-import SavingsIcon from "@mui/icons-material/Savings";
 
 import { ApiError } from "../api/httpClient";
 import { logoutCurrentSession } from "../api/authApi";
@@ -38,6 +39,36 @@ import { useNotification } from "./NotificationProvider";
 
 const DRAWER_WIDTH = 240;
 const ACCOUNT_MENU_ID = "account-menu";
+
+const BudgetBeaconIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props} viewBox="0 0 48 48">
+    <path fill="#b7791f" d="M24 7 39 25H9z" opacity=".24" />
+    <path fill="#b7791f" d="M23 6h2v8h-2z" />
+    <path
+      fill="currentColor"
+      d="M17.5 18.5A6.5 6.5 0 0 1 24 12a6.5 6.5 0 0 1 6.5 6.5v2.2c0 .72-.58 1.3-1.3 1.3H18.8c-.72 0-1.3-.58-1.3-1.3z"
+    />
+    <path
+      fill="currentColor"
+      d="M15 25.5c0-.83.67-1.5 1.5-1.5h15c.83 0 1.5.67 1.5 1.5V28H15z"
+    />
+    <path
+      fill="currentColor"
+      d="M10 30c0-1.1.9-2 2-2h24c1.1 0 2 .9 2 2v7c0 2.76-2.24 5-5 5H15c-2.76 0-5-2.24-5-5z"
+    />
+    <path
+      fill="#e6f1ed"
+      d="M24 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6m9 17.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5"
+    />
+    <path
+      fill="none"
+      stroke="#e6f1ed"
+      strokeLinecap="round"
+      strokeWidth="2"
+      d="M15 34h10"
+    />
+  </SvgIcon>
+);
 
 interface NavItem {
   title: string;
@@ -311,7 +342,7 @@ export const RootLayout = () => {
                 borderColor: "divider",
               }}
             >
-              <SavingsIcon fontSize="small" />
+              <BudgetBeaconIcon fontSize="small" />
             </Box>
             <Box sx={{ minWidth: 0 }}>
               <Typography
