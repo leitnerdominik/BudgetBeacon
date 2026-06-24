@@ -1,5 +1,6 @@
 import {
   Box,
+  ButtonBase,
   Card,
   CardContent,
   Divider,
@@ -15,6 +16,7 @@ import { TransactionCategoryIcon } from "../transactions/components/TransactionC
 
 type CategoryBreakdownProps = {
   categories: CategoryExpenseSummary[];
+  onCategorySelect: (category: string) => void;
   periodLabel: string;
 };
 
@@ -27,6 +29,7 @@ const formatPercent = (value: number) => `${percentFormatter.format(value)} %`;
 
 export const CategoryBreakdown = ({
   categories,
+  onCategorySelect,
   periodLabel,
 }: CategoryBreakdownProps) => {
   const maxExpense = Math.max(
@@ -72,62 +75,84 @@ export const CategoryBreakdown = ({
         ) : (
           <Stack spacing={1.75}>
             {categories.map((category) => (
-              <Box key={category.category}>
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  alignItems="baseline"
-                  justifyContent="space-between"
-                  sx={{ mb: 0.75 }}
-                >
-                  <Box sx={{ minWidth: 0 }}>
-                    <Stack direction="row" spacing={0.75} alignItems="center">
-                      <TransactionCategoryIcon
-                        category={category.category}
-                        fontSize="small"
-                        color="action"
-                      />
-                      <Typography
-                        variant="subtitle2"
-                        fontWeight={700}
-                        sx={{ overflowWrap: "anywhere" }}
-                      >
-                        {category.category}
+              <ButtonBase
+                key={category.category}
+                aria-label={`View ${category.category} transactions for ${periodLabel}`}
+                onClick={() => onCategorySelect(category.category)}
+                sx={{
+                  width: "100%",
+                  display: "block",
+                  p: 1,
+                  borderRadius: 1,
+                  textAlign: "left",
+                  transition: "background-color 0.2s ease",
+                  "&:hover": {
+                    bgcolor: "action.hover",
+                  },
+                  "&:focus-visible": {
+                    outline: "2px solid",
+                    outlineColor: "primary.main",
+                    outlineOffset: 2,
+                  },
+                }}
+              >
+                <Box>
+                  <Stack
+                    direction="row"
+                    spacing={1.5}
+                    alignItems="baseline"
+                    justifyContent="space-between"
+                    sx={{ mb: 0.75 }}
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        <TransactionCategoryIcon
+                          category={category.category}
+                          fontSize="small"
+                          color="action"
+                        />
+                        <Typography
+                          variant="subtitle2"
+                          fontWeight={700}
+                          sx={{ overflowWrap: "anywhere" }}
+                        >
+                          {category.category}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        {category.transactionCount} transactions
+                      </Typography>
+                    </Box>
+                    <Stack alignItems="flex-end" sx={{ flexShrink: 0 }}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        {formatCurrency(category.totalExpense)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatPercent(category.percentage)}
                       </Typography>
                     </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      {category.transactionCount} transactions
-                    </Typography>
-                  </Box>
-                  <Stack alignItems="flex-end" sx={{ flexShrink: 0 }}>
-                    <Typography variant="subtitle2" fontWeight={700}>
-                      {formatCurrency(category.totalExpense)}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {formatPercent(category.percentage)}
-                    </Typography>
                   </Stack>
-                </Stack>
-                <Box
-                  aria-label={`${category.category}: ${formatCurrency(category.totalExpense)}, ${formatPercent(category.percentage)}`}
-                  role="img"
-                  sx={{
-                    height: 8,
-                    borderRadius: 1,
-                    bgcolor: "action.hover",
-                    overflow: "hidden",
-                  }}
-                >
                   <Box
+                    aria-label={`${category.category}: ${formatCurrency(category.totalExpense)}, ${formatPercent(category.percentage)}`}
+                    role="img"
                     sx={{
-                      width: `${Math.max((category.totalExpense / maxExpense) * 100, 3)}%`,
-                      height: "100%",
+                      height: 8,
                       borderRadius: 1,
-                      bgcolor: "primary.main",
+                      bgcolor: "action.hover",
+                      overflow: "hidden",
                     }}
-                  />
+                  >
+                    <Box
+                      sx={{
+                        width: `${Math.max((category.totalExpense / maxExpense) * 100, 3)}%`,
+                        height: "100%",
+                        borderRadius: 1,
+                        bgcolor: "primary.main",
+                      }}
+                    />
+                  </Box>
                 </Box>
-              </Box>
+              </ButtonBase>
             ))}
           </Stack>
         )}

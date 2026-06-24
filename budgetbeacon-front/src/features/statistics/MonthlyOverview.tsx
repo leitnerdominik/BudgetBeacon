@@ -26,12 +26,17 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SavingsIcon from "@mui/icons-material/Savings";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import { useNavigate } from "react-router-dom";
 
-import type { StatisticsRequest } from "../../api/transactionsApi";
+import {
+  defaultTransactionQuery,
+  type StatisticsRequest,
+} from "../../api/transactionsApi";
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency } from "../../utils/formatDate";
+import { buildTransactionListSearchParams } from "../transactions/transactionListUrlState";
 import { CategoryBreakdown } from "./CategoryBreakdown";
 import { MonthComparison } from "./MonthComparison";
 import { MonthlyTrend } from "./MonthlyTrend";
@@ -130,7 +135,11 @@ const formatPeriodLabel = (
 const formatSavingsRate = (value: number | null) =>
   value === null ? "N/A" : `${percentFormatter.format(value)} %`;
 
+const toTransactionFilterDate = (value: string | null | undefined) =>
+  value ? value.slice(0, 10) : "";
+
 export const MonthlyOverview = () => {
+  const navigate = useNavigate();
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
@@ -219,6 +228,22 @@ export const MonthlyOverview = () => {
     if (parsedMonth) {
       setSelectedMonth(parsedMonth);
     }
+  };
+
+  const handleCategorySelect = (category: string) => {
+    const searchParams = buildTransactionListSearchParams({
+      page: 0,
+      pageSize: 10,
+      query: {
+        ...defaultTransactionQuery,
+        category,
+        transactionType: "expense",
+        startDate: toTransactionFilterDate(data?.startDate),
+        endDate: toTransactionFilterDate(data?.endDate),
+      },
+    });
+
+    navigate(`/transactions?${searchParams.toString()}`);
   };
 
   return (
@@ -526,6 +551,7 @@ export const MonthlyOverview = () => {
 
           <CategoryBreakdown
             categories={data?.categories ?? []}
+            onCategorySelect={handleCategorySelect}
             periodLabel={periodLabel}
           />
 
