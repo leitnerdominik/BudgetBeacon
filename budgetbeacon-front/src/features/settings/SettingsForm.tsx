@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import InstallMobileIcon from "@mui/icons-material/InstallMobile";
 import SaveIcon from "@mui/icons-material/Save";
 import {
   Autocomplete,
@@ -22,6 +23,7 @@ import type {
   TransactionImportBlacklistRuleType,
 } from "../../types/api";
 import { getLocationSuggestions } from "../../api/userPreferencesApi";
+import { usePwaInstall } from "../pwa/PwaInstallContext";
 import { useUpdateUserPreferences } from "./useUpdateUserPreferences";
 
 const maxLocationLength = 120;
@@ -57,6 +59,7 @@ export const SettingsForm = ({
   isOnline,
 }: SettingsFormProps) => {
   const updateMutation = useUpdateUserPreferences();
+  const { canInstall, installApp } = usePwaInstall();
   const [aiLocationContext, setAiLocationContext] = useState(
     initialAiLocationContext,
   );
@@ -176,6 +179,10 @@ export const SettingsForm = ({
     setBlacklistRules(initialTransactionImportBlacklistRules);
   };
 
+  const handleInstallApp = () => {
+    void installApp();
+  };
+
   return (
     <Box sx={{ width: "100%", maxWidth: 720 }}>
       <Typography variant="h4" component="h1" sx={{ mb: 3 }}>
@@ -184,6 +191,33 @@ export const SettingsForm = ({
 
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2.5}>
+          {canInstall ? (
+            <>
+              <Stack spacing={1.25}>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    Install BudgetBeacon
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Add BudgetBeacon to this device for quicker access from your
+                    home screen or app launcher.
+                  </Typography>
+                </Box>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  startIcon={<InstallMobileIcon />}
+                  onClick={handleInstallApp}
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  Install app
+                </Button>
+              </Stack>
+
+              <Divider />
+            </>
+          ) : null}
+
           <Autocomplete
             freeSolo
             options={visibleLocationSuggestions}
