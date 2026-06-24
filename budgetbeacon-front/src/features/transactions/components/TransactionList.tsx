@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import AddIcon from "@mui/icons-material/Add";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ClearIcon from "@mui/icons-material/Clear";
@@ -32,11 +32,10 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { LoadingState, StatusMessage } from "../../../components/AsyncState";
 import {
-  defaultTransactionQuery,
   type TransactionQueryRequest,
   type TransactionSortDirection,
   type TransactionSortField,
@@ -52,6 +51,11 @@ import { useTransactions } from "../hooks/useTransactions";
 import { TransactionImportButton } from "./TransactionImportButton";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import { getTransactionTreatmentLabel } from "../transactionTreatment";
+import {
+  buildTransactionListSearchParams,
+  parseTransactionListUrlState,
+  type TransactionListState,
+} from "../transactionListUrlState";
 import type { PaginatedTransactions, Transaction } from "../types";
 
 type GridPaginationModel = {
@@ -82,17 +86,21 @@ const DesktopGridFallback = () => (
 
 export const TransactionList = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const isOnline = useNetworkStatus();
-  const [transactionQuery, setTransactionQuery] = useState<TransactionQueryRequest>({
-    ...defaultTransactionQuery,
-  });
+  const listState = useMemo(
+    () => parseTransactionListUrlState(searchParams),
+    [searchParams],
+  );
+  const transactionQuery = listState.query;
+  const paginationModel = {
+    page: listState.page,
+    pageSize: listState.pageSize,
+  };
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
-  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
-    page: 0,
-    pageSize: 10,
-  });
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction>();
   const [isCategorizeDialogOpen, setIsCategorizeDialogOpen] = useState(false);
 
@@ -164,33 +172,48 @@ export const TransactionList = () => {
       : null,
   ].filter((chip) => chip !== null);
 
+  const updateListState = (
+    getNextState: (current: TransactionListState) => TransactionListState,
+  ) => {
+    const nextState = getNextState(listState);
+    setSearchParams(buildTransactionListSearchParams(nextState), {
+      replace: true,
+    });
+  };
+
+  const navigateToTransactionForm = (path: string) => {
+    navigate(`${path}${location.search}`);
+  };
+
   const handlePreviousPage = () => {
-    setPaginationModel((current) => ({
+    updateListState((current) => ({
       ...current,
       page: Math.max(current.page - 1, 0),
     }));
   };
 
   const handleNextPage = () => {
-    setPaginationModel((current) => ({
+    updateListState((current) => ({
       ...current,
       page: Math.min(current.page + 1, totalPages - 1),
     }));
   };
 
   const handleAddTransaction = () => {
-    navigate("/transactions/new");
+    navigateToTransactionForm("/transactions/new");
   };
 
   const handlePageSizeChange = (pageSize: number) => {
-    setPaginationModel({
+    updateListState((current) => ({
+      ...current,
       page: 0,
       pageSize,
-    });
+    }));
   };
 
   const handlePaginationModelChange = (model: GridPaginationModel) => {
-    setPaginationModel((current) => ({
+    updateListState((current) => ({
+      ...current,
       page: model.pageSize === current.pageSize ? model.page : 0,
       pageSize: model.pageSize,
     }));
@@ -200,13 +223,13 @@ export const TransactionList = () => {
     key: Key,
     value: TransactionQueryRequest[Key],
   ) => {
-    setTransactionQuery((current) => ({
-      ...current,
-      [key]: value,
-    }));
-    setPaginationModel((current) => ({
+    updateListState((current) => ({
       ...current,
       page: 0,
+      query: {
+        ...current.query,
+        [key]: value,
+      },
     }));
   };
 
@@ -214,29 +237,29 @@ export const TransactionList = () => {
     sortBy: TransactionSortField,
     sortDirection: TransactionSortDirection,
   ) => {
-    setTransactionQuery((current) => ({
-      ...current,
-      sortBy,
-      sortDirection,
-    }));
-    setPaginationModel((current) => ({
+    updateListState((current) => ({
       ...current,
       page: 0,
+      query: {
+        ...current.query,
+        sortBy,
+        sortDirection,
+      },
     }));
   };
 
   const handleClearFilters = () => {
-    setTransactionQuery((current) => ({
-      ...current,
-      searchTerm: "",
-      category: "",
-      transactionType: "all",
-      startDate: "",
-      endDate: "",
-    }));
-    setPaginationModel((current) => ({
+    updateListState((current) => ({
       ...current,
       page: 0,
+      query: {
+        ...current.query,
+        searchTerm: "",
+        category: "",
+        transactionType: "all",
+        startDate: "",
+        endDate: "",
+      },
     }));
   };
 
@@ -899,7 +922,9 @@ export const TransactionList = () => {
                                   regenerateCategoryMutation.isPending
                                 }
                                 onClick={() =>
-                                  navigate(`/transactions/${transaction.id}/edit`)
+                                  navigateToTransactionForm(
+                                    `/transactions/${transaction.id}/edit`,
+                                  )
                                 }
                               >
                                 <EditIcon fontSize="small" />
@@ -975,7 +1000,7 @@ export const TransactionList = () => {
             }
             onDeleteRequest={handleDeleteRequest}
             onEditRequest={(transactionId) =>
-              navigate(`/transactions/${transactionId}/edit`)
+              navigateToTransactionForm(`/transactions/${transactionId}/edit`)
             }
             onRegenerateCategory={handleRegenerateCategory}
             onSortChange={handleSortChange}

@@ -1,20 +1,23 @@
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/httpClient";
 import { LoadingState, StatusMessage } from "../components/AsyncState";
 import { TransactionForm } from "../features/transactions/components/TransactionForm";
 import { useTransaction } from "../features/transactions/hooks/useTransaction";
+import { getTransactionsReturnPath } from "../features/transactions/transactionListUrlState";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useSlowLoading } from "../hooks/useSlowLoading";
 
 export const EditTransactionPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { transactionId = "" } = useParams();
   const isOnline = useNetworkStatus();
   const { data, error, isError, isLoading, refetch } =
     useTransaction(transactionId);
   const isSlowLoading = useSlowLoading(isLoading);
   const isNotFound = error instanceof ApiError && error.status === 404;
+  const transactionsReturnPath = getTransactionsReturnPath(location.search);
 
   if (isLoading) {
     return (
@@ -33,7 +36,7 @@ export const EditTransactionPage = () => {
         title="Transaction not found"
         description="The requested transaction could not be found for your account."
         actionLabel="Back to transactions"
-        onAction={() => navigate("/transactions")}
+        onAction={() => navigate(transactionsReturnPath)}
         minHeight={320}
       />
     );

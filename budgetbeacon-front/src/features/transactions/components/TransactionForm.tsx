@@ -18,7 +18,7 @@ import {
   Typography,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { transactionCategoryOptions } from "../transactionCategories";
@@ -28,6 +28,7 @@ import {
 } from "../transactionTreatment";
 import { useCreateTransaction } from "../hooks/useCreateTransaction";
 import { useUpdateTransaction } from "../hooks/useUpdateTransaction";
+import { getTransactionsReturnPath } from "../transactionListUrlState";
 import type { Transaction } from "../types";
 
 const getTodayDateInputValue = () => new Date().toISOString().slice(0, 10);
@@ -40,10 +41,12 @@ type TransactionFormProps = {
 
 export const TransactionForm = ({ transaction }: TransactionFormProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const isOnline = useNetworkStatus();
   const createTransactionMutation = useCreateTransaction();
   const updateTransactionMutation = useUpdateTransaction();
   const isEdit = Boolean(transaction);
+  const transactionsReturnPath = getTransactionsReturnPath(location.search);
   const [date, setDate] = useState(
     transaction ? transaction.date.slice(0, 10) : getTodayDateInputValue,
   );
@@ -117,7 +120,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
       notes: normalizedNotes || null,
     };
     const options = {
-      onSuccess: () => navigate("/transactions"),
+      onSuccess: () => navigate(transactionsReturnPath),
     };
 
     if (transaction) {
@@ -156,7 +159,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
         <Button
           variant="outlined"
           startIcon={<ArrowBackIcon />}
-          onClick={() => navigate("/transactions")}
+          onClick={() => navigate(transactionsReturnPath)}
           disabled={isPending}
         >
           Back to transactions
@@ -364,7 +367,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
             >
               <Button
                 variant="outlined"
-                onClick={() => navigate("/transactions")}
+                onClick={() => navigate(transactionsReturnPath)}
                 disabled={isPending}
               >
                 Cancel
