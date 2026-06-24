@@ -11,6 +11,13 @@ lerna-debug.log*
 budgetbeacon-back/BudgetBeacon.Api/appsettings.json
 budgetbeacon-back/BudgetBeacon.Api/appsettings.*.json
 !budgetbeacon-back/BudgetBeacon.Api/appsettings.example.json
+!budgetbeacon-back/BudgetBeacon.Api/appsettings.Development.example.json
+.env
+.env.*
+!.env.example
+budgetbeacon-front/.env
+budgetbeacon-front/.env.*
+!budgetbeacon-front/.env.example
 
 node_modules
 dist

@@ -96,15 +96,34 @@ try
         };
     });
 
+    var allowedFrontendOrigins = builder.Configuration
+        .GetSection("Frontend:AllowedOrigins")
+        .Get<string[]>()?
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .Select(origin => origin.Trim().TrimEnd('/'))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray() ?? [];
+
+    if (allowedFrontendOrigins.Length == 0 && builder.Environment.IsDevelopment())
+    {
+        allowedFrontendOrigins =
+        [
+            "http://localhost:3000",
+            "http://localhost:5173"
+        ];
+    }
+
+    if (allowedFrontendOrigins.Length == 0)
+    {
+        throw new InvalidOperationException(
+            "Frontend allowed origins are missing. Configure Frontend:AllowedOrigins for CORS.");
+    }
+
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowFrontend", policy =>
         {
-            policy.WithOrigins(
-                    "http://localhost:3000",
-                    "http://localhost:5173",
-                    "budgetbeacon.ninetoshine.xyz"
-                )
+            policy.WithOrigins(allowedFrontendOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials();

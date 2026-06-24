@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore budgetbeacon-back/BudgetBeacon.sln
+
+      - name: Build
+        run: dotnet build budgetbeacon-back/BudgetBeacon.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test budgetbeacon-back/BudgetBeacon.sln --configuration Release --no-build
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: budgetbeacon-front/package-lock.json
+
+      - name: Install
+        working-directory: budgetbeacon-front
+        run: npm ci
+
+      - name: Lint
+        working-directory: budgetbeacon-front
+        run: npm run lint
+
+      - name: Build
+        working-directory: budgetbeacon-front
+        run: npm run build
