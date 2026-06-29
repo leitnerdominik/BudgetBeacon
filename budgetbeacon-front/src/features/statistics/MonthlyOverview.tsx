@@ -305,13 +305,13 @@ export const MonthlyOverview = () => {
   };
 
   return (
-    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+    <Box sx={{ flexGrow: 1, minWidth: 0, maxWidth: "100%" }}>
       <Stack
         direction={{ xs: "column", md: "row" }}
         spacing={{ xs: 1.75, sm: 2 }}
         justifyContent="space-between"
         alignItems={{ xs: "stretch", md: "flex-start" }}
-        sx={{ mb: { xs: 2, sm: 3 } }}
+        sx={{ mb: { xs: 2, sm: 3 }, minWidth: 0, maxWidth: "100%" }}
       >
         <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" spacing={1.25} alignItems="center">
@@ -336,7 +336,11 @@ export const MonthlyOverview = () => {
               Statistics
             </Typography>
           </Stack>
-          <Typography variant="body1" color="text.secondary" sx={{ mt: 0.75 }}>
+          <Typography
+            variant="body1"
+            color="text.secondary"
+            sx={{ mt: 0.75, overflowWrap: "anywhere" }}
+          >
             {periodLabel}
           </Typography>
         </Box>
@@ -344,7 +348,7 @@ export const MonthlyOverview = () => {
         <Stack
           spacing={1}
           alignItems={{ xs: "stretch", md: "flex-end" }}
-          sx={{ width: { xs: "100%", md: "auto" } }}
+          sx={{ width: { xs: "100%", md: "auto" }, minWidth: 0, maxWidth: "100%" }}
         >
           <ToggleButtonGroup
             value={timeframe}
@@ -357,9 +361,12 @@ export const MonthlyOverview = () => {
             aria-label="Statistics timeframe"
             size="small"
             sx={{
+              width: { xs: "100%", md: "auto" },
               flexWrap: "wrap",
               "& .MuiToggleButton-root": {
-                flex: { xs: "1 1 auto", sm: "initial" },
+                flex: { xs: "1 1 calc(50% - 1px)", sm: "initial" },
+                minWidth: { xs: 0, sm: "auto" },
+                px: { xs: 1, sm: 1.5 },
                 whiteSpace: "nowrap",
               },
             }}
@@ -381,6 +388,8 @@ export const MonthlyOverview = () => {
               spacing={1}
               alignItems={{ xs: "stretch", sm: "center" }}
               sx={{
+                width: { xs: "100%", sm: "auto" },
+                minWidth: 0,
                 p: { xs: 1, sm: 0 },
                 border: { xs: "1px solid", sm: "none" },
                 borderColor: "divider",
@@ -388,7 +397,7 @@ export const MonthlyOverview = () => {
                 bgcolor: { xs: "background.paper", sm: "transparent" },
               }}
             >
-              <Stack direction="row" spacing={0.75}>
+              <Stack direction="row" spacing={0.75} sx={{ minWidth: 0 }}>
                 <Tooltip title="Previous month">
                   <IconButton
                     aria-label="Previous month"
@@ -419,13 +428,13 @@ export const MonthlyOverview = () => {
                   max: "2100-12",
                 }}
                 InputLabelProps={{ shrink: true }}
-                sx={{ minWidth: { sm: 170 } }}
+                sx={{ minWidth: 0, width: { xs: "100%", sm: 170 } }}
               />
               <Button
                 variant="outlined"
                 startIcon={<CalendarMonthIcon />}
                 onClick={handleCurrentMonthSelect}
-                sx={{ whiteSpace: "nowrap" }}
+                sx={{ whiteSpace: "nowrap", width: { xs: "100%", sm: "auto" } }}
               >
                 Current
               </Button>
@@ -530,11 +539,15 @@ export const MonthlyOverview = () => {
                 alignItems={{ xs: "flex-start", sm: "center" }}
                 justifyContent="space-between"
               >
-                <Box>
+                <Box sx={{ minWidth: 0 }}>
                   <Typography variant="h6" fontWeight={700}>
                     Period Overview
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ overflowWrap: "anywhere" }}
+                  >
                     {hasTransactions
                       ? `Income, expenses and balance for ${periodLabel}.`
                       : `No transactions found for ${periodLabel}.`}

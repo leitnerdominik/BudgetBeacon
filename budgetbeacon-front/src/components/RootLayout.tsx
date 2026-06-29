@@ -468,6 +468,9 @@ export const RootLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: 0,
+          width: { xs: "100%", md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          overflowX: "hidden",
           minHeight: "100vh",
           p: { xs: 2, sm: 3 },
           bgcolor: "background.default",

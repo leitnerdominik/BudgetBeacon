@@ -46,19 +46,25 @@ export const CategoryBreakdown = ({
       elevation={1}
       sx={{
         mt: 2,
+        minWidth: 0,
+        maxWidth: "100%",
         borderRadius: 1,
         border: "1px solid",
         borderColor: "divider",
       }}
     >
-      <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <CategoryIcon color="primary" />
-          <Box>
+      <CardContent sx={{ p: { xs: 2, sm: 2.5 }, minWidth: 0 }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+          <CategoryIcon color="primary" sx={{ flexShrink: 0 }} />
+          <Box sx={{ minWidth: 0 }}>
             <Typography variant="h6" fontWeight={700}>
               Expenses by Category
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ overflowWrap: "anywhere" }}
+            >
               {formatCurrency(totalExpenses)} across {categories.length} categories
             </Typography>
           </Box>
@@ -105,7 +111,12 @@ export const CategoryBreakdown = ({
                     sx={{ mb: 0.75 }}
                   >
                     <Box sx={{ minWidth: 0 }}>
-                      <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Stack
+                        direction="row"
+                        spacing={0.75}
+                        alignItems="center"
+                        sx={{ minWidth: 0 }}
+                      >
                         <TransactionCategoryIcon
                           category={category.category}
                           fontSize="small"

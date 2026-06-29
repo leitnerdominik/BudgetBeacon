@@ -27,25 +27,37 @@ export const TopExpenses = ({ expenses, periodLabel }: TopExpensesProps) => (
     elevation={1}
     sx={{
       mt: 2,
+      minWidth: 0,
+      maxWidth: "100%",
       borderRadius: 1,
       border: "1px solid",
       borderColor: "divider",
     }}
   >
-    <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+    <CardContent sx={{ p: { xs: 2, sm: 2.5 }, minWidth: 0 }}>
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1.5}
         alignItems={{ xs: "flex-start", sm: "center" }}
         justifyContent="space-between"
+        sx={{ minWidth: 0 }}
       >
-        <Stack direction="row" spacing={1} alignItems="center">
-          <ReceiptLongIcon color="primary" />
-          <Box>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          sx={{ minWidth: 0, maxWidth: "100%" }}
+        >
+          <ReceiptLongIcon color="primary" sx={{ flexShrink: 0 }} />
+          <Box sx={{ minWidth: 0 }}>
             <Typography variant="h6" fontWeight={700}>
               Largest Expenses
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ overflowWrap: "anywhere" }}
+            >
               Top expense transactions for {periodLabel}
             </Typography>
           </Box>
