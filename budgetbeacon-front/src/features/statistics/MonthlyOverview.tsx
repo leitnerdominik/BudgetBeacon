@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Box,
   Button,
@@ -26,7 +26,7 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SavingsIcon from "@mui/icons-material/Savings";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   defaultTransactionQuery,
@@ -61,6 +61,10 @@ const timeframeOptions: Array<{ label: string; value: TimeframeValue }> = [
   { value: "3", label: "3 months" },
   { value: "1", label: "1 month" },
 ];
+
+const timeframeValues = new Set<TimeframeValue>(
+  timeframeOptions.map((option) => option.value),
+);
 
 const monthFormatter = new Intl.DateTimeFormat("de-DE", {
   month: "long",
@@ -98,6 +102,29 @@ const parseMonthInputValue = (value: string): MonthReference | null => {
   }
 
   return { year, month };
+};
+
+const parseTimeframeValue = (value: string | null): TimeframeValue =>
+  value && timeframeValues.has(value as TimeframeValue)
+    ? (value as TimeframeValue)
+    : "1";
+
+const buildStatisticsSearchParams = (
+  currentSearchParams: URLSearchParams,
+  timeframe: TimeframeValue,
+  selectedMonth: MonthReference,
+) => {
+  const params = new URLSearchParams(currentSearchParams);
+
+  params.set("timeframe", timeframe);
+
+  if (timeframe === "all") {
+    params.delete("month");
+  } else {
+    params.set("month", toMonthInputValue(selectedMonth));
+  }
+
+  return params;
 };
 
 const shiftMonth = (
@@ -140,11 +167,20 @@ const toTransactionFilterDate = (value: string | null | undefined) =>
 
 export const MonthlyOverview = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthSelection);
-  const [timeframe, setTimeframe] = useState<TimeframeValue>("1");
+  const timeframe = useMemo(
+    () => parseTimeframeValue(searchParams.get("timeframe")),
+    [searchParams],
+  );
+  const selectedMonth = useMemo(
+    () =>
+      parseMonthInputValue(searchParams.get("month") ?? "") ??
+      getCurrentMonthSelection(),
+    [searchParams],
+  );
   const isAllTime = timeframe === "all";
   const isMonthlyView = timeframe === "1";
   const periodLabel = formatPeriodLabel(timeframe, selectedMonth);
@@ -222,12 +258,34 @@ export const MonthlyOverview = () => {
   const excludedTotal =
     (summary?.internalTransferTotal ?? 0) + (summary?.adjustmentTotal ?? 0);
 
+  const updatePeriodSearchParams = (
+    nextTimeframe: TimeframeValue,
+    nextSelectedMonth: MonthReference,
+  ) => {
+    setSearchParams(
+      buildStatisticsSearchParams(searchParams, nextTimeframe, nextSelectedMonth),
+      { replace: true },
+    );
+  };
+
   const handleMonthChange = (value: string) => {
     const parsedMonth = parseMonthInputValue(value);
 
     if (parsedMonth) {
-      setSelectedMonth(parsedMonth);
+      updatePeriodSearchParams(timeframe, parsedMonth);
     }
+  };
+
+  const handleTimeframeChange = (value: TimeframeValue) => {
+    updatePeriodSearchParams(value, selectedMonth);
+  };
+
+  const handleMonthShift = (offset: number) => {
+    updatePeriodSearchParams(timeframe, shiftMonth(selectedMonth, offset));
+  };
+
+  const handleCurrentMonthSelect = () => {
+    updatePeriodSearchParams(timeframe, getCurrentMonthSelection());
   };
 
   const handleCategorySelect = (category: string) => {
@@ -293,7 +351,7 @@ export const MonthlyOverview = () => {
             exclusive
             onChange={(_, value: TimeframeValue | null) => {
               if (value) {
-                setTimeframe(value);
+                handleTimeframeChange(value);
               }
             }}
             aria-label="Statistics timeframe"
@@ -334,7 +392,7 @@ export const MonthlyOverview = () => {
                 <Tooltip title="Previous month">
                   <IconButton
                     aria-label="Previous month"
-                    onClick={() => setSelectedMonth((current) => shiftMonth(current, -1))}
+                    onClick={() => handleMonthShift(-1)}
                     sx={{ flex: { xs: 1, sm: "initial" } }}
                   >
                     <ChevronLeftIcon />
@@ -343,7 +401,7 @@ export const MonthlyOverview = () => {
                 <Tooltip title="Next month">
                   <IconButton
                     aria-label="Next month"
-                    onClick={() => setSelectedMonth((current) => shiftMonth(current, 1))}
+                    onClick={() => handleMonthShift(1)}
                     sx={{ flex: { xs: 1, sm: "initial" } }}
                   >
                     <ChevronRightIcon />
@@ -366,7 +424,7 @@ export const MonthlyOverview = () => {
               <Button
                 variant="outlined"
                 startIcon={<CalendarMonthIcon />}
-                onClick={() => setSelectedMonth(getCurrentMonthSelection())}
+                onClick={handleCurrentMonthSelect}
                 sx={{ whiteSpace: "nowrap" }}
               >
                 Current
