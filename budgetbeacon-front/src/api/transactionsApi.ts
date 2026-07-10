@@ -1,6 +1,6 @@
 import { apiClient } from "./httpClient";
 import type {
-  MonthlySummary,
+  MonthlySummaryWithPeriod,
   PaginatedTransactions,
   StatisticsOverview,
   Transaction,
@@ -197,13 +197,16 @@ export const deleteTransaction = async (transactionId: string): Promise<void> =>
 export const getMonthlySummary = async (
   year: number,
   month: number,
-): Promise<MonthlySummary> => {
-  return apiClient.get<MonthlySummary, MonthlySummary>("/transactions/summary", {
-    params: {
-      year,
-      month,
+): Promise<MonthlySummaryWithPeriod> => {
+  return apiClient.get<MonthlySummaryWithPeriod, MonthlySummaryWithPeriod>(
+    "/transactions/summary",
+    {
+      params: {
+        year,
+        month,
+      },
     },
-  });
+  );
 };
 
 export type StatisticsRequest =
