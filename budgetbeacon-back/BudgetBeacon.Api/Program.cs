@@ -253,6 +253,7 @@ try
     builder.Services.AddScoped<FinanceAggregationService>();
     builder.Services.AddScoped<StatisticsAggregationService>();
     builder.Services.AddScoped<TransactionImportDescriptionRedactionService>();
+    builder.Services.AddScoped<TransactionImportService>();
     builder.Services.AddScoped<ITransactionImportParser, TransactionImportParser>();
 
     builder.Services.AddHttpClient<ILocationSuggestionService, OpenMeteoLocationSuggestionService>((serviceProvider, client) =>

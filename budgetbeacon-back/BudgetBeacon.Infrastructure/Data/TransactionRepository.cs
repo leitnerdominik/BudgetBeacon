@@ -91,6 +91,26 @@ public class TransactionRepository : ITransactionRepository
         return await _context.Database.ExecuteSqlRawAsync(sql, parameter);
     }
 
+    public async Task<IReadOnlySet<string>> GetExistingImportFingerprintsAsync(
+        string userId,
+        IReadOnlyCollection<string> importFingerprints)
+    {
+        if (importFingerprints.Count == 0)
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        var fingerprints = await _context.Transactions
+            .Where(transaction =>
+                transaction.UserId == userId &&
+                transaction.ImportFingerprint != null &&
+                importFingerprints.Contains(transaction.ImportFingerprint))
+            .Select(transaction => transaction.ImportFingerprint!)
+            .ToListAsync();
+
+        return fingerprints.ToHashSet(StringComparer.Ordinal);
+    }
+
     private static void ApplyDefaultTreatment(IEnumerable<Transaction> transactions)
     {
         foreach (var transaction in transactions)

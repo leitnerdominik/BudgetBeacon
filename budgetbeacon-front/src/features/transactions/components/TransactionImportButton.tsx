@@ -28,6 +28,7 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TuneIcon from "@mui/icons-material/Tune";
 
 import { useNotification } from "../../../components/NotificationProvider";
+import { usePreviewTransactionImport } from "../hooks/usePreviewTransactionImport";
 import { useUploadTransactions } from "../hooks/useUploadTransactions";
 import {
   createMappedCsvFile,
@@ -42,6 +43,7 @@ import {
   type ParsedTransactionImportFile,
   type TransactionImportMapping,
 } from "../utils/transactionImport";
+import { TransactionImportPreview } from "./TransactionImportPreview";
 
 const delimiterOptions: { value: CsvDelimiterOption; label: string }[] = [
   { value: "auto", label: "Auto-detect" },
@@ -66,6 +68,12 @@ export const TransactionImportButton = () => {
   );
 
   const { mutateAsync, isPending } = useUploadTransactions();
+  const {
+    mutateAsync: previewImportAsync,
+    isPending: isPreviewPending,
+    data: importPreview,
+    reset: resetImportPreview,
+  } = usePreviewTransactionImport();
   const preview = useMemo(
     () =>
       parsedFile ? getTransactionImportPreview(parsedFile, mapping.hasHeaderRow) : null,
@@ -84,6 +92,7 @@ export const TransactionImportButton = () => {
     setIsWizardOpen(false);
     setSelectedFile(null);
     setParsedFile(null);
+    resetImportPreview();
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -97,6 +106,7 @@ export const TransactionImportButton = () => {
     }
 
     setIsParsingFile(true);
+    resetImportPreview();
 
     try {
       const storedMapping = readStoredTransactionImportMapping();
@@ -132,6 +142,8 @@ export const TransactionImportButton = () => {
   };
 
   const handleHeaderRowChange = (hasHeaderRow: boolean) => {
+    resetImportPreview();
+
     if (!parsedFile) {
       setMapping((current) => ({
         ...current,
@@ -155,6 +167,7 @@ export const TransactionImportButton = () => {
 
   const handleDelimiterChange = async (delimiter: CsvDelimiterOption) => {
     setSelectedDelimiter(delimiter);
+    resetImportPreview();
 
     if (!selectedFile) {
       return;
@@ -196,37 +209,59 @@ export const TransactionImportButton = () => {
     field: "dateColumnKey" | "amountColumnKey" | "descriptionColumnKey",
     value: string,
   ) => {
+    resetImportPreview();
     setMapping((current) => ({
       ...current,
       [field]: value,
     }));
   };
 
-  const handleImport = async () => {
+  const createUploadInput = () => {
     if (!selectedFile || !parsedFile || !preview || validationMessage) {
-      return;
+      throw new Error(
+        validationMessage ?? "Select a valid transaction file before continuing.",
+      );
     }
 
+    if (parsedFile.fileKind === "xlsx") {
+      return {
+        file: selectedFile,
+        delimiter: "auto",
+        mapping: {
+          hasHeaderRow: mapping.hasHeaderRow,
+          dateColumnIndex: resolveImportColumnIndex(mapping.dateColumnKey),
+          amountColumnIndex: resolveImportColumnIndex(mapping.amountColumnKey),
+          descriptionColumnIndex: mapping.descriptionColumnKey
+            ? resolveImportColumnIndex(mapping.descriptionColumnKey)
+            : undefined,
+        },
+      };
+    }
+
+    return {
+      file: createMappedCsvFile(selectedFile, parsedFile, mapping),
+      delimiter: selectedDelimiter,
+    };
+  };
+
+  const handlePreviewImport = async () => {
     try {
       storeTransactionImportMapping(mapping);
+      await previewImportAsync(createUploadInput());
+    } catch (error) {
+      showNotification({
+        severity: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to evaluate the transaction import.",
+      });
+    }
+  };
 
-      if (parsedFile.fileKind === "xlsx") {
-        await mutateAsync({
-          file: selectedFile,
-          delimiter: "auto",
-          mapping: {
-            hasHeaderRow: mapping.hasHeaderRow,
-            dateColumnIndex: resolveImportColumnIndex(mapping.dateColumnKey),
-            amountColumnIndex: resolveImportColumnIndex(mapping.amountColumnKey),
-            descriptionColumnIndex: mapping.descriptionColumnKey
-              ? resolveImportColumnIndex(mapping.descriptionColumnKey)
-              : undefined,
-          },
-        });
-      } else {
-        const preparedFile = createMappedCsvFile(selectedFile, parsedFile, mapping);
-        await mutateAsync({ file: preparedFile, delimiter: selectedDelimiter });
-      }
+  const handleImport = async () => {
+    try {
+      await mutateAsync(createUploadInput());
 
       closeWizard();
     } catch (error) {
@@ -239,6 +274,12 @@ export const TransactionImportButton = () => {
       });
     }
   };
+
+  const handleBackToMapping = () => {
+    resetImportPreview();
+  };
+
+  const isWizardBusy = isPending || isPreviewPending || isParsingFile;
 
   return (
     <>
@@ -272,13 +313,23 @@ export const TransactionImportButton = () => {
 
       <Dialog
         open={isWizardOpen}
-        onClose={isPending ? undefined : closeWizard}
+        onClose={isWizardBusy ? undefined : closeWizard}
         fullWidth
         maxWidth="lg"
       >
         <DialogTitle>Import transactions</DialogTitle>
         <DialogContent dividers>
-          {selectedFile && preview ? (
+          {importPreview ? (
+            <TransactionImportPreview
+              preview={importPreview}
+              isImporting={isPending}
+              onBack={handleBackToMapping}
+              onCancel={closeWizard}
+              onImport={() => {
+                void handleImport();
+              }}
+            />
+          ) : selectedFile && preview ? (
             <Stack spacing={2.5}>
               <Stack
                 direction={{ xs: "column", md: "row" }}
@@ -291,8 +342,8 @@ export const TransactionImportButton = () => {
                     {selectedFile.name}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {preview.totalRowCount} row(s) ready for import. Extra columns will
-                    be ignored.
+                    {preview.totalRowCount} row(s) ready for evaluation. Extra
+                    columns will be ignored.
                   </Typography>
                 </Stack>
                 <Stack
@@ -314,7 +365,7 @@ export const TransactionImportButton = () => {
                             event.target.value as CsvDelimiterOption,
                           );
                         }}
-                        disabled={isPending || isParsingFile}
+                        disabled={isWizardBusy || isParsingFile}
                       >
                         {delimiterOptions.map((option) => (
                           <MenuItem key={option.value} value={option.value}>
@@ -331,7 +382,7 @@ export const TransactionImportButton = () => {
                         onChange={(event) =>
                           handleHeaderRowChange(event.target.checked)
                         }
-                        disabled={isPending}
+                        disabled={isWizardBusy}
                       />
                     }
                     label="First row contains headers"
@@ -354,7 +405,7 @@ export const TransactionImportButton = () => {
                     onChange={(event) =>
                       handleMappingChange("dateColumnKey", event.target.value)
                     }
-                    disabled={isPending}
+                    disabled={isWizardBusy}
                   >
                     {preview.columns.map((column) => (
                       <MenuItem key={column.key} value={column.key}>
@@ -376,7 +427,7 @@ export const TransactionImportButton = () => {
                     onChange={(event) =>
                       handleMappingChange("amountColumnKey", event.target.value)
                     }
-                    disabled={isPending}
+                    disabled={isWizardBusy}
                   >
                     {preview.columns.map((column) => (
                       <MenuItem key={column.key} value={column.key}>
@@ -398,7 +449,7 @@ export const TransactionImportButton = () => {
                     onChange={(event) =>
                       handleMappingChange("descriptionColumnKey", event.target.value)
                     }
-                    disabled={isPending}
+                    disabled={isWizardBusy}
                   >
                     <MenuItem value="">Ignore description</MenuItem>
                     {preview.columns.map((column) => (
@@ -472,18 +523,32 @@ export const TransactionImportButton = () => {
             </Stack>
           ) : null}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={closeWizard} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleImport}
-            disabled={isPending || Boolean(validationMessage) || !preview}
-          >
-            {isPending ? "Importing..." : "Import transactions"}
-          </Button>
-        </DialogActions>
+        {!importPreview ? (
+          <DialogActions>
+            <Button onClick={closeWizard} disabled={isWizardBusy}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                void handlePreviewImport();
+              }}
+              disabled={
+                isWizardBusy ||
+                isParsingFile ||
+                Boolean(validationMessage) ||
+                !preview
+              }
+              startIcon={
+                isPreviewPending ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : undefined
+              }
+            >
+              {isPreviewPending ? "Evaluating..." : "Preview import"}
+            </Button>
+          </DialogActions>
+        ) : null}
       </Dialog>
     </>
   );

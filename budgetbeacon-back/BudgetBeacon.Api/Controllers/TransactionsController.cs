@@ -35,7 +35,7 @@ public class TransactionsController : ControllerBase
     private readonly StatisticsAggregationService _statisticsAggregationService;
     private readonly IAiAdvisorService _aiService;
     private readonly ITransactionImportParser _transactionImportParser;
-    private readonly TransactionImportDescriptionRedactionService _importDescriptionRedactionService;
+    private readonly TransactionImportService _transactionImportService;
     private readonly ILogger<TransactionsController> _logger;
 
     public TransactionsController(
@@ -44,7 +44,7 @@ public class TransactionsController : ControllerBase
         StatisticsAggregationService statisticsAggregationService,
         IAiAdvisorService aiService,
         ITransactionImportParser transactionImportParser,
-        TransactionImportDescriptionRedactionService importDescriptionRedactionService,
+        TransactionImportService transactionImportService,
         ILogger<TransactionsController> logger)
     {
         _repository = repository;
@@ -52,7 +52,7 @@ public class TransactionsController : ControllerBase
         _statisticsAggregationService = statisticsAggregationService;
         _aiService = aiService;
         _transactionImportParser = transactionImportParser;
-        _importDescriptionRedactionService = importDescriptionRedactionService;
+        _transactionImportService = transactionImportService;
         _logger = logger;
     }
 
@@ -580,6 +580,70 @@ public class TransactionsController : ControllerBase
         return Ok(recurringExpenses);
     }
 
+    [HttpPost("import/preview")]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxTransactionImportSizeBytes)]
+    [RequestSizeLimit(MaxTransactionImportSizeBytes)]
+    public async Task<IActionResult> PreviewImportTransactions(
+        [FromForm] IFormFile? file,
+        [FromForm] string? delimiter = null,
+        [FromForm] bool hasHeaderRow = true,
+        [FromForm] int? dateColumnIndex = null,
+        [FromForm] int? amountColumnIndex = null,
+        [FromForm] int? descriptionColumnIndex = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to preview transaction imports.");
+        }
+
+        var validationResult = ValidateTransactionImportFile(file, out var fileExtension);
+        if (validationResult is not null)
+        {
+            return validationResult;
+        }
+
+        var parsedTransactions = ParseImportedTransactions(
+            file!,
+            fileExtension,
+            delimiter,
+            hasHeaderRow,
+            dateColumnIndex,
+            amountColumnIndex,
+            descriptionColumnIndex);
+
+        if (parsedTransactions.Count == 0)
+        {
+            return NoValidImportRowsProblem();
+        }
+
+        var preview = await _transactionImportService.PreviewAsync(userId, parsedTransactions);
+
+        return Ok(new
+        {
+            preview.TotalParsed,
+            preview.Importable,
+            preview.DuplicatesSkipped,
+            preview.ExistingDuplicates,
+            preview.FileDuplicates,
+            preview.RedactedTransactions,
+            Transactions = preview.Transactions.Select(item => new
+            {
+                Date = item.Transaction.Date.ToString("yyyy-MM-dd"),
+                item.Transaction.Amount,
+                Description = item.Transaction.Metadata.RawDescription,
+                item.DescriptionRedacted,
+                Status = item.WillImport ? "willImport" : "skipped",
+                DuplicateReason = item.DuplicateReason switch
+                {
+                    TransactionImportDuplicateReason.ExistingDuplicate => "existingDuplicate",
+                    TransactionImportDuplicateReason.FileDuplicate => "fileDuplicate",
+                    _ => null
+                }
+            })
+        });
+    }
+
     [HttpPost("import")]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxTransactionImportSizeBytes)]
     [RequestSizeLimit(MaxTransactionImportSizeBytes)]
@@ -597,6 +661,46 @@ public class TransactionsController : ControllerBase
             return UnauthorizedProblem("A valid authenticated user is required to import transactions.");
         }
 
+        var validationResult = ValidateTransactionImportFile(file, out var fileExtension);
+        if (validationResult is not null)
+        {
+            return validationResult;
+        }
+
+        _logger.LogInformation("API processing transaction import: {FileName}", file!.FileName);
+
+        var parsedTransactions = ParseImportedTransactions(
+            file,
+            fileExtension,
+            delimiter,
+            hasHeaderRow,
+            dateColumnIndex,
+            amountColumnIndex,
+            descriptionColumnIndex);
+
+        if (parsedTransactions.Count == 0)
+        {
+            return NoValidImportRowsProblem();
+        }
+
+        var result = await _transactionImportService.ImportAsync(userId, parsedTransactions);
+
+        return Ok(new
+        {
+            Message = "Import successful",
+            result.TotalParsed,
+            result.Imported,
+            result.DuplicatesSkipped,
+            result.RedactedTransactions
+        });
+    }
+
+    private IActionResult? ValidateTransactionImportFile(
+        IFormFile? file,
+        out string fileExtension)
+    {
+        fileExtension = string.Empty;
+
         if (file == null || file.Length == 0)
         {
             return this.ApiValidationProblem(
@@ -605,7 +709,7 @@ public class TransactionsController : ControllerBase
                 errors => errors.AddModelError(nameof(file), "Please upload a CSV or XLSX file."));
         }
 
-        var fileExtension = Path.GetExtension(file.FileName);
+        fileExtension = Path.GetExtension(file.FileName);
 
         if (!AllowedTransactionImportExtensions.Contains(fileExtension))
         {
@@ -631,10 +735,20 @@ public class TransactionsController : ControllerBase
                 errors => errors.AddModelError(nameof(file), "Unsupported file content type."));
         }
 
-        _logger.LogInformation("API processing transaction import: {FileName}", file.FileName);
+        return null;
+    }
 
+    private List<Transaction> ParseImportedTransactions(
+        IFormFile file,
+        string fileExtension,
+        string? delimiter,
+        bool hasHeaderRow,
+        int? dateColumnIndex,
+        int? amountColumnIndex,
+        int? descriptionColumnIndex)
+    {
         using var stream = file.OpenReadStream();
-        var parsedTransactions = string.Equals(fileExtension, ".xlsx", StringComparison.OrdinalIgnoreCase)
+        return string.Equals(fileExtension, ".xlsx", StringComparison.OrdinalIgnoreCase)
             ? _transactionImportParser.ParseXlsxTransactions(
                     stream,
                     new TransactionImportMapping(
@@ -644,51 +758,14 @@ public class TransactionsController : ControllerBase
                         descriptionColumnIndex))
                 .ToList()
             : _transactionImportParser.ParseCsvTransactions(stream, delimiter).ToList();
+    }
 
-        var preferences = await _userPreferencesRepository.GetAsync(userId);
-        var importBlacklistRules = preferences?.TransactionImportBlacklistRules ?? [];
-        var redactedTransactions = 0;
-
-        foreach (var transaction in parsedTransactions)
-        {
-            var redactionResult = _importDescriptionRedactionService.Redact(
-                transaction.Metadata.RawDescription,
-                importBlacklistRules);
-
-            if (redactionResult.WasRedacted)
-            {
-                transaction.Metadata.RawDescription = redactionResult.Description;
-                redactedTransactions++;
-            }
-        }
-
-        parsedTransactions.ForEach(transaction =>
-        {
-            transaction.UserId = userId;
-            transaction.ImportFingerprint = TransactionImportFingerprint.Create(transaction);
-            transaction.Treatment = TransactionTreatment.GetDefault(
-                transaction.Amount,
-                transaction.Category);
-        });
-
-        if (!parsedTransactions.Any())
-        {
-            return this.ApiValidationProblem(
-                "Invalid transaction import",
-                "No valid transactions were found in the uploaded file.",
-                errors => errors.AddModelError(nameof(file), "The uploaded file does not contain any valid transaction rows."));
-        }
-
-        var importedCount = await _repository.AddImportedTransactionsAsync(parsedTransactions);
-
-        return Ok(new
-        {
-            Message = "Import successful",
-            TotalParsed = parsedTransactions.Count,
-            Imported = importedCount,
-            DuplicatesSkipped = parsedTransactions.Count - importedCount,
-            RedactedTransactions = redactedTransactions
-        });
+    private IActionResult NoValidImportRowsProblem()
+    {
+        return this.ApiValidationProblem(
+            "Invalid transaction import",
+            "No valid transactions were found in the uploaded file.",
+            errors => errors.AddModelError("file", "The uploaded file does not contain any valid transaction rows."));
     }
 
     private static bool IsSupportedImportContentType(string fileExtension, string? contentType)
