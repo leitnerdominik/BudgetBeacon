@@ -8,6 +8,7 @@ using ExcelDataReader.Exceptions;
 using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Exceptions;
 using BudgetBeacon.Core.Interfaces;
+using BudgetBeacon.Core.Models;
 
 namespace BudgetBeacon.Infrastructure.External;
 
@@ -59,7 +60,14 @@ public class TransactionImportParser : ITransactionImportParser
 
         try
         {
-            return csv.GetRecords<Transaction>().ToList();
+            var transactions = new List<Transaction>();
+
+            foreach (var transaction in csv.GetRecords<Transaction>())
+            {
+                AddTransactionWithinLimit(transactions, transaction);
+            }
+
+            return transactions;
         }
         catch (CsvHelperException ex)
         {
@@ -98,7 +106,9 @@ public class TransactionImportParser : ITransactionImportParser
                     continue;
                 }
 
-                transactions.Add(CreateTransactionFromRow(reader, mapping));
+                AddTransactionWithinLimit(
+                    transactions,
+                    CreateTransactionFromRow(reader, mapping));
             }
 
             return transactions;
@@ -139,6 +149,19 @@ public class TransactionImportParser : ITransactionImportParser
         {
             throw new InvalidInputException("Each XLSX target field must use a different source column.");
         }
+    }
+
+    private static void AddTransactionWithinLimit(
+        List<Transaction> transactions,
+        Transaction transaction)
+    {
+        if (transactions.Count >= TransactionImportLimits.MaxRowCount)
+        {
+            throw new InvalidInputException(
+                TransactionImportLimits.RowLimitExceededMessage);
+        }
+
+        transactions.Add(transaction);
     }
 
     private static void ValidateMappingIndexes(

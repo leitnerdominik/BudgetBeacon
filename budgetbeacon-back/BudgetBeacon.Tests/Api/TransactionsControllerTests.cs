@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using BudgetBeacon.Api.Controllers;
 using BudgetBeacon.Core.Entities;
+using BudgetBeacon.Core.Exceptions;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
 using BudgetBeacon.Core.Services;
@@ -1132,6 +1133,41 @@ public sealed class TransactionsControllerTests
         var unauthorized = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status401Unauthorized, unauthorized.StatusCode);
         Assert.Equal(0, importParser.ParseCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TransactionImportService_RejectsOversizedParserResultBeforeRepositoryAccess(
+        bool import)
+    {
+        var repository = new FakeTransactionRepository();
+        var preferencesRepository = new FakeUserPreferencesRepository();
+        var service = new TransactionImportService(
+            repository,
+            preferencesRepository,
+            new TransactionImportDescriptionRedactionService());
+        var parsedTransactions = Enumerable
+            .Range(0, TransactionImportLimits.MaxRowCount + 1)
+            .Select(index => new Transaction
+            {
+                Date = new DateTime(2026, 4, 3),
+                Amount = index,
+                Metadata = new TransactionMetadata
+                {
+                    RawDescription = $"Transaction {index}"
+                }
+            });
+
+        var exception = import
+            ? await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.ImportAsync("user-1", parsedTransactions))
+            : await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.PreviewAsync("user-1", parsedTransactions));
+
+        Assert.Equal(TransactionImportLimits.RowLimitExceededMessage, exception.Message);
+        Assert.Null(repository.LastFingerprintLookupUserId);
+        Assert.Empty(repository.ImportAttemptedTransactions);
     }
 
     [Fact]

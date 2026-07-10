@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Security;
 using BudgetBeacon.Core.Exceptions;
 using BudgetBeacon.Core.Interfaces;
+using BudgetBeacon.Core.Models;
 using BudgetBeacon.Infrastructure.External;
 
 namespace BudgetBeacon.Tests.Infrastructure;
@@ -100,6 +101,27 @@ public sealed class TransactionImportParserTests
         var transactions = _sut.ParseCsvTransactions(CreateStream(csv));
 
         Assert.Empty(transactions);
+    }
+
+    [Fact]
+    public void ParseCsvTransactions_AcceptsMaximumTransactionCount()
+    {
+        var csv = CreateCsv(TransactionImportLimits.MaxRowCount);
+
+        var transactions = _sut.ParseCsvTransactions(CreateStream(csv));
+
+        Assert.Equal(TransactionImportLimits.MaxRowCount, transactions.Count());
+    }
+
+    [Fact]
+    public void ParseCsvTransactions_RejectsTransactionCountAboveMaximum()
+    {
+        var csv = CreateCsv(TransactionImportLimits.MaxRowCount + 1);
+
+        var exception = Assert.Throws<InvalidInputException>(() =>
+            _sut.ParseCsvTransactions(CreateStream(csv)));
+
+        Assert.Equal(TransactionImportLimits.RowLimitExceededMessage, exception.Message);
     }
 
     [Fact]
@@ -221,6 +243,33 @@ public sealed class TransactionImportParserTests
     }
 
     [Fact]
+    public void ParseXlsxTransactions_AcceptsMaximumTransactionCount()
+    {
+        using var stream = CreateXlsxStream(
+            CreateXlsxRows(TransactionImportLimits.MaxRowCount));
+
+        var transactions = _sut.ParseXlsxTransactions(
+            stream,
+            new TransactionImportMapping(true, 0, 1, 2));
+
+        Assert.Equal(TransactionImportLimits.MaxRowCount, transactions.Count());
+    }
+
+    [Fact]
+    public void ParseXlsxTransactions_RejectsTransactionCountAboveMaximum()
+    {
+        using var stream = CreateXlsxStream(
+            CreateXlsxRows(TransactionImportLimits.MaxRowCount + 1));
+
+        var exception = Assert.Throws<InvalidInputException>(() =>
+            _sut.ParseXlsxTransactions(
+                stream,
+                new TransactionImportMapping(true, 0, 1, 2)));
+
+        Assert.Equal(TransactionImportLimits.RowLimitExceededMessage, exception.Message);
+    }
+
+    [Fact]
     public void ParseXlsxTransactions_ThrowsInvalidInputExceptionForInvalidWorkbookBytes()
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("not an xlsx file"));
@@ -236,6 +285,33 @@ public sealed class TransactionImportParserTests
     private static MemoryStream CreateStream(string value)
     {
         return new MemoryStream(Encoding.UTF8.GetBytes(value));
+    }
+
+    private static string CreateCsv(int transactionCount)
+    {
+        var builder = new StringBuilder("Date;Amount;Description\r\n");
+
+        for (var index = 0; index < transactionCount; index++)
+        {
+            builder.Append("2026-04-03;-1.00;Transaction ")
+                .Append(index)
+                .Append("\r\n");
+        }
+
+        return builder.ToString();
+    }
+
+    private static object?[][] CreateXlsxRows(int transactionCount)
+    {
+        return Enumerable.Range(0, transactionCount)
+            .Select(index => new object?[]
+            {
+                "2026-04-03",
+                "-1.00",
+                $"Transaction {index}"
+            })
+            .Prepend(["Date", "Amount", "Description"])
+            .ToArray();
     }
 
     private static MemoryStream CreateXlsxStream(params object?[][] rows)

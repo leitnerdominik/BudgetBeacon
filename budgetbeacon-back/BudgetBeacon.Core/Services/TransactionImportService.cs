@@ -1,4 +1,5 @@
 using BudgetBeacon.Core.Entities;
+using BudgetBeacon.Core.Exceptions;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
 
@@ -92,6 +93,12 @@ public sealed class TransactionImportService
 
         foreach (var transaction in parsedTransactions)
         {
+            if (preparedTransactions.Count >= TransactionImportLimits.MaxRowCount)
+            {
+                throw new InvalidInputException(
+                    TransactionImportLimits.RowLimitExceededMessage);
+            }
+
             var redactionResult = _descriptionRedactionService.Redact(
                 transaction.Metadata.RawDescription,
                 importBlacklistRules);
