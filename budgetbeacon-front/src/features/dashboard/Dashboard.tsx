@@ -20,24 +20,28 @@ import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
 import { isTipsSourceDataNotFound } from "../tips/tipErrors";
 import { useTips } from "../tips/useTips";
-import { useMonthlySummary } from "../transactions/hooks/useMonthlySummary";
 import { useTransactions } from "../transactions/hooks/useTransactions";
 import { TipOfTheDayCard } from "./TipOfTheDayCard";
+import { useDashboardMonthlyOverview } from "./useDashboardMonthlyOverview";
+
+const monthFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+});
 
 export const Dashboard = () => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isOnline = useNetworkStatus();
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1;
 
   const {
     data: summaryData,
+    period: summaryPeriod,
+    isFallback: isFallbackSummary,
     isError: isSummaryError,
     isLoading: isLoadingSummary,
-    refetch: refetchSummary,
-  } = useMonthlySummary(year, month);
+    retry: retrySummary,
+  } = useDashboardMonthlyOverview();
   const {
     data: transactionData,
     isError: isTransactionsError,
@@ -57,6 +61,9 @@ export const Dashboard = () => {
 
   const tipOfTheDay = tips?.[0];
   const hasNoTransactionsForTips = isTipsSourceDataNotFound(tipsError);
+  const summaryMonthLabel = monthFormatter.format(
+    new Date(summaryPeriod.year, summaryPeriod.month - 1, 1),
+  );
   const summaryCards = [
     {
       label: "Income",
@@ -93,6 +100,28 @@ export const Dashboard = () => {
         <Typography variant="body2" color="text.secondary">
           Monthly overview and recent account activity.
         </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          alignItems: { xs: "flex-start", sm: "baseline" },
+          gap: { xs: 0.25, sm: 1.5 },
+          mb: { xs: 1.5, sm: 2 },
+        }}
+      >
+        <Typography variant="h6">Monthly overview</Typography>
+        <Box>
+          <Typography variant="body2" color="text.secondary">
+            {summaryMonthLabel}
+          </Typography>
+          {isFallbackSummary ? (
+            <Typography variant="caption" color="text.secondary">
+              Latest month with transactions
+            </Typography>
+          ) : null}
+        </Box>
       </Box>
 
       <Grid container spacing={{ xs: 1.5, sm: 2.5 }}>
@@ -138,16 +167,14 @@ export const Dashboard = () => {
         {isSummaryError ? (
           <Grid size={{ xs: 12 }}>
             <StatusMessage
-              title={isOnline ? "Monthly summary is unavailable" : "You're offline"}
+              title={isOnline ? "Monthly overview is unavailable" : "You're offline"}
               description={
                 isOnline
-                  ? "We couldn't load this month's summary right now. Retry to refresh your dashboard metrics."
-                  : "Reconnect to the internet and retry to load your latest monthly summary."
+                  ? "We couldn't load the monthly overview right now. Retry to refresh your dashboard metrics."
+                  : "Reconnect to the internet and retry to load your monthly overview."
               }
               actionLabel="Retry summary"
-              onAction={() => {
-                void refetchSummary();
-              }}
+              onAction={retrySummary}
               minHeight="auto"
             />
           </Grid>

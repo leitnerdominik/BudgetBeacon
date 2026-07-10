@@ -1,6 +1,6 @@
 import { apiClient } from "./httpClient";
 import type {
-  MonthlySummary,
+  MonthlySummaryWithPeriod,
   PaginatedTransactions,
   StatisticsOverview,
   Transaction,
@@ -60,6 +60,30 @@ export interface TransactionImportResponse {
   imported: number;
   duplicatesSkipped: number;
   redactedTransactions: number;
+}
+
+export type TransactionImportPreviewStatus = "willImport" | "skipped";
+export type TransactionImportDuplicateReason =
+  | "existingDuplicate"
+  | "fileDuplicate";
+
+export interface TransactionImportPreviewItem {
+  date: string;
+  amount: number;
+  description: string;
+  descriptionRedacted: boolean;
+  status: TransactionImportPreviewStatus;
+  duplicateReason: TransactionImportDuplicateReason | null;
+}
+
+export interface TransactionImportPreviewResponse {
+  totalParsed: number;
+  importable: number;
+  duplicatesSkipped: number;
+  existingDuplicates: number;
+  fileDuplicates: number;
+  redactedTransactions: number;
+  transactions: TransactionImportPreviewItem[];
 }
 
 export interface TransactionImportMappingRequest {
@@ -173,13 +197,16 @@ export const deleteTransaction = async (transactionId: string): Promise<void> =>
 export const getMonthlySummary = async (
   year: number,
   month: number,
-): Promise<MonthlySummary> => {
-  return apiClient.get<MonthlySummary, MonthlySummary>("/transactions/summary", {
-    params: {
-      year,
-      month,
+): Promise<MonthlySummaryWithPeriod> => {
+  return apiClient.get<MonthlySummaryWithPeriod, MonthlySummaryWithPeriod>(
+    "/transactions/summary",
+    {
+      params: {
+        year,
+        month,
+      },
     },
-  });
+  );
 };
 
 export type StatisticsRequest =
@@ -215,6 +242,41 @@ export const uploadTransactions = async (
   delimiter = "auto",
   mapping?: TransactionImportMappingRequest,
 ): Promise<TransactionImportResponse> => {
+  const formData = createTransactionImportFormData(file, delimiter, mapping);
+
+  return apiClient.post<TransactionImportResponse, TransactionImportResponse>(
+    "/transactions/import",
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  );
+};
+
+export const previewTransactionImport = async (
+  file: File,
+  delimiter = "auto",
+  mapping?: TransactionImportMappingRequest,
+): Promise<TransactionImportPreviewResponse> => {
+  const formData = createTransactionImportFormData(file, delimiter, mapping);
+
+  return apiClient.post<
+    TransactionImportPreviewResponse,
+    TransactionImportPreviewResponse
+  >("/transactions/import/preview", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+};
+
+const createTransactionImportFormData = (
+  file: File,
+  delimiter: string,
+  mapping?: TransactionImportMappingRequest,
+) => {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("delimiter", delimiter);
@@ -232,13 +294,5 @@ export const uploadTransactions = async (
     }
   }
 
-  return apiClient.post<TransactionImportResponse, TransactionImportResponse>(
-    "/transactions/import",
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    },
-  );
+  return formData;
 };

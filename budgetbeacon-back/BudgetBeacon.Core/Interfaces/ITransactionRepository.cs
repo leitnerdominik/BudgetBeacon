@@ -7,6 +7,9 @@ namespace BudgetBeacon.Core.Interfaces
     {
         Task AddRangeAsync(IEnumerable<Transaction> transactions);
         Task<int> AddImportedTransactionsAsync(IEnumerable<Transaction> transactions);
+        Task<IReadOnlySet<string>> GetExistingImportFingerprintsAsync(
+            string userId,
+            IReadOnlyCollection<string> importFingerprints);
         Task<bool> DeleteAsync(string userId, Guid transactionId);
         Task<Transaction?> GetByIdAsync(string userId, Guid transactionId);
         Task SaveChangesAsync();

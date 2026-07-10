@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using BudgetBeacon.Api.Controllers;
 using BudgetBeacon.Core.Entities;
+using BudgetBeacon.Core.Exceptions;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
 using BudgetBeacon.Core.Services;
@@ -1043,6 +1044,133 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task PreviewImportTransactions_ClassifiesDuplicatesAndRedactionsWithoutWriting()
+    {
+        var existingTransaction = new Transaction
+        {
+            Date = new DateTime(2026, 4, 3),
+            Amount = -12.34m,
+            Metadata = new TransactionMetadata { RawDescription = "Existing transaction" }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            ExistingImportFingerprints = new HashSet<string>(StringComparer.Ordinal)
+            {
+                TransactionImportFingerprint.Create(existingTransaction)
+            }
+        };
+        var importParser = new FakeTransactionImportParser
+        {
+            ParsedTransactions =
+            [
+                existingTransaction,
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 4),
+                    Amount = -20m,
+                    Metadata = new TransactionMetadata { RawDescription = "SECRET Coffee" }
+                },
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 4),
+                    Amount = -20m,
+                    Metadata = new TransactionMetadata { RawDescription = "SECRET Coffee" }
+                }
+            ]
+        };
+        var preferencesRepository = new FakeUserPreferencesRepository
+        {
+            TransactionImportBlacklistRules =
+            [
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.LiteralType,
+                    Value = "secret"
+                }
+            ]
+        };
+        var controller = CreateController(
+            repository,
+            preferencesRepository,
+            importParser: importParser);
+        var file = CreateFormFile("transactions.csv", "text/csv");
+
+        var result = await controller.PreviewImportTransactions(file, delimiter: "comma");
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(3, GetValue<int>(ok.Value, "TotalParsed"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "Importable"));
+        Assert.Equal(2, GetValue<int>(ok.Value, "DuplicatesSkipped"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "ExistingDuplicates"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "FileDuplicates"));
+        Assert.Equal(2, GetValue<int>(ok.Value, "RedactedTransactions"));
+        Assert.Equal("user-1", repository.LastFingerprintLookupUserId);
+        Assert.Empty(repository.ImportAttemptedTransactions);
+
+        var transactions = Assert.IsAssignableFrom<IEnumerable<object>>(
+            GetRawValue(ok.Value, "Transactions"));
+        var transactionList = transactions.ToList();
+        Assert.Equal("skipped", GetValue<string>(transactionList[0], "Status"));
+        Assert.Equal(
+            "existingDuplicate",
+            GetValue<string>(transactionList[0], "DuplicateReason"));
+        Assert.Equal("willImport", GetValue<string>(transactionList[1], "Status"));
+        Assert.Equal("Coffee", GetValue<string>(transactionList[1], "Description"));
+        Assert.True(GetValue<bool>(transactionList[1], "DescriptionRedacted"));
+        Assert.Equal("skipped", GetValue<string>(transactionList[2], "Status"));
+        Assert.Equal("fileDuplicate", GetValue<string>(transactionList[2], "DuplicateReason"));
+    }
+
+    [Fact]
+    public async Task PreviewImportTransactions_RejectsUnauthenticatedRequestWithoutParsing()
+    {
+        var importParser = new FakeTransactionImportParser();
+        var controller = CreateController(importParser: importParser, userId: null);
+        var file = CreateFormFile("transactions.csv", "text/csv");
+
+        var result = await controller.PreviewImportTransactions(file);
+
+        var unauthorized = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status401Unauthorized, unauthorized.StatusCode);
+        Assert.Equal(0, importParser.ParseCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TransactionImportService_RejectsOversizedParserResultBeforeRepositoryAccess(
+        bool import)
+    {
+        var repository = new FakeTransactionRepository();
+        var preferencesRepository = new FakeUserPreferencesRepository();
+        var service = new TransactionImportService(
+            repository,
+            preferencesRepository,
+            new TransactionImportDescriptionRedactionService());
+        var parsedTransactions = Enumerable
+            .Range(0, TransactionImportLimits.MaxRowCount + 1)
+            .Select(index => new Transaction
+            {
+                Date = new DateTime(2026, 4, 3),
+                Amount = index,
+                Metadata = new TransactionMetadata
+                {
+                    RawDescription = $"Transaction {index}"
+                }
+            });
+
+        var exception = import
+            ? await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.ImportAsync("user-1", parsedTransactions))
+            : await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.PreviewAsync("user-1", parsedTransactions));
+
+        Assert.Equal(TransactionImportLimits.RowLimitExceededMessage, exception.Message);
+        Assert.Null(repository.LastFingerprintLookupUserId);
+        Assert.Empty(repository.ImportAttemptedTransactions);
+    }
+
+    [Fact]
     public async Task UpdateCategory_UpdatesCurrentUsersTransaction()
     {
         var transactionId = Guid.NewGuid();
@@ -1388,13 +1516,19 @@ public sealed class TransactionsControllerTests
         FakeTransactionImportParser? importParser = null,
         string? userId = "user-1")
     {
+        var transactionRepository = repository ?? new FakeTransactionRepository();
+        var userPreferencesRepository = preferencesRepository ?? new FakeUserPreferencesRepository();
+        var redactionService = new TransactionImportDescriptionRedactionService();
         var controller = new TransactionsController(
-            repository ?? new FakeTransactionRepository(),
-            preferencesRepository ?? new FakeUserPreferencesRepository(),
+            transactionRepository,
+            userPreferencesRepository,
             new StatisticsAggregationService(new FinanceAggregationService()),
             aiService ?? new FakeAiAdvisorService(),
             importParser ?? new FakeTransactionImportParser(),
-            new TransactionImportDescriptionRedactionService(),
+            new TransactionImportService(
+                transactionRepository,
+                userPreferencesRepository,
+                redactionService),
             NullLogger<TransactionsController>.Instance);
 
         var httpContext = new DefaultHttpContext
@@ -1454,6 +1588,8 @@ public sealed class TransactionsControllerTests
         public int GetAllCalls { get; private set; }
         public int PagedCalls { get; private set; }
         public int ImportedCount { get; init; }
+        public IReadOnlySet<string> ExistingImportFingerprints { get; init; } =
+            new HashSet<string>(StringComparer.Ordinal);
         public bool SaveChangesCalled { get; private set; }
         public bool DeleteCalled { get; private set; }
         public Transaction? TransactionById { get; init; }
@@ -1471,6 +1607,7 @@ public sealed class TransactionsControllerTests
         public DateTime? LastDateRangeStartDate { get; private set; }
         public DateTime? LastDateRangeEndDate { get; private set; }
         public string? LastPagedUserId { get; private set; }
+        public string? LastFingerprintLookupUserId { get; private set; }
         public TransactionQueryOptions? LastPagedOptions { get; private set; }
         public int? LastPagedPageNumber { get; private set; }
         public int? LastPagedPageSize { get; private set; }
@@ -1485,6 +1622,17 @@ public sealed class TransactionsControllerTests
         {
             ImportAttemptedTransactions.AddRange(transactions);
             return Task.FromResult(ImportedCount);
+        }
+
+        public Task<IReadOnlySet<string>> GetExistingImportFingerprintsAsync(
+            string userId,
+            IReadOnlyCollection<string> importFingerprints)
+        {
+            LastFingerprintLookupUserId = userId;
+            var matches = ExistingImportFingerprints
+                .Where(importFingerprints.Contains)
+                .ToHashSet(StringComparer.Ordinal);
+            return Task.FromResult<IReadOnlySet<string>>(matches);
         }
 
         public Task<bool> DeleteAsync(string userId, Guid transactionId)
