@@ -74,7 +74,7 @@ public sealed class TransactionsControllerTests
             startDate: new DateOnly(2026, 1, 1),
             endDate: new DateOnly(2026, 1, 31),
             searchTerm: "  market  ",
-            category: "food & groceries",
+            category: " other ",
             transactionType: "expense",
             sortBy: "amount",
             sortDirection: "asc",
@@ -87,7 +87,7 @@ public sealed class TransactionsControllerTests
         Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), repository.LastPagedOptions.StartDate);
         Assert.Equal(new DateTime(2026, 1, 31, 23, 59, 59, 999, DateTimeKind.Utc).AddTicks(9999), repository.LastPagedOptions.EndDate);
         Assert.Equal("market", repository.LastPagedOptions.SearchTerm);
-        Assert.Equal("Food & Groceries", repository.LastPagedOptions.Category);
+        Assert.Equal("Other", repository.LastPagedOptions.Category);
         Assert.Equal(TransactionTypeFilter.Expense, repository.LastPagedOptions.TransactionType);
         Assert.Equal(TransactionSortField.Amount, repository.LastPagedOptions.SortBy);
         Assert.Equal(TransactionSortDirection.Asc, repository.LastPagedOptions.SortDirection);
@@ -170,6 +170,26 @@ public sealed class TransactionsControllerTests
         var transaction = Assert.IsType<Transaction>(created.Value);
         Assert.Null(transaction.Notes);
         Assert.Equal(TransactionTreatment.Income, transaction.Treatment);
+    }
+
+    [Fact]
+    public async Task Create_AcceptsOtherCategoryCaseInsensitively()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(2026, 6, 4),
+            -25m,
+            "Miscellaneous purchase",
+            " other ",
+            null));
+
+        var created = Assert.IsType<CreatedResult>(result);
+        var transaction = Assert.IsType<Transaction>(created.Value);
+        Assert.Equal("Other", transaction.Category);
+        Assert.Equal(TransactionTreatment.Expense, transaction.Treatment);
+        Assert.Same(transaction, Assert.Single(repository.AddedTransactions));
     }
 
     [Fact]
@@ -318,6 +338,39 @@ public sealed class TransactionsControllerTests
         var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
         Assert.Equal("Food & Groceries", updatedTransaction.Metadata.AiSuggestedCategory);
         Assert.Equal(0.91, updatedTransaction.Metadata.AiConfidenceScore);
+    }
+
+    [Fact]
+    public async Task Update_AcceptsOtherCategoryCaseInsensitively()
+    {
+        var transactionId = Guid.NewGuid();
+        var repository = new FakeTransactionRepository
+        {
+            TransactionToUpdate = new Transaction
+            {
+                Id = transactionId,
+                UserId = "user-1",
+                Date = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
+                Amount = -10m,
+                Category = "Food & Groceries",
+                Metadata = new TransactionMetadata { RawDescription = "Market" }
+            }
+        };
+        var controller = CreateController(repository);
+
+        var result = await controller.Update(
+            transactionId,
+            new TransactionsController.UpdateTransactionRequest(
+                new DateOnly(2026, 5, 1),
+                -10m,
+                "Market",
+                "OTHER",
+                null));
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var transaction = Assert.IsType<Transaction>(ok.Value);
+        Assert.Equal("Other", transaction.Category);
+        Assert.Equal(TransactionTreatment.Expense, transaction.Treatment);
     }
 
     [Fact]

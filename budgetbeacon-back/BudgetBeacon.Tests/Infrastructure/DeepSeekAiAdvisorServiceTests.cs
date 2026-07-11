@@ -72,6 +72,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
     public async Task CategorizeTransactionsAsync_MapsNormalizedCategoriesAndClampedConfidence()
     {
         var transportId = Guid.NewGuid();
+        var otherId = Guid.NewGuid();
         var unknownCategoryId = Guid.NewGuid();
         var ignoredId = Guid.NewGuid();
         var transactions = new List<Transaction>
@@ -84,6 +85,12 @@ public sealed class DeepSeekAiAdvisorServiceTests
             },
             new()
             {
+                Id = otherId,
+                Amount = -20m,
+                Metadata = new TransactionMetadata { RawDescription = "Unclassified merchant" }
+            },
+            new()
+            {
                 Id = unknownCategoryId,
                 Amount = -80m,
                 Metadata = new TransactionMetadata { RawDescription = "Ambiguous merchant" }
@@ -92,6 +99,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var providerContent =
             "```json\n[" +
             $"{{\"Id\":\"{transportId}\",\"Category\":\"transport\",\"Confidence\":1.2}}," +
+            $"{{\"Id\":\"{otherId}\",\"Category\":\" other \",\"Confidence\":0.75}}," +
             $"{{\"Id\":\"{unknownCategoryId}\",\"Category\":\"Not a real category\",\"Confidence\":-0.25}}," +
             $"{{\"Id\":\"{ignoredId}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.9}}" +
             "\n]```";
@@ -105,9 +113,13 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Equal("Transport", transactions[0].Metadata.AiSuggestedCategory);
         Assert.Equal(1.0, transactions[0].Metadata.AiConfidenceScore);
 
-        Assert.Equal("Shopping & Personal", transactions[1].Category);
-        Assert.Equal("Shopping & Personal", transactions[1].Metadata.AiSuggestedCategory);
-        Assert.Equal(0.0, transactions[1].Metadata.AiConfidenceScore);
+        Assert.Equal("Other", transactions[1].Category);
+        Assert.Equal("Other", transactions[1].Metadata.AiSuggestedCategory);
+        Assert.Equal(0.75, transactions[1].Metadata.AiConfidenceScore);
+
+        Assert.Equal("Shopping & Personal", transactions[2].Category);
+        Assert.Equal("Shopping & Personal", transactions[2].Metadata.AiSuggestedCategory);
+        Assert.Equal(0.0, transactions[2].Metadata.AiConfidenceScore);
 
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Post, request.Method);
@@ -123,6 +135,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var prompt = GetPrompt(request.Body);
         Assert.Contains("Food & Groceries", prompt);
         Assert.Contains("Shopping & Personal", prompt);
+        Assert.Contains("Other", prompt);
         Assert.DoesNotContain("Groceries, Lifestyle", prompt);
     }
 
@@ -319,6 +332,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var prompt = GetPrompt(request.Body);
         Assert.Contains("Subscriptions & Services", prompt);
         Assert.Contains("Savings & Investments", prompt);
+        Assert.Contains("Other", prompt);
         Assert.Contains("Reasoning", prompt);
         Assert.Contains("SupportingSignals", prompt);
         Assert.Contains("aggregated category totals", prompt);

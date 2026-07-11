@@ -150,7 +150,8 @@ export type RegionalTipCategory =
   | "Travel"
   | "Subscriptions & Services"
   | "Savings & Investments"
-  | "Transfers & Adjustments";
+  | "Transfers & Adjustments"
+  | "Other";
 
 export interface RegionalTip {
   id: string;

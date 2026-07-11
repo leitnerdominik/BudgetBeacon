@@ -4,6 +4,7 @@ import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import HomeIcon from "@mui/icons-material/Home";
 import LocalMallIcon from "@mui/icons-material/LocalMall";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import PaymentsIcon from "@mui/icons-material/Payments";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import SavingsIcon from "@mui/icons-material/Savings";
@@ -72,6 +73,11 @@ export const transactionCategoryOptions = [
     value: "Transfers & Adjustments",
     description: "Internal transfers, credit card payments, refunds, corrections",
     Icon: SwapHorizIcon,
+  },
+  {
+    value: "Other",
+    description: "Transactions that do not fit another category",
+    Icon: MoreHorizIcon,
   },
 ] as const;
 
