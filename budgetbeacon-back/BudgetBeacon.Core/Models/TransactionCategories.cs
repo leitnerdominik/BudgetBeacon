@@ -15,7 +15,8 @@ public static class TransactionCategories
         "Travel",
         "Subscriptions & Services",
         "Savings & Investments",
-        "Transfers & Adjustments"
+        "Transfers & Adjustments",
+        "Other"
     ];
 
     public static readonly IReadOnlyList<string> Allowed =
