@@ -2,8 +2,6 @@
 
 BudgetBeacon is a full-stack personal finance web app for tracking income and expenses, reviewing spending patterns, and generating AI-assisted saving tips from a user's own transaction data.
 
-The project is built as a portfolio-quality application: authenticated users own their financial data, the backend keeps business and persistence concerns separated, and the frontend handles loading, empty, error, offline, and responsive states.
-
 ## Problem
 
 Personal spending apps often make it hard to move from raw bank exports to useful habits. BudgetBeacon focuses on a practical workflow: import or add transactions, review monthly activity, inspect spending statistics, and get grounded saving suggestions without exposing secrets or running AI calls from the browser.
@@ -33,12 +31,25 @@ Personal spending apps often make it hard to move from raw bank exports to usefu
 
 ## Screenshots
 
-Add current screenshots before sharing the project publicly:
+### Dashboard
 
-- Dashboard overview: `docs/screenshots/dashboard.png`
-- Transactions desktop table: `docs/screenshots/transactions-desktop.png`
-- Transactions mobile cards: `docs/screenshots/transactions-mobile.png`
-- AI tips page: `docs/screenshots/tips.png`
+![BudgetBeacon dashboard showing the monthly financial overview](docs/screenshots/dashboard.png)
+
+### Transactions
+
+![BudgetBeacon transaction management page on desktop](docs/screenshots/transactions-desktop.png)
+
+<p align="center">
+  <img src="docs/screenshots/transactions-mobile.png" alt="BudgetBeacon transaction cards on mobile" width="408">
+</p>
+
+### Spending Statistics
+
+![BudgetBeacon spending breakdown by category](docs/screenshots/statistics.png)
+
+### AI Financial Tips
+
+![BudgetBeacon AI-generated financial tips](docs/screenshots/tips.png)
 
 ## Architecture
 
@@ -65,8 +76,6 @@ Api -> Infrastructure
 Infrastructure -> Core
 Tests -> Api/Core/Infrastructure
 ```
-
-Core does not depend on EF Core, PostgreSQL, ASP.NET, or the AI provider.
 
 ## Local Setup
 
@@ -100,8 +109,6 @@ Required frontend values:
 - `VITE_API_BASE_URL`
 - `VITE_DEV_PROXY_TARGET`
 
-Never commit real database passwords or AI API keys. Use environment variables, .NET user secrets, or deployment secrets for real environments.
-
 ### 2. Restore and Prepare the Backend
 
 ```powershell
@@ -110,8 +117,6 @@ cd budgetbeacon-back
 dotnet restore BudgetBeacon.sln
 dotnet tool run dotnet-ef database update --project BudgetBeacon.Infrastructure\BudgetBeacon.Infrastructure.csproj --startup-project BudgetBeacon.Api\BudgetBeacon.Api.csproj --context BudgetBeacon.Infrastructure.Data.BudgetBeaconDbContext
 ```
-
-The API also applies pending EF Core migrations on startup for local development.
 
 ### 3. Run the Backend
 
@@ -166,8 +171,6 @@ npm run lint
 npm run build
 ```
 
-The frontend currently does not define a separate `test` script. Add component tests for the most important workflows as a next step.
-
 ## Deployment Notes
 
 - Host the API behind HTTPS.
@@ -176,28 +179,3 @@ The frontend currently does not define a separate `test` script. Add component t
 - Configure frontend `VITE_API_BASE_URL` for the deployed API.
 - Store database credentials and `DeepSeek:ApiKey` in platform secrets.
 - Use `/health/ready` for readiness checks.
-
-Suitable deployment targets include Render, Railway, Fly.io, a VPS with Nginx, or Docker-based hosting. Vercel is a good fit for the frontend only if the API is hosted separately.
-
-## CI
-
-The repository includes GitHub Actions for backend restore/build/test, frontend install/lint/build, and the existing main-branch deployment workflow.
-
-## What I Learned
-
-- How to keep financial business logic separate from HTTP and persistence concerns.
-- How to scope sensitive user data to authenticated users.
-- How to protect cookie-based SPA auth with CSRF tokens.
-- How to turn raw transaction imports into usable dashboard and AI workflows.
-- How to document a full-stack project so another engineer can run it locally.
-
-## Future Improvements
-
-- Add frontend component and end-to-end tests.
-- Add AI rate limiting and cost controls.
-- Add password reset and account recovery.
-- Add screenshot assets for portfolio presentation.
-- Add production Docker images for API and frontend.
-- Add a staging environment before production deploys.
-
-See [PORTFOLIO.md](PORTFOLIO.md) for the project narrative and technical decisions worth highlighting in interviews.
