@@ -1021,7 +1021,8 @@ public class TransactionsController : ControllerBase
     [HttpGet("ai/tips")]
     public async Task<IActionResult> GetAiSavingsTips(
         [FromQuery] int monthsBack = 3,
-        [FromQuery] bool allTime = false)
+        [FromQuery] bool allTime = false,
+        [FromQuery] DateOnly? asOfDate = null)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -1037,22 +1038,41 @@ public class TransactionsController : ControllerBase
                 errors => errors.AddModelError(nameof(monthsBack), "Months back must be between 1 and 24."));
         }
 
+        var effectiveAsOfDate = asOfDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (effectiveAsOfDate < FinancialValueValidator.MinimumSupportedDate ||
+            effectiveAsOfDate > FinancialValueValidator.MaximumSupportedDate)
+        {
+            return this.ApiValidationProblem(
+                "Invalid tips query",
+                "As-of date must be between 2000-01-01 and 2100-12-31.",
+                errors => errors.AddModelError(
+                    nameof(asOfDate),
+                    "As-of date must be between 2000-01-01 and 2100-12-31."));
+        }
+
+        var inclusiveEndDate = effectiveAsOfDate.ToDateTime(
+            TimeOnly.MaxValue,
+            DateTimeKind.Utc);
         IEnumerable<Transaction> transactions;
         string timeframe;
 
         if (allTime)
         {
             _logger.LogInformation("API requested AI savings tips for all available transactions.");
-            transactions = await _repository.GetAllAsync(userId);
+            transactions = await _repository.GetAllAsync(userId, inclusiveEndDate);
             timeframe = "All time";
         }
         else
         {
             _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
-            var startDate = GetUtcTipsStartDate(monthsBack);
+            var startDate = effectiveAsOfDate
+                .AddMonths(-monthsBack)
+                .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             (transactions, _) = await _repository.GetTransactionsPagedAsync(
                 userId,
-                new TransactionQueryOptions(StartDate: startDate),
+                new TransactionQueryOptions(
+                    StartDate: startDate,
+                    EndDate: inclusiveEndDate),
                 1,
                 10000);
             timeframe = FormatTipsTimeframe(monthsBack);
@@ -1169,12 +1189,6 @@ public class TransactionsController : ControllerBase
         int endYear,
         int endMonth) =>
         ((endYear - startYear) * 12) + endMonth - startMonth + 1;
-
-    private static DateTime GetUtcTipsStartDate(int monthsBack)
-    {
-        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
-        return utcToday.AddMonths(-monthsBack).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-    }
 
     private static string FormatTipsTimeframe(int monthsBack) =>
         monthsBack switch

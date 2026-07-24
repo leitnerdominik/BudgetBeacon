@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { getRegionalTips } from "../../api/tipsApi";
 import { useNotification } from "../../components/NotificationProvider";
 import { useAuth } from "../../hooks/useAuth";
+import { useLocalCalendarDate } from "../../hooks/useLocalCalendarDate";
 import { tipsQueryKeys } from "./tipsCache";
 import { DEFAULT_TIPS_TIMEFRAME, type TipsTimeframeValue } from "./tipsTimeframes";
 
@@ -11,14 +12,6 @@ type UseTipsOptions = {
   showErrorNotification?: boolean;
   showSuccessNotification?: boolean;
   timeframe?: TipsTimeframeValue;
-};
-
-const getMillisecondsUntilTomorrow = () => {
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setHours(24, 0, 0, 0);
-
-  return tomorrow.getTime() - now.getTime();
 };
 
 export const useTips = (options?: UseTipsOptions) => {
@@ -29,21 +22,26 @@ export const useTips = (options?: UseTipsOptions) => {
   const lastErrorMessageRef = useRef<string | null>(null);
   const userId = user?.id;
   const timeframe = options?.timeframe ?? DEFAULT_TIPS_TIMEFRAME;
+  const asOfDate = useLocalCalendarDate();
   const shouldShowSuccessNotification =
     options?.showSuccessNotification ?? location.pathname === "/tips";
   const shouldShowErrorNotification = options?.showErrorNotification ?? false;
 
   const query = useQuery({
-    queryKey: tipsQueryKeys.byUserAndTimeframe(userId, timeframe),
+    queryKey: tipsQueryKeys.byUserTimeframeAndDate(
+      userId,
+      timeframe,
+      asOfDate,
+    ),
     queryFn: async () => {
       if (!userId) {
         return [];
       }
 
-      return getRegionalTips(timeframe);
+      return getRegionalTips(timeframe, asOfDate);
     },
     enabled: !!userId,
-    staleTime: getMillisecondsUntilTomorrow(),
+    staleTime: Infinity,
     gcTime: 1000 * 60 * 60 * 24,
     refetchOnMount: true,
     refetchOnReconnect: false,
@@ -96,5 +94,6 @@ export const useTips = (options?: UseTipsOptions) => {
   return {
     ...query,
     refreshTips,
+    asOfDate,
   };
 };

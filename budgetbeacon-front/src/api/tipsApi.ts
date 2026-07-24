@@ -1,6 +1,5 @@
 import { apiClient } from "./httpClient";
 import {
-  DEFAULT_TIPS_TIMEFRAME,
   getTipsTimeframeParams,
   type TipsTimeframeValue,
 } from "../features/tips/tipsTimeframes";
@@ -12,12 +11,13 @@ interface TipsApiResponse {
 }
 
 export const getRegionalTips = async (
-  timeframe: TipsTimeframeValue = DEFAULT_TIPS_TIMEFRAME,
+  timeframe: TipsTimeframeValue,
+  asOfDate: string,
 ): Promise<RegionalTip[]> => {
   const response = await apiClient.get<TipsApiResponse, TipsApiResponse>(
     "/transactions/ai/tips",
     {
-      params: getTipsTimeframeParams(timeframe),
+      params: getTipsTimeframeParams(timeframe, asOfDate),
     },
   );
 

@@ -1870,6 +1870,24 @@ public sealed class TransactionsControllerTests
         Assert.Contains("monthsBack", problem.Errors.Keys);
     }
 
+    [Theory]
+    [InlineData(1999, 12, 31)]
+    [InlineData(2101, 1, 1)]
+    public async Task GetAiSavingsTips_ReturnsValidationProblemForUnsupportedAsOfDate(
+        int year,
+        int month,
+        int day)
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetAiSavingsTips(
+            asOfDate: new DateOnly(year, month, day));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("asOfDate", problem.Errors.Keys);
+    }
+
     [Fact]
     public async Task GetAiSavingsTips_ReturnsSourceDataNotFoundProblemWhenNoTransactionsExist()
     {
@@ -1908,11 +1926,18 @@ public sealed class TransactionsControllerTests
         };
         var controller = CreateController(repository, aiService: aiService);
 
-        var result = await controller.GetAiSavingsTips(allTime: true);
+        var asOfDate = new DateOnly(2026, 3, 31);
+
+        var result = await controller.GetAiSavingsTips(
+            allTime: true,
+            asOfDate: asOfDate);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal("All time", GetValue<string>(ok.Value, "Timeframe"));
         Assert.Equal(1, repository.GetAllCalls);
+        Assert.Equal(
+            asOfDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
+            repository.LastGetAllEndDate);
         Assert.Equal(0, repository.PagedCalls);
         Assert.Equal(1, aiService.GetSavingTipsCalls);
     }
@@ -1968,20 +1993,51 @@ public sealed class TransactionsControllerTests
         var earliestExpectedStartDate = DateOnly.FromDateTime(DateTime.UtcNow)
             .AddMonths(-3)
             .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var earliestExpectedEndDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            .ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
 
         await controller.GetAiSavingsTips(3);
 
         var latestExpectedStartDate = DateOnly.FromDateTime(DateTime.UtcNow)
             .AddMonths(-3)
             .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var latestExpectedEndDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            .ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
 
         Assert.Equal("user-1", repository.LastPagedUserId);
         Assert.NotNull(repository.LastPagedOptions?.StartDate);
+        Assert.NotNull(repository.LastPagedOptions.EndDate);
         Assert.Equal(DateTimeKind.Utc, repository.LastPagedOptions.StartDate.Value.Kind);
+        Assert.Equal(DateTimeKind.Utc, repository.LastPagedOptions.EndDate.Value.Kind);
         Assert.Equal(TimeSpan.Zero, repository.LastPagedOptions.StartDate.Value.TimeOfDay);
+        Assert.Equal(TimeOnly.MaxValue.ToTimeSpan(), repository.LastPagedOptions.EndDate.Value.TimeOfDay);
         Assert.InRange(repository.LastPagedOptions.StartDate.Value, earliestExpectedStartDate, latestExpectedStartDate);
+        Assert.InRange(repository.LastPagedOptions.EndDate.Value, earliestExpectedEndDate, latestExpectedEndDate);
         Assert.Equal(1, repository.LastPagedPageNumber);
         Assert.Equal(10000, repository.LastPagedPageSize);
+    }
+
+    [Fact]
+    public async Task GetAiSavingsTips_UsesClampedInclusiveRangeForExplicitAsOfDate()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            PagedTransactions = [new Transaction { Amount = -25m, Category = "Food & Groceries" }],
+            PagedTotalCount = 1
+        };
+        var controller = CreateController(repository);
+
+        await controller.GetAiSavingsTips(
+            monthsBack: 1,
+            asOfDate: new DateOnly(2026, 3, 31));
+
+        Assert.NotNull(repository.LastPagedOptions);
+        Assert.Equal(
+            new DateTime(2026, 2, 28, 0, 0, 0, DateTimeKind.Utc),
+            repository.LastPagedOptions.StartDate);
+        Assert.Equal(
+            new DateOnly(2026, 3, 31).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
+            repository.LastPagedOptions.EndDate);
     }
 
     private static TransactionsController CreateController(
@@ -2061,6 +2117,7 @@ public sealed class TransactionsControllerTests
         public IEnumerable<Transaction> PagedTransactions { get; init; } = [];
         public int PagedTotalCount { get; init; }
         public int GetAllCalls { get; private set; }
+        public DateTime? LastGetAllEndDate { get; private set; }
         public int PagedCalls { get; private set; }
         public int ImportedCount { get; init; }
         public IReadOnlySet<string> ExistingImportFingerprints { get; init; } =
@@ -2183,9 +2240,12 @@ public sealed class TransactionsControllerTests
             return Task.FromResult<Transaction?>(TransactionToUpdate);
         }
 
-        public Task<IEnumerable<Transaction>> GetAllAsync(string userId)
+        public Task<IEnumerable<Transaction>> GetAllAsync(
+            string userId,
+            DateTime? endDate = null)
         {
             GetAllCalls++;
+            LastGetAllEndDate = endDate;
             return Task.FromResult(AllTransactions);
         }
 

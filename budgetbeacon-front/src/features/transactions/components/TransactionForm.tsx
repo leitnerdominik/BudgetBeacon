@@ -37,8 +37,7 @@ import {
   validateTransactionAmount,
   validateTransactionDate,
 } from "../financialValueValidation";
-
-const getTodayDateInputValue = () => new Date().toISOString().slice(0, 10);
+import { getLocalCalendarDate } from "../../../utils/calendarDate";
 
 type TransactionDirection = "expense" | "income";
 
@@ -55,7 +54,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
   const isEdit = Boolean(transaction);
   const transactionsReturnPath = getTransactionsReturnPath(location.search);
   const [date, setDate] = useState(
-    transaction ? transaction.date.slice(0, 10) : getTodayDateInputValue,
+    transaction ? transaction.date.slice(0, 10) : getLocalCalendarDate,
   );
   const [direction, setDirection] = useState<TransactionDirection>(
     transaction && transaction.amount > 0 ? "income" : "expense",

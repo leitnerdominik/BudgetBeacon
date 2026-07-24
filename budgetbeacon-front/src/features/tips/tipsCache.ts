@@ -6,10 +6,11 @@ const legacyTipsStoragePrefix = "tips.daily.";
 
 export const tipsQueryKeys = {
   all: ["tips"] as const,
-  byUserAndTimeframe: (
+  byUserTimeframeAndDate: (
     userId: string | undefined,
     timeframe: TipsTimeframeValue,
-  ) => [...tipsQueryKeys.all, userId, timeframe] as const,
+    asOfDate: string,
+  ) => [...tipsQueryKeys.all, userId, timeframe, asOfDate] as const,
 };
 
 export const clearTipsQueryCache = (queryClient: QueryClient) => {

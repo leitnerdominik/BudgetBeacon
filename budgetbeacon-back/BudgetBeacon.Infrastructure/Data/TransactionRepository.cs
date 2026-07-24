@@ -185,10 +185,20 @@ public class TransactionRepository : ITransactionRepository
         return transaction;
     }
 
-    public async Task<IEnumerable<Transaction>> GetAllAsync(string userId)
+    public async Task<IEnumerable<Transaction>> GetAllAsync(
+        string userId,
+        DateTime? endDate = null)
     {
-        return await _context.Transactions
-            .Where(t => t.UserId == userId)
+        var query = _context.Transactions
+            .Where(t => t.UserId == userId);
+
+        if (endDate.HasValue)
+        {
+            var endUtc = endDate.Value.ToUniversalTime();
+            query = query.Where(t => t.Date <= endUtc);
+        }
+
+        return await query
             .OrderByDescending(t => t.Date)
             .ToListAsync();
     }
