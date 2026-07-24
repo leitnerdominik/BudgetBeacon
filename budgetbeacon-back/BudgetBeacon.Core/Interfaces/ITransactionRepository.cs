@@ -15,7 +15,7 @@ namespace BudgetBeacon.Core.Interfaces
         Task SaveChangesAsync();
         Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update);
         Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category);
-        Task<IEnumerable<Transaction>> GetAllAsync(string userId);
+        Task<IEnumerable<Transaction>> GetAllAsync(string userId, DateTime? endDate = null);
         Task<List<Transaction>> GetUncategorizedAsync(string userId);
         Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month);
         Task<IEnumerable<Transaction>> GetByDateRangeAsync(string userId, DateTime startDate, DateTime endDate);

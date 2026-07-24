@@ -14,6 +14,59 @@ namespace BudgetBeacon.Tests.Api;
 
 public sealed class TransactionsControllerTests
 {
+    public static TheoryData<bool, decimal, DateTime, string> InvalidImportedFinancialValues =>
+        new()
+        {
+            {
+                false,
+                0m,
+                new DateTime(2026, 4, 3),
+                "Amount must not be zero."
+            },
+            {
+                true,
+                0m,
+                new DateTime(2026, 4, 3),
+                "Amount must not be zero."
+            },
+            {
+                false,
+                1.234m,
+                new DateTime(2026, 4, 3),
+                "Amount must have no more than 2 decimal places."
+            },
+            {
+                true,
+                1.234m,
+                new DateTime(2026, 4, 3),
+                "Amount must have no more than 2 decimal places."
+            },
+            {
+                false,
+                10_000_000_000_000m,
+                new DateTime(2026, 4, 3),
+                "Amount must be between"
+            },
+            {
+                true,
+                -10_000_000_000_000m,
+                new DateTime(2026, 4, 3),
+                "Amount must be between"
+            },
+            {
+                false,
+                1m,
+                new DateTime(1999, 12, 31),
+                "Date must be between"
+            },
+            {
+                true,
+                1m,
+                new DateTime(2101, 1, 1),
+                "Date must be between"
+            }
+        };
+
     [Fact]
     public async Task GetAllTransactions_ReturnsUnauthorizedProblemWithoutAuthenticatedUser()
     {
@@ -251,6 +304,29 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task Create_ReturnsValidationProblemForInvalidFinancialValues()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(1999, 12, 31),
+            1.234m,
+            "Grocery store",
+            "Food & Groceries",
+            null));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Date", problem.Errors.Keys);
+        Assert.Contains("Amount", problem.Errors.Keys);
+        Assert.Contains(
+            problem.Errors["Amount"],
+            error => error.Contains("2 decimal places", StringComparison.Ordinal));
+        Assert.Empty(repository.AddedTransactions);
+    }
+
+    [Fact]
     public async Task Update_UpdatesAllFieldsAndKeepsImportFingerprint()
     {
         var transactionId = Guid.NewGuid();
@@ -397,6 +473,31 @@ public sealed class TransactionsControllerTests
         Assert.Contains("Category", problem.Errors.Keys);
         Assert.Contains("Notes", problem.Errors.Keys);
         Assert.Contains("Treatment", problem.Errors.Keys);
+        Assert.Null(repository.LastUpdateTransactionId);
+    }
+
+    [Fact]
+    public async Task Update_ReturnsValidationProblemForOutOfRangeFinancialValues()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Update(
+            Guid.NewGuid(),
+            new TransactionsController.UpdateTransactionRequest(
+                new DateOnly(2101, 1, 1),
+                10_000_000_000_000m,
+                "Salary",
+                "Income",
+                null));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Date", problem.Errors.Keys);
+        Assert.Contains("Amount", problem.Errors.Keys);
+        Assert.Contains(
+            problem.Errors["Amount"],
+            error => error.Contains("9,999,999,999,999.99", StringComparison.Ordinal));
         Assert.Null(repository.LastUpdateTransactionId);
     }
 
@@ -942,7 +1043,12 @@ public sealed class TransactionsControllerTests
         Assert.All(repository.ImportAttemptedTransactions, transaction =>
         {
             Assert.Equal("user-1", transaction.UserId);
-            Assert.Equal(TransactionImportFingerprint.Create(transaction), transaction.ImportFingerprint);
+            Assert.Equal(
+                TransactionImportFingerprint.Create(
+                    transaction.Date,
+                    transaction.Amount,
+                    transaction.Metadata.RawDescription),
+                transaction.ImportFingerprint);
         });
         Assert.Empty(repository.AddedTransactions);
     }
@@ -1046,7 +1152,10 @@ public sealed class TransactionsControllerTests
         Assert.Equal("Card purchase", repository.ImportAttemptedTransactions[0].Metadata.RawDescription);
         Assert.Equal("Safe purchase", repository.ImportAttemptedTransactions[1].Metadata.RawDescription);
         Assert.Equal(
-            TransactionImportFingerprint.Create(repository.ImportAttemptedTransactions[0]),
+            TransactionImportFingerprint.Create(
+                new DateTime(2026, 4, 3),
+                -12.34m,
+                "Card SECRET IBAN DE123 purchase"),
             repository.ImportAttemptedTransactions[0].ImportFingerprint);
     }
 
@@ -1097,6 +1206,181 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task TransactionImportService_UsesStableSourceFingerprintAcrossRedactionRules()
+    {
+        const string sourceDescription = "Card SECRET IBAN DE123 purchase";
+        var ruleSets = new IReadOnlyList<TransactionImportBlacklistRule>[]
+        {
+            [],
+            [
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.LiteralType,
+                    Value = "SECRET"
+                }
+            ],
+            [
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.RegexType,
+                    Value = @"IBAN\s+[A-Z0-9]+"
+                }
+            ]
+        };
+        var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var rules in ruleSets)
+        {
+            var repository = new FakeTransactionRepository
+            {
+                ImportedCount = 1
+            };
+            var service = new TransactionImportService(
+                repository,
+                new FakeUserPreferencesRepository
+                {
+                    TransactionImportBlacklistRules = rules
+                },
+                new TransactionImportDescriptionRedactionService());
+
+            await service.ImportAsync(
+                "user-1",
+                [
+                    new Transaction
+                    {
+                        Date = new DateTime(2026, 4, 3),
+                        Amount = -12.34m,
+                        Metadata = new TransactionMetadata
+                        {
+                            RawDescription = sourceDescription
+                        }
+                    }
+                ]);
+
+            fingerprints.Add(
+                Assert.Single(repository.ImportAttemptedTransactions).ImportFingerprint!);
+        }
+
+        Assert.Single(fingerprints);
+        Assert.Contains(
+            TransactionImportFingerprint.Create(
+                new DateTime(2026, 4, 3),
+                -12.34m,
+                sourceDescription),
+            fingerprints);
+    }
+
+    [Fact]
+    public async Task TransactionImportService_MatchesExistingUnredactedFingerprintAfterRuleChange()
+    {
+        const string sourceDescription = "Card SECRET purchase";
+        var sourceFingerprint = TransactionImportFingerprint.Create(
+            new DateTime(2026, 4, 3),
+            -12.34m,
+            sourceDescription);
+        var repository = new FakeTransactionRepository
+        {
+            ExistingImportFingerprints = new HashSet<string>(StringComparer.Ordinal)
+            {
+                sourceFingerprint
+            }
+        };
+        var service = new TransactionImportService(
+            repository,
+            new FakeUserPreferencesRepository
+            {
+                TransactionImportBlacklistRules =
+                [
+                    new TransactionImportBlacklistRule
+                    {
+                        Type = TransactionImportBlacklistRule.LiteralType,
+                        Value = "SECRET"
+                    }
+                ]
+            },
+            new TransactionImportDescriptionRedactionService());
+
+        var result = await service.PreviewAsync(
+            "user-1",
+            [
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = sourceDescription
+                    }
+                }
+            ]);
+
+        var previewItem = Assert.Single(result.Transactions);
+        Assert.Equal(1, result.ExistingDuplicates);
+        Assert.Equal(0, result.Importable);
+        Assert.Equal(
+            TransactionImportDuplicateReason.ExistingDuplicate,
+            previewItem.DuplicateReason);
+        Assert.Equal("Card purchase", previewItem.Transaction.Metadata.RawDescription);
+        Assert.Equal(sourceFingerprint, previewItem.Transaction.ImportFingerprint);
+    }
+
+    [Fact]
+    public async Task TransactionImportService_KeepsDistinctSourcesWhenRedactionOutputsMatch()
+    {
+        var service = new TransactionImportService(
+            new FakeTransactionRepository(),
+            new FakeUserPreferencesRepository
+            {
+                TransactionImportBlacklistRules =
+                [
+                    new TransactionImportBlacklistRule
+                    {
+                        Type = TransactionImportBlacklistRule.RegexType,
+                        Value = @"SECRET-[AB]"
+                    }
+                ]
+            },
+            new TransactionImportDescriptionRedactionService());
+
+        var result = await service.PreviewAsync(
+            "user-1",
+            [
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = "Card SECRET-A Coffee"
+                    }
+                },
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = "Card SECRET-B Coffee"
+                    }
+                }
+            ]);
+
+        Assert.Equal(2, result.Importable);
+        Assert.Equal(0, result.FileDuplicates);
+        Assert.All(
+            result.Transactions,
+            item => Assert.Equal(
+                "Card Coffee",
+                item.Transaction.Metadata.RawDescription));
+        Assert.Equal(
+            2,
+            result.Transactions
+                .Select(item => item.Transaction.ImportFingerprint)
+                .Distinct(StringComparer.Ordinal)
+                .Count());
+    }
+
+    [Fact]
     public async Task PreviewImportTransactions_ClassifiesDuplicatesAndRedactionsWithoutWriting()
     {
         var existingTransaction = new Transaction
@@ -1109,7 +1393,10 @@ public sealed class TransactionsControllerTests
         {
             ExistingImportFingerprints = new HashSet<string>(StringComparer.Ordinal)
             {
-                TransactionImportFingerprint.Create(existingTransaction)
+                TransactionImportFingerprint.Create(
+                    existingTransaction.Date,
+                    existingTransaction.Amount,
+                    existingTransaction.Metadata.RawDescription)
             }
         };
         var importParser = new FakeTransactionImportParser
@@ -1205,7 +1492,7 @@ public sealed class TransactionsControllerTests
             .Select(index => new Transaction
             {
                 Date = new DateTime(2026, 4, 3),
-                Amount = index,
+                Amount = index + 1,
                 Metadata = new TransactionMetadata
                 {
                     RawDescription = $"Transaction {index}"
@@ -1219,6 +1506,44 @@ public sealed class TransactionsControllerTests
                 service.PreviewAsync("user-1", parsedTransactions));
 
         Assert.Equal(TransactionImportLimits.RowLimitExceededMessage, exception.Message);
+        Assert.Null(repository.LastFingerprintLookupUserId);
+        Assert.Empty(repository.ImportAttemptedTransactions);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidImportedFinancialValues))]
+    public async Task TransactionImportService_RejectsInvalidFinancialValuesBeforeRepositoryAccess(
+        bool import,
+        decimal amount,
+        DateTime date,
+        string expectedError)
+    {
+        var repository = new FakeTransactionRepository();
+        var service = new TransactionImportService(
+            repository,
+            new FakeUserPreferencesRepository(),
+            new TransactionImportDescriptionRedactionService());
+        var parsedTransactions = new[]
+        {
+            new Transaction
+            {
+                Date = date,
+                Amount = amount,
+                Metadata = new TransactionMetadata
+                {
+                    RawDescription = "Invalid transaction"
+                }
+            }
+        };
+
+        var exception = import
+            ? await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.ImportAsync("user-1", parsedTransactions))
+            : await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.PreviewAsync("user-1", parsedTransactions));
+
+        Assert.Contains("Import row 1", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(expectedError, exception.Message, StringComparison.Ordinal);
         Assert.Null(repository.LastFingerprintLookupUserId);
         Assert.Empty(repository.ImportAttemptedTransactions);
     }
@@ -1349,7 +1674,7 @@ public sealed class TransactionsControllerTests
                 items[0].Category = "Eating Out";
                 items[0].Metadata.AiSuggestedCategory = "Eating Out";
                 items[0].Metadata.AiConfidenceScore = 0.87;
-                return Task.CompletedTask;
+                return new TransactionCategorizationResult(1, 1, 0, 0);
             }
         };
         var controller = CreateController(repository, preferencesRepository, aiService: aiService);
@@ -1383,6 +1708,35 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task RegenerateCategory_ReturnsBadGatewayWithoutSavingWhenProviderResultFails()
+    {
+        var transactionId = Guid.NewGuid();
+        var transaction = new Transaction
+        {
+            Id = transactionId,
+            UserId = "user-1",
+            Category = "Uncategorized"
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = transaction
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(1, 0, 1, 1)
+        };
+        var controller = CreateController(repository, aiService: aiService);
+
+        var result = await controller.RegenerateCategory(transactionId);
+
+        var badGateway = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status502BadGateway, badGateway.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(badGateway.Value);
+        Assert.Equal("urn:budgetbeacon:external-service", problem.Type);
+        Assert.False(repository.SaveChangesCalled);
+    }
+
+    [Fact]
     public async Task TriggerCategorization_ReturnsNoOpWhenThereAreNoUncategorizedTransactions()
     {
         var aiService = new FakeAiAdvisorService();
@@ -1393,13 +1747,51 @@ public sealed class TransactionsControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(0, GetValue<int>(ok.Value, "ProcessedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "ChangedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "FailedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "RemainingCount"));
         Assert.Equal(0, GetValue<int>(ok.Value, "CategorizedCount"));
         Assert.Equal(0, aiService.CategorizeCalls);
         Assert.False(repository.SaveChangesCalled);
     }
 
     [Fact]
-    public async Task TriggerCategorization_SavesAndCountsOnlyTransactionsChangedFromUncategorized()
+    public async Task TriggerCategorization_ReturnsFullSuccessWithAllCounts()
+    {
+        var transactions = new List<Transaction>
+        {
+            new() { Category = "Uncategorized" },
+            new() { Category = "Uncategorized" }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            UncategorizedTransactions = transactions
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = items =>
+            {
+                items[0].Category = "Food & Groceries";
+                items[1].Category = "Transport";
+                return new TransactionCategorizationResult(2, 2, 0, 0);
+            }
+        };
+        var controller = CreateController(repository, aiService: aiService);
+
+        var result = await controller.TriggerCategorization();
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(2, GetValue<int>(ok.Value, "ProcessedCount"));
+        Assert.Equal(2, GetValue<int>(ok.Value, "ChangedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "FailedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "RemainingCount"));
+        Assert.Equal(2, GetValue<int>(ok.Value, "CategorizedCount"));
+        Assert.Equal("Categorization successful.", GetValue<string>(ok.Value, "Message"));
+        Assert.True(repository.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task TriggerCategorization_ReturnsPartialResultAndSavesValidChanges()
     {
         var transactions = new List<Transaction>
         {
@@ -1419,7 +1811,7 @@ public sealed class TransactionsControllerTests
             CategorizeAction = items =>
             {
                 items[0].Category = "Food & Groceries";
-                return Task.CompletedTask;
+                return new TransactionCategorizationResult(2, 1, 1, 1);
             }
         };
         var controller = CreateController(repository, preferencesRepository, aiService: aiService);
@@ -1428,10 +1820,40 @@ public sealed class TransactionsControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(2, GetValue<int>(ok.Value, "ProcessedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "ChangedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "FailedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "RemainingCount"));
         Assert.Equal(1, GetValue<int>(ok.Value, "CategorizedCount"));
+        Assert.Contains("partially", GetValue<string>(ok.Value, "Message"), StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, aiService.CategorizeCalls);
         Assert.Equal("Bolzano, South Tyrol, Italy", aiService.LastCategorizationLocationContext);
         Assert.True(repository.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task TriggerCategorization_ReturnsBadGatewayWithoutSavingForTotalFailure()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            UncategorizedTransactions =
+            [
+                new Transaction { Category = "Uncategorized" },
+                new Transaction { Category = "Uncategorized" }
+            ]
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(2, 0, 2, 2)
+        };
+        var controller = CreateController(repository, aiService: aiService);
+
+        var result = await controller.TriggerCategorization();
+
+        var badGateway = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status502BadGateway, badGateway.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(badGateway.Value);
+        Assert.Equal("urn:budgetbeacon:external-service", problem.Type);
+        Assert.False(repository.SaveChangesCalled);
     }
 
     [Theory]
@@ -1446,6 +1868,24 @@ public sealed class TransactionsControllerTests
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
         Assert.Contains("monthsBack", problem.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData(1999, 12, 31)]
+    [InlineData(2101, 1, 1)]
+    public async Task GetAiSavingsTips_ReturnsValidationProblemForUnsupportedAsOfDate(
+        int year,
+        int month,
+        int day)
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetAiSavingsTips(
+            asOfDate: new DateOnly(year, month, day));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("asOfDate", problem.Errors.Keys);
     }
 
     [Fact]
@@ -1486,11 +1926,18 @@ public sealed class TransactionsControllerTests
         };
         var controller = CreateController(repository, aiService: aiService);
 
-        var result = await controller.GetAiSavingsTips(allTime: true);
+        var asOfDate = new DateOnly(2026, 3, 31);
+
+        var result = await controller.GetAiSavingsTips(
+            allTime: true,
+            asOfDate: asOfDate);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal("All time", GetValue<string>(ok.Value, "Timeframe"));
         Assert.Equal(1, repository.GetAllCalls);
+        Assert.Equal(
+            asOfDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
+            repository.LastGetAllEndDate);
         Assert.Equal(0, repository.PagedCalls);
         Assert.Equal(1, aiService.GetSavingTipsCalls);
     }
@@ -1546,20 +1993,51 @@ public sealed class TransactionsControllerTests
         var earliestExpectedStartDate = DateOnly.FromDateTime(DateTime.UtcNow)
             .AddMonths(-3)
             .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var earliestExpectedEndDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            .ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
 
         await controller.GetAiSavingsTips(3);
 
         var latestExpectedStartDate = DateOnly.FromDateTime(DateTime.UtcNow)
             .AddMonths(-3)
             .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var latestExpectedEndDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            .ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
 
         Assert.Equal("user-1", repository.LastPagedUserId);
         Assert.NotNull(repository.LastPagedOptions?.StartDate);
+        Assert.NotNull(repository.LastPagedOptions.EndDate);
         Assert.Equal(DateTimeKind.Utc, repository.LastPagedOptions.StartDate.Value.Kind);
+        Assert.Equal(DateTimeKind.Utc, repository.LastPagedOptions.EndDate.Value.Kind);
         Assert.Equal(TimeSpan.Zero, repository.LastPagedOptions.StartDate.Value.TimeOfDay);
+        Assert.Equal(TimeOnly.MaxValue.ToTimeSpan(), repository.LastPagedOptions.EndDate.Value.TimeOfDay);
         Assert.InRange(repository.LastPagedOptions.StartDate.Value, earliestExpectedStartDate, latestExpectedStartDate);
+        Assert.InRange(repository.LastPagedOptions.EndDate.Value, earliestExpectedEndDate, latestExpectedEndDate);
         Assert.Equal(1, repository.LastPagedPageNumber);
         Assert.Equal(10000, repository.LastPagedPageSize);
+    }
+
+    [Fact]
+    public async Task GetAiSavingsTips_UsesClampedInclusiveRangeForExplicitAsOfDate()
+    {
+        var repository = new FakeTransactionRepository
+        {
+            PagedTransactions = [new Transaction { Amount = -25m, Category = "Food & Groceries" }],
+            PagedTotalCount = 1
+        };
+        var controller = CreateController(repository);
+
+        await controller.GetAiSavingsTips(
+            monthsBack: 1,
+            asOfDate: new DateOnly(2026, 3, 31));
+
+        Assert.NotNull(repository.LastPagedOptions);
+        Assert.Equal(
+            new DateTime(2026, 2, 28, 0, 0, 0, DateTimeKind.Utc),
+            repository.LastPagedOptions.StartDate);
+        Assert.Equal(
+            new DateOnly(2026, 3, 31).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
+            repository.LastPagedOptions.EndDate);
     }
 
     private static TransactionsController CreateController(
@@ -1639,6 +2117,7 @@ public sealed class TransactionsControllerTests
         public IEnumerable<Transaction> PagedTransactions { get; init; } = [];
         public int PagedTotalCount { get; init; }
         public int GetAllCalls { get; private set; }
+        public DateTime? LastGetAllEndDate { get; private set; }
         public int PagedCalls { get; private set; }
         public int ImportedCount { get; init; }
         public IReadOnlySet<string> ExistingImportFingerprints { get; init; } =
@@ -1761,9 +2240,12 @@ public sealed class TransactionsControllerTests
             return Task.FromResult<Transaction?>(TransactionToUpdate);
         }
 
-        public Task<IEnumerable<Transaction>> GetAllAsync(string userId)
+        public Task<IEnumerable<Transaction>> GetAllAsync(
+            string userId,
+            DateTime? endDate = null)
         {
             GetAllCalls++;
+            LastGetAllEndDate = endDate;
             return Task.FromResult(AllTransactions);
         }
 
@@ -1839,14 +2321,26 @@ public sealed class TransactionsControllerTests
         public int GetSavingTipsCalls { get; private set; }
         public string? LastCategorizationLocationContext { get; private set; }
         public string? LastSavingsTipsLocationContext { get; private set; }
-        public Func<List<Transaction>, Task>? CategorizeAction { get; init; }
+        public Func<List<Transaction>, TransactionCategorizationResult>? CategorizeAction { get; init; }
         public IReadOnlyList<SavingsTip> SavingTips { get; init; } = [];
 
-        public Task CategorizeTransactionsAsync(List<Transaction> transactions, string? aiLocationContext = null)
+        public Task<TransactionCategorizationResult> CategorizeTransactionsAsync(
+            List<Transaction> transactions,
+            string? aiLocationContext = null)
         {
             CategorizeCalls++;
             LastCategorizationLocationContext = aiLocationContext;
-            return CategorizeAction?.Invoke(transactions) ?? Task.CompletedTask;
+            return Task.FromResult(
+                CategorizeAction?.Invoke(transactions) ??
+                new TransactionCategorizationResult(
+                    transactions.Count,
+                    transactions.Count,
+                    0,
+                    transactions.Count(transaction =>
+                        string.Equals(
+                            transaction.Category,
+                            "Uncategorized",
+                            StringComparison.OrdinalIgnoreCase))));
         }
 
         public Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(

@@ -30,8 +30,14 @@ import { useCreateTransaction } from "../hooks/useCreateTransaction";
 import { useUpdateTransaction } from "../hooks/useUpdateTransaction";
 import { getTransactionsReturnPath } from "../transactionListUrlState";
 import type { Transaction } from "../types";
-
-const getTodayDateInputValue = () => new Date().toISOString().slice(0, 10);
+import {
+  maximumAbsoluteTransactionAmountInput,
+  maximumSupportedTransactionDate,
+  minimumSupportedTransactionDate,
+  validateTransactionAmount,
+  validateTransactionDate,
+} from "../financialValueValidation";
+import { getLocalCalendarDate } from "../../../utils/calendarDate";
 
 type TransactionDirection = "expense" | "income";
 
@@ -48,7 +54,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
   const isEdit = Boolean(transaction);
   const transactionsReturnPath = getTransactionsReturnPath(location.search);
   const [date, setDate] = useState(
-    transaction ? transaction.date.slice(0, 10) : getTodayDateInputValue,
+    transaction ? transaction.date.slice(0, 10) : getLocalCalendarDate,
   );
   const [direction, setDirection] = useState<TransactionDirection>(
     transaction && transaction.amount > 0 ? "income" : "expense",
@@ -69,16 +75,18 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
       ),
   );
 
-  const parsedAmount = Number(amount);
+  const amountValidation = validateTransactionAmount(amount);
+  const parsedAmount = amountValidation.value ?? 0;
   const signedAmount =
     direction === "expense" ? -Math.abs(parsedAmount) : Math.abs(parsedAmount);
   const normalizedDescription = description.replace(/\s+/g, " ").trim();
   const normalizedNotes = notes.trim();
-  const isAmountValid =
-    amount.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const dateValidationError = validateTransactionDate(date);
+  const isAmountValid = amountValidation.error === null;
+  const isDateValid = dateValidationError === null;
   const canSubmit =
     isOnline &&
-    date.length > 0 &&
+    isDateValid &&
     isAmountValid &&
     normalizedDescription.length > 0 &&
     !createTransactionMutation.isPending &&
@@ -210,7 +218,15 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                   value={date}
                   onChange={(event) => setDate(event.target.value)}
                   disabled={isPending}
-                  slotProps={{ inputLabel: { shrink: true } }}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    htmlInput: {
+                      min: minimumSupportedTransactionDate,
+                      max: maximumSupportedTransactionDate,
+                    },
+                  }}
+                  error={dateValidationError !== null}
+                  helperText={dateValidationError ?? " "}
                   required
                   fullWidth
                 />
@@ -222,11 +238,17 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
                   disabled={isPending}
-                  slotProps={{ htmlInput: { step: "0.01", min: "0.01" } }}
+                  slotProps={{
+                    htmlInput: {
+                      step: "0.01",
+                      min: "0.01",
+                      max: maximumAbsoluteTransactionAmountInput,
+                    },
+                  }}
                   error={amount.trim().length > 0 && !isAmountValid}
                   helperText={
                     amount.trim().length > 0 && !isAmountValid
-                      ? "Enter an amount greater than zero."
+                      ? amountValidation.error
                       : " "
                   }
                   required

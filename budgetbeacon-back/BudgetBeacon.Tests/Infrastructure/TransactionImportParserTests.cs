@@ -62,6 +62,22 @@ public sealed class TransactionImportParserTests
     }
 
     [Fact]
+    public void ParseCsvTransactions_PreservesDemoSalaryDateAsUtc()
+    {
+        const string csv = """
+            Date,Amount,Description
+            2026-06-01,3200.00,Salary
+            """;
+
+        var transaction = Assert.Single(_sut.ParseCsvTransactions(CreateStream(csv), "auto"));
+        var expectedDate = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        Assert.Equal(expectedDate, transaction.Date);
+        Assert.Equal(DateTimeKind.Utc, transaction.Date.Kind);
+        Assert.Equal(expectedDate, transaction.Date.ToUniversalTime());
+    }
+
+    [Fact]
     public void ParseCsvTransactions_UsesSelectedTabDelimiter()
     {
         const string csv = "Date\tAmount\tDescription\r\n2026-05-01\t13.56\tCoffee";

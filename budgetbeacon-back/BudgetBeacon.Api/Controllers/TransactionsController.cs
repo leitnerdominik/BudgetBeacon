@@ -197,10 +197,11 @@ public class TransactionsController : ControllerBase
             ? TransactionTreatment.GetDefault(request.Amount, category)
             : TransactionTreatment.Normalize(request.Treatment);
         var hasInvalidTreatment = treatment is null;
+        var financialValueValidation = FinancialValueValidator.Validate(
+            request.Amount,
+            request.Date);
 
-        if (request.Date.Year < 2000 ||
-            request.Date.Year > 2100 ||
-            request.Amount == 0 ||
+        if (!financialValueValidation.IsValid ||
             string.IsNullOrWhiteSpace(description) ||
             description.Length > 200 ||
             notes?.Length > 500 ||
@@ -212,14 +213,14 @@ public class TransactionsController : ControllerBase
                 "Check the provided transaction details and try again.",
                 errors =>
                 {
-                    if (request.Date.Year < 2000 || request.Date.Year > 2100)
+                    foreach (var error in financialValueValidation.DateErrors)
                     {
-                        errors.AddModelError(nameof(request.Date), "Date must be between years 2000 and 2100.");
+                        errors.AddModelError(nameof(request.Date), error);
                     }
 
-                    if (request.Amount == 0)
+                    foreach (var error in financialValueValidation.AmountErrors)
                     {
-                        errors.AddModelError(nameof(request.Amount), "Amount must not be zero.");
+                        errors.AddModelError(nameof(request.Amount), error);
                     }
 
                     if (string.IsNullOrWhiteSpace(description))
@@ -800,10 +801,11 @@ public class TransactionsController : ControllerBase
             ? TransactionTreatment.GetDefault(request.Amount, category)
             : TransactionTreatment.Normalize(request.Treatment);
         var hasInvalidTreatment = treatment is null;
+        var financialValueValidation = FinancialValueValidator.Validate(
+            request.Amount,
+            request.Date);
 
-        if (request.Date.Year < 2000 ||
-            request.Date.Year > 2100 ||
-            request.Amount == 0 ||
+        if (!financialValueValidation.IsValid ||
             string.IsNullOrWhiteSpace(description) ||
             description.Length > 200 ||
             notes?.Length > 500 ||
@@ -815,14 +817,14 @@ public class TransactionsController : ControllerBase
                 "Check the provided transaction details and try again.",
                 errors =>
                 {
-                    if (request.Date.Year < 2000 || request.Date.Year > 2100)
+                    foreach (var error in financialValueValidation.DateErrors)
                     {
-                        errors.AddModelError(nameof(request.Date), "Date must be between years 2000 and 2100.");
+                        errors.AddModelError(nameof(request.Date), error);
                     }
 
-                    if (request.Amount == 0)
+                    foreach (var error in financialValueValidation.AmountErrors)
                     {
-                        errors.AddModelError(nameof(request.Amount), "Amount must not be zero.");
+                        errors.AddModelError(nameof(request.Amount), error);
                     }
 
                     if (string.IsNullOrWhiteSpace(description))
@@ -936,7 +938,20 @@ public class TransactionsController : ControllerBase
         }
 
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
-        await _aiService.CategorizeTransactionsAsync([transaction], aiLocationContext);
+        var categorizationResult = await _aiService.CategorizeTransactionsAsync(
+            [transaction],
+            aiLocationContext);
+
+        if (categorizationResult.ChangedCount == 0 &&
+            categorizationResult.FailedCount > 0)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                "Upstream service failure",
+                "The AI provider did not return a valid categorization result.",
+                "urn:budgetbeacon:external-service");
+        }
+
         await _repository.SaveChangesAsync();
 
         return Ok(transaction);
@@ -961,30 +976,53 @@ public class TransactionsController : ControllerBase
             {
                 Message = "All transactions are already categorized. Nothing to do.",
                 ProcessedCount = 0,
+                ChangedCount = 0,
+                FailedCount = 0,
+                RemainingCount = 0,
                 CategorizedCount = 0
             });
         }
 
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
-        await _aiService.CategorizeTransactionsAsync(uncategorized, aiLocationContext);
+        var categorizationResult = await _aiService.CategorizeTransactionsAsync(
+            uncategorized,
+            aiLocationContext);
 
-        var categorizedCount = uncategorized.Count(t =>
-            !string.Equals(t.Category, "Uncategorized", StringComparison.OrdinalIgnoreCase));
+        if (categorizationResult.ChangedCount == 0 &&
+            categorizationResult.FailedCount > 0)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                "Upstream service failure",
+                "The AI provider did not return any valid categorization results.",
+                "urn:budgetbeacon:external-service");
+        }
 
-        await _repository.SaveChangesAsync();
+        if (categorizationResult.ChangedCount > 0)
+        {
+            await _repository.SaveChangesAsync();
+        }
+
+        var message = categorizationResult.FailedCount > 0
+            ? "Categorization partially completed. Some transactions could not be categorized."
+            : "Categorization successful.";
 
         return Ok(new
         {
-            Message = "Categorization successful",
-            ProcessedCount = uncategorized.Count,
-            CategorizedCount = categorizedCount
+            Message = message,
+            categorizationResult.ProcessedCount,
+            categorizationResult.ChangedCount,
+            categorizationResult.FailedCount,
+            categorizationResult.RemainingCount,
+            CategorizedCount = categorizationResult.ChangedCount
         });
     }
 
     [HttpGet("ai/tips")]
     public async Task<IActionResult> GetAiSavingsTips(
         [FromQuery] int monthsBack = 3,
-        [FromQuery] bool allTime = false)
+        [FromQuery] bool allTime = false,
+        [FromQuery] DateOnly? asOfDate = null)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -1000,22 +1038,41 @@ public class TransactionsController : ControllerBase
                 errors => errors.AddModelError(nameof(monthsBack), "Months back must be between 1 and 24."));
         }
 
+        var effectiveAsOfDate = asOfDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (effectiveAsOfDate < FinancialValueValidator.MinimumSupportedDate ||
+            effectiveAsOfDate > FinancialValueValidator.MaximumSupportedDate)
+        {
+            return this.ApiValidationProblem(
+                "Invalid tips query",
+                "As-of date must be between 2000-01-01 and 2100-12-31.",
+                errors => errors.AddModelError(
+                    nameof(asOfDate),
+                    "As-of date must be between 2000-01-01 and 2100-12-31."));
+        }
+
+        var inclusiveEndDate = effectiveAsOfDate.ToDateTime(
+            TimeOnly.MaxValue,
+            DateTimeKind.Utc);
         IEnumerable<Transaction> transactions;
         string timeframe;
 
         if (allTime)
         {
             _logger.LogInformation("API requested AI savings tips for all available transactions.");
-            transactions = await _repository.GetAllAsync(userId);
+            transactions = await _repository.GetAllAsync(userId, inclusiveEndDate);
             timeframe = "All time";
         }
         else
         {
             _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
-            var startDate = GetUtcTipsStartDate(monthsBack);
+            var startDate = effectiveAsOfDate
+                .AddMonths(-monthsBack)
+                .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             (transactions, _) = await _repository.GetTransactionsPagedAsync(
                 userId,
-                new TransactionQueryOptions(StartDate: startDate),
+                new TransactionQueryOptions(
+                    StartDate: startDate,
+                    EndDate: inclusiveEndDate),
                 1,
                 10000);
             timeframe = FormatTipsTimeframe(monthsBack);
@@ -1132,12 +1189,6 @@ public class TransactionsController : ControllerBase
         int endYear,
         int endMonth) =>
         ((endYear - startYear) * 12) + endMonth - startMonth + 1;
-
-    private static DateTime GetUtcTipsStartDate(int monthsBack)
-    {
-        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
-        return utcToday.AddMonths(-monthsBack).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-    }
 
     private static string FormatTipsTimeframe(int monthsBack) =>
         monthsBack switch

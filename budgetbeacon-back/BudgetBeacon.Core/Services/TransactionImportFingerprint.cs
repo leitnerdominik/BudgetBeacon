@@ -2,19 +2,21 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using BudgetBeacon.Core.Entities;
 
 namespace BudgetBeacon.Core.Services;
 
 public static partial class TransactionImportFingerprint
 {
-    public static string Create(Transaction transaction)
+    public static string Create(
+        DateTime date,
+        decimal amount,
+        string? sourceDescription)
     {
         var canonicalValue = string.Join(
             '\n',
-            transaction.Date.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            transaction.Amount.ToString("G29", CultureInfo.InvariantCulture),
-            NormalizeDescription(transaction.Metadata.RawDescription));
+            date.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            amount.ToString("G29", CultureInfo.InvariantCulture),
+            NormalizeDescription(sourceDescription));
 
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(canonicalValue));
 

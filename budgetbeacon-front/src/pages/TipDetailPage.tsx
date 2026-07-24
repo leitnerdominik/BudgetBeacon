@@ -38,6 +38,7 @@ import type { RegionalTipCategory } from "../types/api";
 type SupportingTransactionsProps = {
   category: RegionalTipCategory;
   timeframe: TipsTimeframeValue;
+  asOfDate: string;
 };
 
 const supportingTransactionsPageSize = 10;
@@ -45,12 +46,13 @@ const supportingTransactionsPageSize = 10;
 const SupportingTransactions = ({
   category,
   timeframe,
+  asOfDate,
 }: SupportingTransactionsProps) => {
   const [page, setPage] = useState(0);
   const isOnline = useNetworkStatus();
   const timeframeLabel = getTipsTimeframe(timeframe).label;
   const transactionQuery = useMemo<TransactionQueryRequest>(() => {
-    const range = getTipsTransactionDateRange(timeframe);
+    const range = getTipsTransactionDateRange(timeframe, asOfDate);
 
     return {
       ...defaultTransactionQuery,
@@ -61,7 +63,7 @@ const SupportingTransactions = ({
       sortBy: "date",
       sortDirection: "desc",
     };
-  }, [category, timeframe]);
+  }, [asOfDate, category, timeframe]);
 
   const { data, isError, isFetching, isLoading, refetch } = useTransactions(
     page + 1,
@@ -215,6 +217,7 @@ export const TipDetailPage = () => {
     isLoading,
     isError,
     refreshTips,
+    asOfDate,
   } = useTips({
     timeframe,
     showSuccessNotification: false,
@@ -397,6 +400,7 @@ export const TipDetailPage = () => {
               <SupportingTransactions
                 category={tip.category}
                 timeframe={timeframe}
+                asOfDate={asOfDate}
               />
             </Stack>
           </CardContent>

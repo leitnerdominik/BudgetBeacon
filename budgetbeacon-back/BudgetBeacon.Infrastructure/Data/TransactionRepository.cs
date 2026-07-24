@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
-using BudgetBeacon.Core.Services;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
@@ -29,13 +28,17 @@ public class TransactionRepository : ITransactionRepository
 
     public async Task<int> AddImportedTransactionsAsync(IEnumerable<Transaction> transactions)
     {
-        var transactionRows = transactions
+        var transactionList = transactions.ToList();
+        if (transactionList.Any(transaction =>
+                string.IsNullOrWhiteSpace(transaction.ImportFingerprint)))
+        {
+            throw new InvalidOperationException(
+                "Imported transactions must have a source fingerprint before persistence.");
+        }
+
+        var transactionRows = transactionList
             .Select(transaction =>
             {
-                transaction.ImportFingerprint = string.IsNullOrWhiteSpace(transaction.ImportFingerprint)
-                    ? TransactionImportFingerprint.Create(transaction)
-                    : transaction.ImportFingerprint;
-
                 return new ImportedTransactionRow
                 {
                     Id = transaction.Id,
@@ -182,10 +185,20 @@ public class TransactionRepository : ITransactionRepository
         return transaction;
     }
 
-    public async Task<IEnumerable<Transaction>> GetAllAsync(string userId)
+    public async Task<IEnumerable<Transaction>> GetAllAsync(
+        string userId,
+        DateTime? endDate = null)
     {
-        return await _context.Transactions
-            .Where(t => t.UserId == userId)
+        var query = _context.Transactions
+            .Where(t => t.UserId == userId);
+
+        if (endDate.HasValue)
+        {
+            var endUtc = endDate.Value.ToUniversalTime();
+            query = query.Where(t => t.Date <= endUtc);
+        }
+
+        return await query
             .OrderByDescending(t => t.Date)
             .ToListAsync();
     }

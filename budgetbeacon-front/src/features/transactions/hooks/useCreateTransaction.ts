@@ -5,6 +5,7 @@ import {
   type CreateTransactionRequest,
 } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
+import { clearTipsQueryCache } from "../../tips/tipsCache";
 
 export const useCreateTransaction = () => {
   const queryClient = useQueryClient();
@@ -14,7 +15,7 @@ export const useCreateTransaction = () => {
     mutationFn: (request: CreateTransactionRequest) => createTransaction(request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["tips"] });
+      clearTipsQueryCache(queryClient);
       showNotification({
         severity: "success",
         message: "Transaction created.",

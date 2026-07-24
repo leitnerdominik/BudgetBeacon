@@ -4,6 +4,7 @@ import {
   type UpdateUserPreferencesRequest,
 } from "../../api/userPreferencesApi";
 import { useNotification } from "../../components/NotificationProvider";
+import { clearTipsQueryCache } from "../tips/tipsCache";
 import { userPreferencesQueryKey } from "./useUserPreferences";
 
 export const useUpdateUserPreferences = () => {
@@ -15,7 +16,7 @@ export const useUpdateUserPreferences = () => {
       updateUserPreferences(request),
     onSuccess: (preferences) => {
       queryClient.setQueryData(userPreferencesQueryKey, preferences);
-      queryClient.invalidateQueries({ queryKey: ["tips"] });
+      clearTipsQueryCache(queryClient);
       showNotification({
         severity: "success",
         message: "Settings saved.",

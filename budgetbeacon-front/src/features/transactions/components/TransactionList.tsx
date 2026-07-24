@@ -305,10 +305,14 @@ export const TransactionList = () => {
 
   const categorizeProgressValue =
     categorizeMutation.isSuccess || categorizeMutation.isError ? 100 : 0;
+  const categorizeHasPartialFailure =
+    categorizeMutation.isSuccess && categorizeMutation.data.failedCount > 0;
   const categorizeStatusLabel = categorizeMutation.isPending
     ? "Categorizing uncategorized transactions..."
     : categorizeMutation.isSuccess
-      ? "Categorization completed"
+      ? categorizeHasPartialFailure
+        ? "Categorization partially completed"
+        : "Categorization completed"
       : categorizeMutation.isError
         ? "Categorization failed"
         : "Ready to categorize";
@@ -1046,7 +1050,13 @@ export const TransactionList = () => {
               <LinearProgress
                 variant={categorizeMutation.isPending ? "indeterminate" : "determinate"}
                 value={categorizeProgressValue}
-                color={categorizeMutation.isError ? "error" : "primary"}
+                color={
+                  categorizeMutation.isError
+                    ? "error"
+                    : categorizeHasPartialFailure
+                      ? "warning"
+                      : "primary"
+                }
                 aria-label="Categorization progress"
               />
             </Box>
@@ -1070,10 +1080,28 @@ export const TransactionList = () => {
                     variant="outlined"
                   />
                   <Chip
-                    label={`${categorizeMutation.data.categorizedCount} categorized`}
+                    label={`${categorizeMutation.data.changedCount} changed`}
                     color={
-                      categorizeMutation.data.categorizedCount > 0
+                      categorizeMutation.data.changedCount > 0
                         ? "success"
+                        : "default"
+                    }
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`${categorizeMutation.data.failedCount} failed`}
+                    color={
+                      categorizeMutation.data.failedCount > 0
+                        ? "warning"
+                        : "default"
+                    }
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`${categorizeMutation.data.remainingCount} remaining`}
+                    color={
+                      categorizeMutation.data.remainingCount > 0
+                        ? "warning"
                         : "default"
                     }
                     variant="outlined"

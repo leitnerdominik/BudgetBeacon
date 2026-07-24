@@ -1,3 +1,5 @@
+import { subtractCalendarMonths } from "../../utils/calendarDate.ts";
+
 export const TIPS_TIMEFRAMES = [
   { value: "all-time", label: "All time", allTime: true },
   { value: "12-months", label: "1 year", monthsBack: 12 },
@@ -17,39 +19,34 @@ export const getTipsTimeframe = (value: TipsTimeframeValue) =>
 export const isTipsTimeframeValue = (value: string): value is TipsTimeframeValue =>
   TIPS_TIMEFRAMES.some((timeframe) => timeframe.value === value);
 
-export const getTipsTimeframeParams = (value: TipsTimeframeValue) => {
+export const getTipsTimeframeParams = (
+  value: TipsTimeframeValue,
+  asOfDate: string,
+) => {
   const timeframe = getTipsTimeframe(value);
 
   if ("allTime" in timeframe) {
-    return { allTime: true };
+    return { allTime: true, asOfDate };
   }
 
-  return { monthsBack: timeframe.monthsBack };
+  return { monthsBack: timeframe.monthsBack, asOfDate };
 };
 
-const formatUtcDate = (date: Date) => {
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-
-  return `${date.getUTCFullYear()}-${month}-${day}`;
-};
-
-export const getTipsTransactionDateRange = (value: TipsTimeframeValue) => {
+export const getTipsTransactionDateRange = (
+  value: TipsTimeframeValue,
+  asOfDate: string,
+) => {
   const timeframe = getTipsTimeframe(value);
 
   if ("allTime" in timeframe) {
     return {
       startDate: "",
-      endDate: "",
+      endDate: asOfDate,
     };
   }
 
-  const startDate = new Date();
-  startDate.setUTCHours(0, 0, 0, 0);
-  startDate.setUTCMonth(startDate.getUTCMonth() - timeframe.monthsBack);
-
   return {
-    startDate: formatUtcDate(startDate),
-    endDate: "",
+    startDate: subtractCalendarMonths(asOfDate, timeframe.monthsBack),
+    endDate: asOfDate,
   };
 };

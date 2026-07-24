@@ -5,6 +5,7 @@ import {
   type TransactionWriteRequest,
 } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
+import { clearTipsQueryCache } from "../../tips/tipsCache";
 import { transactionDetailQueryKey } from "./useTransaction";
 
 type UpdateTransactionInput = {
@@ -25,7 +26,7 @@ export const useUpdateTransaction = () => {
         transaction,
       );
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["tips"] });
+      clearTipsQueryCache(queryClient);
       showNotification({
         severity: "success",
         message: "Transaction updated.",

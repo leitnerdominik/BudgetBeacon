@@ -99,13 +99,31 @@ public sealed class TransactionImportService
                     TransactionImportLimits.RowLimitExceededMessage);
             }
 
+            var financialValueValidation = FinancialValueValidator.Validate(
+                transaction.Amount,
+                transaction.Date);
+
+            if (!financialValueValidation.IsValid)
+            {
+                var validationErrors = financialValueValidation.DateErrors
+                    .Concat(financialValueValidation.AmountErrors);
+                throw new InvalidInputException(
+                    $"Import row {preparedTransactions.Count + 1} is invalid: " +
+                    string.Join(" ", validationErrors));
+            }
+
+            var sourceDescription = transaction.Metadata.RawDescription;
+            var importFingerprint = TransactionImportFingerprint.Create(
+                transaction.Date,
+                transaction.Amount,
+                sourceDescription);
             var redactionResult = _descriptionRedactionService.Redact(
-                transaction.Metadata.RawDescription,
+                sourceDescription,
                 importBlacklistRules);
 
             transaction.Metadata.RawDescription = redactionResult.Description;
             transaction.UserId = userId;
-            transaction.ImportFingerprint = TransactionImportFingerprint.Create(transaction);
+            transaction.ImportFingerprint = importFingerprint;
             transaction.Treatment = TransactionTreatment.GetDefault(
                 transaction.Amount,
                 transaction.Category);

@@ -161,6 +161,7 @@ public class TransactionImportParser : ITransactionImportParser
                 TransactionImportLimits.RowLimitExceededMessage);
         }
 
+        transaction.Date = DateTime.SpecifyKind(transaction.Date.Date, DateTimeKind.Utc);
         transactions.Add(transaction);
     }
 

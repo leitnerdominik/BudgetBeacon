@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Models;
+using BudgetBeacon.Core.Services;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 namespace BudgetBeacon.Infrastructure.Data;
@@ -22,10 +23,6 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
         {
             entity.Property(user => user.FirstName).HasMaxLength(100);
             entity.Property(user => user.LastName).HasMaxLength(100);
-            entity.Property(user => user.AiLocationContext).HasMaxLength(120);
-            entity.Property(user => user.TransactionImportBlacklistRulesJson)
-                .HasColumnType("jsonb")
-                .HasDefaultValueSql("'[]'::jsonb");
         });
 
         modelBuilder.Entity<UserSettings>(entity =>
@@ -71,7 +68,9 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
                     value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
             entity.Property(transaction => transaction.Amount)
-                .HasPrecision(18, 2);
+                .HasPrecision(
+                    FinancialValueValidator.StoragePrecision,
+                    FinancialValueValidator.StorageScale);
 
             entity.HasIndex(transaction => new { transaction.UserId, transaction.Date });
 

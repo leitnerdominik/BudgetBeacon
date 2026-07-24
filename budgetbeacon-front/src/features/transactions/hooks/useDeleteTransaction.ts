@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { deleteTransaction } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
+import { clearTipsQueryCache } from "../../tips/tipsCache";
 
 export const useDeleteTransaction = () => {
   const queryClient = useQueryClient();
@@ -11,7 +12,7 @@ export const useDeleteTransaction = () => {
     mutationFn: (transactionId: string) => deleteTransaction(transactionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["tips"] });
+      clearTipsQueryCache(queryClient);
       showNotification({
         severity: "success",
         message: "Transaction deleted.",
