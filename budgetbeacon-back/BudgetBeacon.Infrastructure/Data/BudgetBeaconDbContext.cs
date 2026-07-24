@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Models;
+using BudgetBeacon.Core.Services;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 namespace BudgetBeacon.Infrastructure.Data;
@@ -71,7 +72,9 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
                     value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
             entity.Property(transaction => transaction.Amount)
-                .HasPrecision(18, 2);
+                .HasPrecision(
+                    FinancialValueValidator.StoragePrecision,
+                    FinancialValueValidator.StorageScale);
 
             entity.HasIndex(transaction => new { transaction.UserId, transaction.Date });
 

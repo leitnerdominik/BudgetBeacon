@@ -14,6 +14,59 @@ namespace BudgetBeacon.Tests.Api;
 
 public sealed class TransactionsControllerTests
 {
+    public static TheoryData<bool, decimal, DateTime, string> InvalidImportedFinancialValues =>
+        new()
+        {
+            {
+                false,
+                0m,
+                new DateTime(2026, 4, 3),
+                "Amount must not be zero."
+            },
+            {
+                true,
+                0m,
+                new DateTime(2026, 4, 3),
+                "Amount must not be zero."
+            },
+            {
+                false,
+                1.234m,
+                new DateTime(2026, 4, 3),
+                "Amount must have no more than 2 decimal places."
+            },
+            {
+                true,
+                1.234m,
+                new DateTime(2026, 4, 3),
+                "Amount must have no more than 2 decimal places."
+            },
+            {
+                false,
+                10_000_000_000_000m,
+                new DateTime(2026, 4, 3),
+                "Amount must be between"
+            },
+            {
+                true,
+                -10_000_000_000_000m,
+                new DateTime(2026, 4, 3),
+                "Amount must be between"
+            },
+            {
+                false,
+                1m,
+                new DateTime(1999, 12, 31),
+                "Date must be between"
+            },
+            {
+                true,
+                1m,
+                new DateTime(2101, 1, 1),
+                "Date must be between"
+            }
+        };
+
     [Fact]
     public async Task GetAllTransactions_ReturnsUnauthorizedProblemWithoutAuthenticatedUser()
     {
@@ -251,6 +304,29 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task Create_ReturnsValidationProblemForInvalidFinancialValues()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            new DateOnly(1999, 12, 31),
+            1.234m,
+            "Grocery store",
+            "Food & Groceries",
+            null));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Date", problem.Errors.Keys);
+        Assert.Contains("Amount", problem.Errors.Keys);
+        Assert.Contains(
+            problem.Errors["Amount"],
+            error => error.Contains("2 decimal places", StringComparison.Ordinal));
+        Assert.Empty(repository.AddedTransactions);
+    }
+
+    [Fact]
     public async Task Update_UpdatesAllFieldsAndKeepsImportFingerprint()
     {
         var transactionId = Guid.NewGuid();
@@ -397,6 +473,31 @@ public sealed class TransactionsControllerTests
         Assert.Contains("Category", problem.Errors.Keys);
         Assert.Contains("Notes", problem.Errors.Keys);
         Assert.Contains("Treatment", problem.Errors.Keys);
+        Assert.Null(repository.LastUpdateTransactionId);
+    }
+
+    [Fact]
+    public async Task Update_ReturnsValidationProblemForOutOfRangeFinancialValues()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+
+        var result = await controller.Update(
+            Guid.NewGuid(),
+            new TransactionsController.UpdateTransactionRequest(
+                new DateOnly(2101, 1, 1),
+                10_000_000_000_000m,
+                "Salary",
+                "Income",
+                null));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("Date", problem.Errors.Keys);
+        Assert.Contains("Amount", problem.Errors.Keys);
+        Assert.Contains(
+            problem.Errors["Amount"],
+            error => error.Contains("9,999,999,999,999.99", StringComparison.Ordinal));
         Assert.Null(repository.LastUpdateTransactionId);
     }
 
@@ -1205,7 +1306,7 @@ public sealed class TransactionsControllerTests
             .Select(index => new Transaction
             {
                 Date = new DateTime(2026, 4, 3),
-                Amount = index,
+                Amount = index + 1,
                 Metadata = new TransactionMetadata
                 {
                     RawDescription = $"Transaction {index}"
@@ -1219,6 +1320,44 @@ public sealed class TransactionsControllerTests
                 service.PreviewAsync("user-1", parsedTransactions));
 
         Assert.Equal(TransactionImportLimits.RowLimitExceededMessage, exception.Message);
+        Assert.Null(repository.LastFingerprintLookupUserId);
+        Assert.Empty(repository.ImportAttemptedTransactions);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidImportedFinancialValues))]
+    public async Task TransactionImportService_RejectsInvalidFinancialValuesBeforeRepositoryAccess(
+        bool import,
+        decimal amount,
+        DateTime date,
+        string expectedError)
+    {
+        var repository = new FakeTransactionRepository();
+        var service = new TransactionImportService(
+            repository,
+            new FakeUserPreferencesRepository(),
+            new TransactionImportDescriptionRedactionService());
+        var parsedTransactions = new[]
+        {
+            new Transaction
+            {
+                Date = date,
+                Amount = amount,
+                Metadata = new TransactionMetadata
+                {
+                    RawDescription = "Invalid transaction"
+                }
+            }
+        };
+
+        var exception = import
+            ? await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.ImportAsync("user-1", parsedTransactions))
+            : await Assert.ThrowsAsync<InvalidInputException>(() =>
+                service.PreviewAsync("user-1", parsedTransactions));
+
+        Assert.Contains("Import row 1", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(expectedError, exception.Message, StringComparison.Ordinal);
         Assert.Null(repository.LastFingerprintLookupUserId);
         Assert.Empty(repository.ImportAttemptedTransactions);
     }

@@ -197,10 +197,11 @@ public class TransactionsController : ControllerBase
             ? TransactionTreatment.GetDefault(request.Amount, category)
             : TransactionTreatment.Normalize(request.Treatment);
         var hasInvalidTreatment = treatment is null;
+        var financialValueValidation = FinancialValueValidator.Validate(
+            request.Amount,
+            request.Date);
 
-        if (request.Date.Year < 2000 ||
-            request.Date.Year > 2100 ||
-            request.Amount == 0 ||
+        if (!financialValueValidation.IsValid ||
             string.IsNullOrWhiteSpace(description) ||
             description.Length > 200 ||
             notes?.Length > 500 ||
@@ -212,14 +213,14 @@ public class TransactionsController : ControllerBase
                 "Check the provided transaction details and try again.",
                 errors =>
                 {
-                    if (request.Date.Year < 2000 || request.Date.Year > 2100)
+                    foreach (var error in financialValueValidation.DateErrors)
                     {
-                        errors.AddModelError(nameof(request.Date), "Date must be between years 2000 and 2100.");
+                        errors.AddModelError(nameof(request.Date), error);
                     }
 
-                    if (request.Amount == 0)
+                    foreach (var error in financialValueValidation.AmountErrors)
                     {
-                        errors.AddModelError(nameof(request.Amount), "Amount must not be zero.");
+                        errors.AddModelError(nameof(request.Amount), error);
                     }
 
                     if (string.IsNullOrWhiteSpace(description))
@@ -800,10 +801,11 @@ public class TransactionsController : ControllerBase
             ? TransactionTreatment.GetDefault(request.Amount, category)
             : TransactionTreatment.Normalize(request.Treatment);
         var hasInvalidTreatment = treatment is null;
+        var financialValueValidation = FinancialValueValidator.Validate(
+            request.Amount,
+            request.Date);
 
-        if (request.Date.Year < 2000 ||
-            request.Date.Year > 2100 ||
-            request.Amount == 0 ||
+        if (!financialValueValidation.IsValid ||
             string.IsNullOrWhiteSpace(description) ||
             description.Length > 200 ||
             notes?.Length > 500 ||
@@ -815,14 +817,14 @@ public class TransactionsController : ControllerBase
                 "Check the provided transaction details and try again.",
                 errors =>
                 {
-                    if (request.Date.Year < 2000 || request.Date.Year > 2100)
+                    foreach (var error in financialValueValidation.DateErrors)
                     {
-                        errors.AddModelError(nameof(request.Date), "Date must be between years 2000 and 2100.");
+                        errors.AddModelError(nameof(request.Date), error);
                     }
 
-                    if (request.Amount == 0)
+                    foreach (var error in financialValueValidation.AmountErrors)
                     {
-                        errors.AddModelError(nameof(request.Amount), "Amount must not be zero.");
+                        errors.AddModelError(nameof(request.Amount), error);
                     }
 
                     if (string.IsNullOrWhiteSpace(description))

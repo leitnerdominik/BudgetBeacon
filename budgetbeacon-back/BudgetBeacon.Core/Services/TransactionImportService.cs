@@ -99,6 +99,19 @@ public sealed class TransactionImportService
                     TransactionImportLimits.RowLimitExceededMessage);
             }
 
+            var financialValueValidation = FinancialValueValidator.Validate(
+                transaction.Amount,
+                transaction.Date);
+
+            if (!financialValueValidation.IsValid)
+            {
+                var validationErrors = financialValueValidation.DateErrors
+                    .Concat(financialValueValidation.AmountErrors);
+                throw new InvalidInputException(
+                    $"Import row {preparedTransactions.Count + 1} is invalid: " +
+                    string.Join(" ", validationErrors));
+            }
+
             var redactionResult = _descriptionRedactionService.Redact(
                 transaction.Metadata.RawDescription,
                 importBlacklistRules);
