@@ -10,14 +10,23 @@ export const useCategorizeUncategorizedTransactions = () => {
   return useMutation({
     mutationFn: categorizeUncategorizedTransactions,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      clearTipsQueryCache(queryClient);
+      if (data.changedCount > 0) {
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        clearTipsQueryCache(queryClient);
+      }
 
       showNotification({
-        severity: data.categorizedCount > 0 ? "success" : "info",
+        severity:
+          data.failedCount > 0
+            ? "warning"
+            : data.changedCount > 0
+              ? "success"
+              : "info",
         message:
-          data.categorizedCount > 0
-            ? `${data.categorizedCount} uncategorized transaction(s) categorized.`
+          data.failedCount > 0
+            ? `${data.changedCount} transaction(s) categorized; ${data.failedCount} could not be categorized.`
+            : data.changedCount > 0
+              ? `${data.changedCount} uncategorized transaction(s) categorized.`
             : "All transactions are already categorized.",
       });
     },

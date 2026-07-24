@@ -63,9 +63,13 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var handler = new StubHttpMessageHandler();
         var sut = CreateService(handler);
 
-        await sut.CategorizeTransactionsAsync([]);
+        var result = await sut.CategorizeTransactionsAsync([]);
 
         Assert.Empty(handler.Requests);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(0, result.ChangedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Equal(0, result.RemainingCount);
     }
 
     [Fact]
@@ -107,7 +111,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         handler.Enqueue(DeepSeekResponse(providerContent));
         var sut = CreateService(handler);
 
-        await sut.CategorizeTransactionsAsync(transactions);
+        var result = await sut.CategorizeTransactionsAsync(transactions);
 
         Assert.Equal("Transport", transactions[0].Category);
         Assert.Equal("Transport", transactions[0].Metadata.AiSuggestedCategory);
@@ -117,9 +121,13 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Equal("Other", transactions[1].Metadata.AiSuggestedCategory);
         Assert.Equal(0.75, transactions[1].Metadata.AiConfidenceScore);
 
-        Assert.Equal("Shopping & Personal", transactions[2].Category);
-        Assert.Equal("Shopping & Personal", transactions[2].Metadata.AiSuggestedCategory);
-        Assert.Equal(0.0, transactions[2].Metadata.AiConfidenceScore);
+        Assert.Equal("Uncategorized", transactions[2].Category);
+        Assert.Null(transactions[2].Metadata.AiSuggestedCategory);
+        Assert.Null(transactions[2].Metadata.AiConfidenceScore);
+        Assert.Equal(3, result.ProcessedCount);
+        Assert.Equal(2, result.ChangedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(1, result.RemainingCount);
 
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Post, request.Method);
@@ -197,11 +205,15 @@ public sealed class DeepSeekAiAdvisorServiceTests
         handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
-        await sut.CategorizeTransactionsAsync(transactions);
+        var result = await sut.CategorizeTransactionsAsync(transactions);
 
         Assert.Equal(2, handler.Requests.Count);
         Assert.Equal("Food & Groceries", transactions[0].Category);
         Assert.Equal("Transport", transactions[50].Category);
+        Assert.Equal(51, result.ProcessedCount);
+        Assert.Equal(2, result.ChangedCount);
+        Assert.Equal(49, result.FailedCount);
+        Assert.Equal(49, result.RemainingCount);
     }
 
     [Fact]
@@ -216,11 +228,155 @@ public sealed class DeepSeekAiAdvisorServiceTests
         handler.Enqueue(DeepSeekResponse("this is not json"));
         var sut = CreateService(handler);
 
-        await sut.CategorizeTransactionsAsync([transaction]);
+        var result = await sut.CategorizeTransactionsAsync([transaction]);
 
         Assert.Equal("Uncategorized", transaction.Category);
         Assert.Null(transaction.Metadata.AiSuggestedCategory);
         Assert.Null(transaction.Metadata.AiConfidenceScore);
+        Assert.Equal(1, result.ProcessedCount);
+        Assert.Equal(0, result.ChangedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(1, result.RemainingCount);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_RejectsMissingCategoryAndConfidence()
+    {
+        var missingCategory = new Transaction();
+        var missingConfidence = new Transaction();
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse(
+            "[" +
+            $"{{\"Id\":\"{missingCategory.Id}\",\"Confidence\":0.8}}," +
+            $"{{\"Id\":\"{missingConfidence.Id}\",\"Category\":\"Transport\"}}" +
+            "]"));
+        var sut = CreateService(handler);
+
+        var result = await sut.CategorizeTransactionsAsync(
+            [missingCategory, missingConfidence]);
+
+        Assert.Equal(2, result.ProcessedCount);
+        Assert.Equal(0, result.ChangedCount);
+        Assert.Equal(2, result.FailedCount);
+        Assert.Equal(2, result.RemainingCount);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_RejectsDuplicateResultsAndIgnoresUnknownIds()
+    {
+        var duplicate = new Transaction();
+        var missing = new Transaction();
+        var unknownId = Guid.NewGuid();
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse(
+            "[" +
+            $"{{\"Id\":\"{duplicate.Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}," +
+            $"{{\"Id\":\"{duplicate.Id}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.9}}," +
+            $"{{\"Id\":\"{unknownId}\",\"Category\":\"Other\",\"Confidence\":0.7}}" +
+            "]"));
+        var sut = CreateService(handler);
+
+        var result = await sut.CategorizeTransactionsAsync([duplicate, missing]);
+
+        Assert.Equal(0, result.ChangedCount);
+        Assert.Equal(2, result.FailedCount);
+        Assert.All([duplicate, missing], transaction =>
+            Assert.Equal("Uncategorized", transaction.Category));
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"choices\":[]}")]
+    [InlineData("{\"choices\":[{}]}")]
+    [InlineData("{\"choices\":[{\"message\":{}}]}")]
+    [InlineData("{\"choices\":[{\"message\":{\"content\":\"\"}}]}")]
+    [InlineData("not json")]
+    public async Task CategorizeTransactionsAsync_TreatsMalformedProviderEnvelopeAsFailedBatch(
+        string responseBody)
+    {
+        var transaction = new Transaction();
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+        });
+        var sut = CreateService(handler);
+
+        var result = await sut.CategorizeTransactionsAsync([transaction]);
+
+        Assert.Equal(0, result.ChangedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal("Uncategorized", transaction.Category);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_ContinuesAfterFailedBatch()
+    {
+        var transactions = Enumerable.Range(0, 51)
+            .Select(_ => new Transaction())
+            .ToList();
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse("not json"));
+        handler.Enqueue(DeepSeekResponse(
+            $"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
+        var sut = CreateService(handler);
+
+        var result = await sut.CategorizeTransactionsAsync(transactions);
+
+        Assert.Equal(51, result.ProcessedCount);
+        Assert.Equal(1, result.ChangedCount);
+        Assert.Equal(50, result.FailedCount);
+        Assert.Equal(50, result.RemainingCount);
+        Assert.Equal("Transport", transactions[50].Category);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_TreatsUpstreamFailureAsFailedBatch()
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("sensitive provider failure")
+        });
+        var logger = new CapturingLogger<DeepSeekAiAdvisorService>();
+        var sut = CreateService(handler, logger);
+
+        var result = await sut.CategorizeTransactionsAsync([new Transaction()]);
+
+        Assert.Equal(0, result.ChangedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.DoesNotContain(
+            logger.Messages,
+            message => message.Contains("sensitive provider failure", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_TreatsTransportFailureAsFailedBatch()
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.EnqueueException(new HttpRequestException("transport unavailable"));
+        var sut = CreateService(handler);
+
+        var result = await sut.CategorizeTransactionsAsync([new Transaction()]);
+
+        Assert.Equal(0, result.ChangedCount);
+        Assert.Equal(1, result.FailedCount);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_DoesNotLogInvalidProviderContent()
+    {
+        const string sensitiveContent = "Merchant ABC 123.45 is not valid JSON";
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse(sensitiveContent));
+        var logger = new CapturingLogger<DeepSeekAiAdvisorService>();
+        var sut = CreateService(handler, logger);
+
+        await sut.CategorizeTransactionsAsync([new Transaction()]);
+
+        Assert.DoesNotContain(
+            logger.Messages,
+            message => message.Contains(sensitiveContent, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -367,6 +523,26 @@ public sealed class DeepSeekAiAdvisorServiceTests
             sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
     }
 
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"choices\":[]}")]
+    [InlineData("{\"choices\":[{\"message\":{}}]}")]
+    [InlineData("not json")]
+    public async Task GetSavingTipsAsync_ThrowsExternalServiceExceptionForMalformedProviderEnvelope(
+        string responseBody)
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+        });
+        var sut = CreateService(handler);
+
+        await Assert.ThrowsAsync<ExternalServiceException>(() =>
+            sut.GetSavingTipsAsync(
+                [new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
+    }
+
     [Fact]
     public async Task GetSavingTipsAsync_ThrowsExternalServiceExceptionForUpstreamFailure()
     {
@@ -460,13 +636,18 @@ public sealed class DeepSeekAiAdvisorServiceTests
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
-        private readonly Queue<HttpResponseMessage> _responses = new();
+        private readonly Queue<Func<HttpResponseMessage>> _responses = new();
 
         public List<CapturedRequest> Requests { get; } = [];
 
         public void Enqueue(HttpResponseMessage response)
         {
-            _responses.Enqueue(response);
+            _responses.Enqueue(() => response);
+        }
+
+        public void EnqueueException(Exception exception)
+        {
+            _responses.Enqueue(() => throw exception);
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -489,7 +670,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
                 request.Headers.Authorization?.Parameter,
                 body));
 
-            return _responses.Dequeue();
+            return _responses.Dequeue()();
         }
     }
 

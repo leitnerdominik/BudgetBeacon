@@ -48,10 +48,12 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
             : config["DeepSeek:Model"]!;
     }
 
-    public async Task CategorizeTransactionsAsync(List<Transaction> transactions, string? aiLocationContext = null)
+    public async Task<TransactionCategorizationResult> CategorizeTransactionsAsync(
+        List<Transaction> transactions,
+        string? aiLocationContext = null)
     {
         if (!transactions.Any())
-            return;
+            return TransactionCategorizationResult.Empty;
 
         _logger.LogInformation(
             "Starting AI categorization for {Count} transactions via DeepSeek model {Model}.",
@@ -60,6 +62,8 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 
         var batches = transactions.Chunk(50).ToList();
         var processedCount = 0;
+        var changedCount = 0;
+        var failedCount = 0;
 
         foreach (var batch in batches)
         {
@@ -77,46 +81,42 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 
             var prompt = BuildCategorizationPrompt(jsonPayload, aiLocationContext);
 
-            var textResult = await SendPromptAsync(prompt, "categorization");
-
-            if (string.IsNullOrWhiteSpace(textResult))
-                continue;
-
             try
             {
-                var aiResults = JsonSerializer.Deserialize<List<AiCategoryResponse>>(
-                    NormalizeJsonText(textResult),
-                    JsonOptions);
-
-                if (aiResults == null)
-                    continue;
-
-                foreach (var result in aiResults)
-                {
-                    var target = transactions.FirstOrDefault(t => t.Id == result.Id);
-                    if (target != null)
-                    {
-                        var category = NormalizeCategory(result.Category);
-                        target.Category = category;
-                        target.Treatment = TransactionTreatment.GetDefault(
-                            target.Amount,
-                            category);
-                        target.Metadata.AiSuggestedCategory = category;
-                        target.Metadata.AiConfidenceScore = Math.Clamp(result.Confidence, 0.0, 1.0);
-                    }
-                }
+                var textResult = await SendPromptAsync(prompt, "categorization");
+                var batchChangedCount = ApplyCategorizationResults(batch, textResult);
+                changedCount += batchChangedCount;
+                failedCount += batch.Length - batchChangedCount;
             }
-            catch (Exception ex)
+            catch (ExternalServiceException ex)
             {
+                failedCount += batch.Length;
                 _logger.LogError(
                     ObservabilityEventIds.DeepSeekInvalidResponse,
                     ex,
-                    "Failed to parse DeepSeek categorization response for model {Model}.",
+                    "DeepSeek categorization batch returned no usable result for model {Model}.",
                     _model);
             }
         }
 
-        _logger.LogInformation("Successfully completed AI categorization batches.");
+        var remainingCount = transactions.Count(transaction =>
+            string.Equals(
+                transaction.Category,
+                "Uncategorized",
+                StringComparison.OrdinalIgnoreCase));
+
+        _logger.LogInformation(
+            "Completed AI categorization. Processed: {ProcessedCount}, Changed: {ChangedCount}, Failed: {FailedCount}, Remaining: {RemainingCount}.",
+            transactions.Count,
+            changedCount,
+            failedCount,
+            remainingCount);
+
+        return new TransactionCategorizationResult(
+            transactions.Count,
+            changedCount,
+            failedCount,
+            remainingCount);
     }
 
     public async Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(
@@ -180,7 +180,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         }
     }
 
-    private async Task<string?> SendPromptAsync(string prompt, string operation, double? temperature = null)
+    private async Task<string> SendPromptAsync(string prompt, string operation, double? temperature = null)
     {
         var requestBody = new DeepSeekChatRequest
         {
@@ -202,26 +202,206 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        using var response = await _httpClient.SendAsync(request);
-
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request);
+        }
+        catch (HttpRequestException ex)
         {
             _logger.LogError(
                 ObservabilityEventIds.DeepSeekUpstreamFailure,
-                "DeepSeek {Operation} request failed. StatusCode: {StatusCode}, Model: {Model}",
+                ex,
+                "DeepSeek {Operation} request failed during transport for model {Model}.",
                 operation,
-                (int)response.StatusCode,
                 _model);
-            throw new ExternalServiceException($"AI {operation} is currently unavailable.");
+            throw new ExternalServiceException($"AI {operation} is currently unavailable.", ex);
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(
+                ObservabilityEventIds.DeepSeekUpstreamFailure,
+                ex,
+                "DeepSeek {Operation} request timed out for model {Model}.",
+                operation,
+                _model);
+            throw new ExternalServiceException($"AI {operation} is currently unavailable.", ex);
         }
 
-        var responseJson = await response.Content.ReadFromJsonAsync<JsonElement>();
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError(
+                    ObservabilityEventIds.DeepSeekUpstreamFailure,
+                    "DeepSeek {Operation} request failed. StatusCode: {StatusCode}, Model: {Model}",
+                    operation,
+                    (int)response.StatusCode,
+                    _model);
+                throw new ExternalServiceException($"AI {operation} is currently unavailable.");
+            }
 
-        return responseJson
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString();
+            try
+            {
+                string responseBody;
+                try
+                {
+                    responseBody = await response.Content.ReadAsStringAsync();
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogError(
+                        ObservabilityEventIds.DeepSeekUpstreamFailure,
+                        ex,
+                        "DeepSeek {Operation} response failed during transport for model {Model}.",
+                        operation,
+                        _model);
+                    throw new ExternalServiceException($"AI {operation} is currently unavailable.", ex);
+                }
+                catch (TaskCanceledException ex)
+                {
+                    _logger.LogError(
+                        ObservabilityEventIds.DeepSeekUpstreamFailure,
+                        ex,
+                        "DeepSeek {Operation} response timed out for model {Model}.",
+                        operation,
+                        _model);
+                    throw new ExternalServiceException($"AI {operation} is currently unavailable.", ex);
+                }
+
+                using var responseJson = JsonDocument.Parse(responseBody);
+
+                if (responseJson.RootElement.ValueKind != JsonValueKind.Object ||
+                    !responseJson.RootElement.TryGetProperty("choices", out var choices) ||
+                    choices.ValueKind != JsonValueKind.Array ||
+                    choices.GetArrayLength() == 0 ||
+                    choices[0].ValueKind != JsonValueKind.Object ||
+                    !choices[0].TryGetProperty("message", out var message) ||
+                    message.ValueKind != JsonValueKind.Object ||
+                    !message.TryGetProperty("content", out var content) ||
+                    content.ValueKind != JsonValueKind.String)
+                {
+                    throw new JsonException("The expected AI response envelope was missing.");
+                }
+
+                var text = content.GetString();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    throw new JsonException("The AI response content was empty.");
+                }
+
+                return text;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(
+                    ObservabilityEventIds.DeepSeekInvalidResponse,
+                    ex,
+                    "DeepSeek {Operation} returned an invalid response envelope for model {Model}.",
+                    operation,
+                    _model);
+                throw new ExternalServiceException("The AI provider returned an invalid response.", ex);
+            }
+        }
+    }
+
+    private static int ApplyCategorizationResults(
+        IReadOnlyList<Transaction> batch,
+        string textResult)
+    {
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(NormalizeJsonText(textResult));
+        }
+        catch (JsonException ex)
+        {
+            throw new ExternalServiceException("The AI provider returned an invalid response.", ex);
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new ExternalServiceException("The AI provider returned an invalid response.");
+            }
+
+            var expectedTransactions = batch.ToDictionary(transaction => transaction.Id);
+            var occurrenceCounts = new Dictionary<Guid, int>();
+            var validResults = new Dictionary<Guid, ValidCategoryResult>();
+
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object ||
+                    !TryGetProperty(item, "Id", out var idElement) ||
+                    idElement.ValueKind != JsonValueKind.String ||
+                    !Guid.TryParse(idElement.GetString(), out var id) ||
+                    !expectedTransactions.ContainsKey(id))
+                {
+                    continue;
+                }
+
+                occurrenceCounts[id] = occurrenceCounts.GetValueOrDefault(id) + 1;
+
+                if (!TryGetProperty(item, "Category", out var categoryElement) ||
+                    categoryElement.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var category = TransactionCategories.NormalizeUserFacing(categoryElement.GetString());
+                if (category is null ||
+                    !TryGetProperty(item, "Confidence", out var confidenceElement) ||
+                    confidenceElement.ValueKind != JsonValueKind.Number ||
+                    !confidenceElement.TryGetDouble(out var confidence) ||
+                    !double.IsFinite(confidence))
+                {
+                    continue;
+                }
+
+                validResults[id] = new ValidCategoryResult(
+                    category,
+                    Math.Clamp(confidence, 0.0, 1.0));
+            }
+
+            var changedCount = 0;
+            foreach (var transaction in batch)
+            {
+                if (occurrenceCounts.GetValueOrDefault(transaction.Id) != 1 ||
+                    !validResults.TryGetValue(transaction.Id, out var result))
+                {
+                    continue;
+                }
+
+                transaction.Category = result.Category;
+                transaction.Treatment = TransactionTreatment.GetDefault(
+                    transaction.Amount,
+                    result.Category);
+                transaction.Metadata.AiSuggestedCategory = result.Category;
+                transaction.Metadata.AiConfidenceScore = result.Confidence;
+                changedCount++;
+            }
+
+            return changedCount;
+        }
+    }
+
+    private static bool TryGetProperty(
+        JsonElement element,
+        string propertyName,
+        out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 
     private static string BuildCategorizationPrompt(string jsonPayload, string? aiLocationContext)
@@ -415,10 +595,5 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         public string Content { get; init; } = string.Empty;
     }
 
-    private sealed class AiCategoryResponse
-    {
-        public Guid Id { get; set; }
-        public string Category { get; set; } = string.Empty;
-        public double Confidence { get; set; }
-    }
+    private sealed record ValidCategoryResult(string Category, double Confidence);
 }

@@ -938,7 +938,20 @@ public class TransactionsController : ControllerBase
         }
 
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
-        await _aiService.CategorizeTransactionsAsync([transaction], aiLocationContext);
+        var categorizationResult = await _aiService.CategorizeTransactionsAsync(
+            [transaction],
+            aiLocationContext);
+
+        if (categorizationResult.ChangedCount == 0 &&
+            categorizationResult.FailedCount > 0)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                "Upstream service failure",
+                "The AI provider did not return a valid categorization result.",
+                "urn:budgetbeacon:external-service");
+        }
+
         await _repository.SaveChangesAsync();
 
         return Ok(transaction);
@@ -963,23 +976,45 @@ public class TransactionsController : ControllerBase
             {
                 Message = "All transactions are already categorized. Nothing to do.",
                 ProcessedCount = 0,
+                ChangedCount = 0,
+                FailedCount = 0,
+                RemainingCount = 0,
                 CategorizedCount = 0
             });
         }
 
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
-        await _aiService.CategorizeTransactionsAsync(uncategorized, aiLocationContext);
+        var categorizationResult = await _aiService.CategorizeTransactionsAsync(
+            uncategorized,
+            aiLocationContext);
 
-        var categorizedCount = uncategorized.Count(t =>
-            !string.Equals(t.Category, "Uncategorized", StringComparison.OrdinalIgnoreCase));
+        if (categorizationResult.ChangedCount == 0 &&
+            categorizationResult.FailedCount > 0)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status502BadGateway,
+                "Upstream service failure",
+                "The AI provider did not return any valid categorization results.",
+                "urn:budgetbeacon:external-service");
+        }
 
-        await _repository.SaveChangesAsync();
+        if (categorizationResult.ChangedCount > 0)
+        {
+            await _repository.SaveChangesAsync();
+        }
+
+        var message = categorizationResult.FailedCount > 0
+            ? "Categorization partially completed. Some transactions could not be categorized."
+            : "Categorization successful.";
 
         return Ok(new
         {
-            Message = "Categorization successful",
-            ProcessedCount = uncategorized.Count,
-            CategorizedCount = categorizedCount
+            Message = message,
+            categorizationResult.ProcessedCount,
+            categorizationResult.ChangedCount,
+            categorizationResult.FailedCount,
+            categorizationResult.RemainingCount,
+            CategorizedCount = categorizationResult.ChangedCount
         });
     }
 

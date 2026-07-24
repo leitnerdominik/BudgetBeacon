@@ -40,6 +40,9 @@ const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
 export interface CategorizeUncategorizedTransactionsResponse {
   message: string;
   processedCount: number;
+  changedCount: number;
+  failedCount: number;
+  remainingCount: number;
   categorizedCount: number;
 }
 
