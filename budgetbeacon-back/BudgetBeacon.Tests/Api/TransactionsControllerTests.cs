@@ -1043,7 +1043,12 @@ public sealed class TransactionsControllerTests
         Assert.All(repository.ImportAttemptedTransactions, transaction =>
         {
             Assert.Equal("user-1", transaction.UserId);
-            Assert.Equal(TransactionImportFingerprint.Create(transaction), transaction.ImportFingerprint);
+            Assert.Equal(
+                TransactionImportFingerprint.Create(
+                    transaction.Date,
+                    transaction.Amount,
+                    transaction.Metadata.RawDescription),
+                transaction.ImportFingerprint);
         });
         Assert.Empty(repository.AddedTransactions);
     }
@@ -1147,7 +1152,10 @@ public sealed class TransactionsControllerTests
         Assert.Equal("Card purchase", repository.ImportAttemptedTransactions[0].Metadata.RawDescription);
         Assert.Equal("Safe purchase", repository.ImportAttemptedTransactions[1].Metadata.RawDescription);
         Assert.Equal(
-            TransactionImportFingerprint.Create(repository.ImportAttemptedTransactions[0]),
+            TransactionImportFingerprint.Create(
+                new DateTime(2026, 4, 3),
+                -12.34m,
+                "Card SECRET IBAN DE123 purchase"),
             repository.ImportAttemptedTransactions[0].ImportFingerprint);
     }
 
@@ -1198,6 +1206,181 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task TransactionImportService_UsesStableSourceFingerprintAcrossRedactionRules()
+    {
+        const string sourceDescription = "Card SECRET IBAN DE123 purchase";
+        var ruleSets = new IReadOnlyList<TransactionImportBlacklistRule>[]
+        {
+            [],
+            [
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.LiteralType,
+                    Value = "SECRET"
+                }
+            ],
+            [
+                new TransactionImportBlacklistRule
+                {
+                    Type = TransactionImportBlacklistRule.RegexType,
+                    Value = @"IBAN\s+[A-Z0-9]+"
+                }
+            ]
+        };
+        var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var rules in ruleSets)
+        {
+            var repository = new FakeTransactionRepository
+            {
+                ImportedCount = 1
+            };
+            var service = new TransactionImportService(
+                repository,
+                new FakeUserPreferencesRepository
+                {
+                    TransactionImportBlacklistRules = rules
+                },
+                new TransactionImportDescriptionRedactionService());
+
+            await service.ImportAsync(
+                "user-1",
+                [
+                    new Transaction
+                    {
+                        Date = new DateTime(2026, 4, 3),
+                        Amount = -12.34m,
+                        Metadata = new TransactionMetadata
+                        {
+                            RawDescription = sourceDescription
+                        }
+                    }
+                ]);
+
+            fingerprints.Add(
+                Assert.Single(repository.ImportAttemptedTransactions).ImportFingerprint!);
+        }
+
+        Assert.Single(fingerprints);
+        Assert.Contains(
+            TransactionImportFingerprint.Create(
+                new DateTime(2026, 4, 3),
+                -12.34m,
+                sourceDescription),
+            fingerprints);
+    }
+
+    [Fact]
+    public async Task TransactionImportService_MatchesExistingUnredactedFingerprintAfterRuleChange()
+    {
+        const string sourceDescription = "Card SECRET purchase";
+        var sourceFingerprint = TransactionImportFingerprint.Create(
+            new DateTime(2026, 4, 3),
+            -12.34m,
+            sourceDescription);
+        var repository = new FakeTransactionRepository
+        {
+            ExistingImportFingerprints = new HashSet<string>(StringComparer.Ordinal)
+            {
+                sourceFingerprint
+            }
+        };
+        var service = new TransactionImportService(
+            repository,
+            new FakeUserPreferencesRepository
+            {
+                TransactionImportBlacklistRules =
+                [
+                    new TransactionImportBlacklistRule
+                    {
+                        Type = TransactionImportBlacklistRule.LiteralType,
+                        Value = "SECRET"
+                    }
+                ]
+            },
+            new TransactionImportDescriptionRedactionService());
+
+        var result = await service.PreviewAsync(
+            "user-1",
+            [
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = sourceDescription
+                    }
+                }
+            ]);
+
+        var previewItem = Assert.Single(result.Transactions);
+        Assert.Equal(1, result.ExistingDuplicates);
+        Assert.Equal(0, result.Importable);
+        Assert.Equal(
+            TransactionImportDuplicateReason.ExistingDuplicate,
+            previewItem.DuplicateReason);
+        Assert.Equal("Card purchase", previewItem.Transaction.Metadata.RawDescription);
+        Assert.Equal(sourceFingerprint, previewItem.Transaction.ImportFingerprint);
+    }
+
+    [Fact]
+    public async Task TransactionImportService_KeepsDistinctSourcesWhenRedactionOutputsMatch()
+    {
+        var service = new TransactionImportService(
+            new FakeTransactionRepository(),
+            new FakeUserPreferencesRepository
+            {
+                TransactionImportBlacklistRules =
+                [
+                    new TransactionImportBlacklistRule
+                    {
+                        Type = TransactionImportBlacklistRule.RegexType,
+                        Value = @"SECRET-[AB]"
+                    }
+                ]
+            },
+            new TransactionImportDescriptionRedactionService());
+
+        var result = await service.PreviewAsync(
+            "user-1",
+            [
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = "Card SECRET-A Coffee"
+                    }
+                },
+                new Transaction
+                {
+                    Date = new DateTime(2026, 4, 3),
+                    Amount = -12.34m,
+                    Metadata = new TransactionMetadata
+                    {
+                        RawDescription = "Card SECRET-B Coffee"
+                    }
+                }
+            ]);
+
+        Assert.Equal(2, result.Importable);
+        Assert.Equal(0, result.FileDuplicates);
+        Assert.All(
+            result.Transactions,
+            item => Assert.Equal(
+                "Card Coffee",
+                item.Transaction.Metadata.RawDescription));
+        Assert.Equal(
+            2,
+            result.Transactions
+                .Select(item => item.Transaction.ImportFingerprint)
+                .Distinct(StringComparer.Ordinal)
+                .Count());
+    }
+
+    [Fact]
     public async Task PreviewImportTransactions_ClassifiesDuplicatesAndRedactionsWithoutWriting()
     {
         var existingTransaction = new Transaction
@@ -1210,7 +1393,10 @@ public sealed class TransactionsControllerTests
         {
             ExistingImportFingerprints = new HashSet<string>(StringComparer.Ordinal)
             {
-                TransactionImportFingerprint.Create(existingTransaction)
+                TransactionImportFingerprint.Create(
+                    existingTransaction.Date,
+                    existingTransaction.Amount,
+                    existingTransaction.Metadata.RawDescription)
             }
         };
         var importParser = new FakeTransactionImportParser

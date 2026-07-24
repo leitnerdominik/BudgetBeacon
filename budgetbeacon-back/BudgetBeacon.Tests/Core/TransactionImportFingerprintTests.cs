@@ -1,4 +1,3 @@
-using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Services;
 
 namespace BudgetBeacon.Tests.Core;
@@ -8,33 +7,34 @@ public sealed class TransactionImportFingerprintTests
     [Fact]
     public void Create_ReturnsStableSha256HexFingerprint()
     {
-        var transaction = CreateTransaction(
-            new DateTime(2026, 4, 3),
-            -12.34m,
-            "Supermarkt Brixen");
+        var date = new DateTime(2026, 4, 3);
+        const decimal amount = -12.34m;
+        const string description = "Supermarkt Brixen";
 
-        var fingerprint = TransactionImportFingerprint.Create(transaction);
+        var fingerprint = TransactionImportFingerprint.Create(
+            date,
+            amount,
+            description);
 
         Assert.Equal(64, fingerprint.Length);
         Assert.Matches("^[0-9A-F]{64}$", fingerprint);
-        Assert.Equal(fingerprint, TransactionImportFingerprint.Create(transaction));
+        Assert.Equal(
+            fingerprint,
+            TransactionImportFingerprint.Create(date, amount, description));
     }
 
     [Fact]
     public void Create_NormalizesDescriptionCaseAndWhitespace()
     {
-        var first = CreateTransaction(
-            new DateTime(2026, 4, 3, 9, 30, 0),
-            -12.3400m,
-            "  Supermarkt   Brixen ");
-        var second = CreateTransaction(
-            new DateTime(2026, 4, 3, 23, 59, 0),
-            -12.34m,
-            "supermarkt\r\nbrixen");
-
         Assert.Equal(
-            TransactionImportFingerprint.Create(first),
-            TransactionImportFingerprint.Create(second));
+            TransactionImportFingerprint.Create(
+                new DateTime(2026, 4, 3, 9, 30, 0),
+                -12.3400m,
+                "  Supermarkt   Brixen "),
+            TransactionImportFingerprint.Create(
+                new DateTime(2026, 4, 3, 23, 59, 0),
+                -12.34m,
+                "supermarkt\r\nbrixen"));
     }
 
     [Theory]
@@ -46,30 +46,15 @@ public sealed class TransactionImportFingerprintTests
         string amount,
         string description)
     {
-        var baseline = CreateTransaction(
+        var baseline = TransactionImportFingerprint.Create(
             new DateTime(2026, 4, 3),
             -12.34m,
             "Supermarkt Brixen");
-        var changed = CreateTransaction(
+        var changed = TransactionImportFingerprint.Create(
             DateTime.Parse(date, System.Globalization.CultureInfo.InvariantCulture),
             decimal.Parse(amount, System.Globalization.CultureInfo.InvariantCulture),
             description);
 
-        Assert.NotEqual(
-            TransactionImportFingerprint.Create(baseline),
-            TransactionImportFingerprint.Create(changed));
-    }
-
-    private static Transaction CreateTransaction(DateTime date, decimal amount, string description)
-    {
-        return new Transaction
-        {
-            Date = date,
-            Amount = amount,
-            Metadata = new TransactionMetadata
-            {
-                RawDescription = description
-            }
-        };
+        Assert.NotEqual(baseline, changed);
     }
 }
