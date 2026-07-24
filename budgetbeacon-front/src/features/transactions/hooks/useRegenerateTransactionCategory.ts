@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { regenerateTransactionCategory } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
+import { clearTipsQueryCache } from "../../tips/tipsCache";
 
 export const useRegenerateTransactionCategory = () => {
   const queryClient = useQueryClient();
@@ -12,7 +13,7 @@ export const useRegenerateTransactionCategory = () => {
       regenerateTransactionCategory(transactionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["tips"] });
+      clearTipsQueryCache(queryClient);
       showNotification({
         severity: "success",
         message: "Transaction category regenerated.",

@@ -4,6 +4,7 @@ import {
   type TransactionImportMappingRequest,
 } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
+import { clearTipsQueryCache } from "../../tips/tipsCache";
 
 type UploadTransactionsInput = {
   file: File;
@@ -20,7 +21,7 @@ export const useUploadTransactions = () => {
       uploadTransactions(file, delimiter, mapping),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["tips"] });
+      clearTipsQueryCache(queryClient);
       const redactionMessage =
         data.redactedTransactions > 0
           ? ` ${data.redactedTransactions} transaction description(s) redacted.`

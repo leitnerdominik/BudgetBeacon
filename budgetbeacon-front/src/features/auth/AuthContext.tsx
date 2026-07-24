@@ -1,4 +1,5 @@
 import {
+  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -6,9 +7,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { getCurrentSession } from "../../api/authApi";
 import { refreshCsrfToken } from "../../api/httpClient";
 import { AUTH_UNAUTHORIZED_EVENT } from "../../events/authEvents";
+import { clearLegacyPersistentTipsCache } from "../tips/tipsCache";
 import type { User } from "./types";
 
 interface AuthContextType {
@@ -26,23 +29,33 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const authStateVersionRef = useRef(0);
 
-  const login = (newUser: User) => {
+  const clearAuthenticatedClientState = useCallback(() => {
+    queryClient.removeQueries();
+    clearLegacyPersistentTipsCache();
+  }, [queryClient]);
+
+  const login = useCallback((newUser: User) => {
     authStateVersionRef.current += 1;
+    clearAuthenticatedClientState();
     setUser(newUser);
     setIsInitializing(false);
-  };
+  }, [clearAuthenticatedClientState]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     authStateVersionRef.current += 1;
+    clearAuthenticatedClientState();
     setUser(null);
     setIsInitializing(false);
-  };
+  }, [clearAuthenticatedClientState]);
 
   useEffect(() => {
+    clearLegacyPersistentTipsCache();
+
     let isMounted = true;
     const requestVersion = authStateVersionRef.current;
     const isCurrentRequest = () =>
@@ -57,6 +70,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
       } catch {
         if (isCurrentRequest()) {
+          clearAuthenticatedClientState();
           setUser(null);
         }
       } finally {
@@ -71,21 +85,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [clearAuthenticatedClientState]);
 
   useEffect(() => {
-    const handleUnauthorized = () => {
-      authStateVersionRef.current += 1;
-      setUser(null);
-      setIsInitializing(false);
-    };
+    const handleUnauthorized = () => logout();
 
     window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
 
     return () => {
       window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
     };
-  }, []);
+  }, [logout]);
 
   const value = {
     user,

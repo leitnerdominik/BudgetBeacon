@@ -33,7 +33,6 @@ import CloseIcon from "@mui/icons-material/Close";
 
 import { ApiError } from "../api/httpClient";
 import { logoutCurrentSession } from "../api/authApi";
-import { clearTipsCacheForUser } from "../features/tips/useTips";
 import { useAuth } from "../hooks/useAuth";
 import { useNotification } from "./NotificationProvider";
 
@@ -130,13 +129,9 @@ export const RootLayout = () => {
     handleCloseMenu();
     handleCloseMobileDrawer();
     setIsLoggingOut(true);
-    const userId = user?.id;
 
     try {
       await logoutCurrentSession();
-      if (userId) {
-        clearTipsCacheForUser(userId);
-      }
       logout();
       showNotification({
         severity: "success",
@@ -145,9 +140,6 @@ export const RootLayout = () => {
       navigate("/login", { replace: true });
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
-        if (userId) {
-          clearTipsCacheForUser(userId);
-        }
         logout();
         showNotification({
           severity: "info",

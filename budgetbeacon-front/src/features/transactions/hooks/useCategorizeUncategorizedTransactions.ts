@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { categorizeUncategorizedTransactions } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
+import { clearTipsQueryCache } from "../../tips/tipsCache";
 
 export const useCategorizeUncategorizedTransactions = () => {
   const queryClient = useQueryClient();
@@ -10,7 +11,7 @@ export const useCategorizeUncategorizedTransactions = () => {
     mutationFn: categorizeUncategorizedTransactions,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["tips"] });
+      clearTipsQueryCache(queryClient);
 
       showNotification({
         severity: data.categorizedCount > 0 ? "success" : "info",
