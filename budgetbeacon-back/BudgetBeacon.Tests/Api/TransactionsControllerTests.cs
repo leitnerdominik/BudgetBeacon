@@ -680,6 +680,10 @@ public sealed class TransactionsControllerTests
         Assert.Equal(1, GetValue<int>(ok.Value, "MonthsBack"));
         var summary = GetRawValue(ok.Value, "Summary");
         Assert.Equal(-40m, GetValue<decimal>(summary, "TotalExpense"));
+        var monthlyTotals = GetRawValue(ok.Value, "MonthlyTotals");
+        Assert.Equal(1, GetValue<int>(monthlyTotals, "MonthCount"));
+        Assert.Equal(40m, GetValue<decimal>(monthlyTotals, "AverageExpense"));
+        Assert.Equal(40m, GetValue<decimal>(monthlyTotals, "MedianExpense"));
         var previous = GetRawValue(ok.Value, "PreviousMonthSummary");
         Assert.Equal(-25m, GetValue<decimal>(previous, "TotalExpense"));
         Assert.Equal("user-1", repository.LastDateRangeUserId);

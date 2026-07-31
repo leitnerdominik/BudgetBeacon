@@ -105,11 +105,20 @@ export interface StatisticsOverview {
   endDate: string | null;
   trendGranularity: "month" | "year";
   summary: MonthlySummary;
+  monthlyTotals: MonthlyTotalsStatistics;
   previousMonthSummary: MonthlySummary | null;
   trend: StatisticsTrendPoint[];
   categories: CategoryExpenseSummary[];
   topExpenses: TopExpense[];
   recurringExpenses: RecurringExpenseCandidate[];
+}
+
+export interface MonthlyTotalsStatistics {
+  monthCount: number;
+  averageIncome: number;
+  medianIncome: number;
+  averageExpense: number;
+  medianExpense: number;
 }
 
 export interface CategoryExpenseSummary {

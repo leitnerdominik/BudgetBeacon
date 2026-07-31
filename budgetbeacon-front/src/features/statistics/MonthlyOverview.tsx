@@ -575,23 +575,44 @@ export const MonthlyOverview = () => {
               <Divider sx={{ my: 2 }} />
 
               <Grid container spacing={{ xs: 1.5, sm: 2 }}>
-                <Grid size={{ xs: 12, sm: 4 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Average Expense
+                    Average Monthly Income
                   </Typography>
                   <Typography variant="h6" fontWeight={700}>
-                    {formatCurrency(Math.abs(summary?.averageExpense ?? 0))}
+                    {formatCurrency(data?.monthlyTotals.averageIncome ?? 0)}
                   </Typography>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Median Expense
+                    Median Monthly Income
                   </Typography>
                   <Typography variant="h6" fontWeight={700}>
-                    {formatCurrency(Math.abs(summary?.medianExpense ?? 0))}
+                    {formatCurrency(data?.monthlyTotals.medianIncome ?? 0)}
                   </Typography>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Average Monthly Expenses
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700}>
+                    {formatCurrency(data?.monthlyTotals.averageExpense ?? 0)}
+                  </Typography>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Median Monthly Expenses
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700}>
+                    {formatCurrency(data?.monthlyTotals.medianExpense ?? 0)}
+                  </Typography>
+                </Grid>
+              </Grid>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Grid container spacing={{ xs: 1.5, sm: 2 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                   <Typography variant="body2" color="text.secondary">
                     Expense Ratio
                   </Typography>

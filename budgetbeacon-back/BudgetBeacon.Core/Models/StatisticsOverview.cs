@@ -7,11 +7,19 @@ public sealed record StatisticsOverview(
     DateTime? EndDate,
     string TrendGranularity,
     StatisticsSummary Summary,
+    MonthlyTotalsStatistics MonthlyTotals,
     StatisticsSummary? PreviousMonthSummary,
     IReadOnlyList<StatisticsTrendPoint> Trend,
     IReadOnlyList<StatisticsCategorySummary> Categories,
     IReadOnlyList<StatisticsTopExpense> TopExpenses,
     IReadOnlyList<StatisticsRecurringExpense> RecurringExpenses);
+
+public sealed record MonthlyTotalsStatistics(
+    int MonthCount,
+    decimal AverageIncome,
+    decimal MedianIncome,
+    decimal AverageExpense,
+    decimal MedianExpense);
 
 public sealed record StatisticsSummary(
     decimal TotalIncome,
