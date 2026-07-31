@@ -105,7 +105,7 @@ export interface StatisticsOverview {
   endDate: string | null;
   trendGranularity: "month" | "year";
   summary: MonthlySummary;
-  monthlyTotals: MonthlyTotalsStatistics;
+  monthlyTotals?: MonthlyTotalsStatistics;
   previousMonthSummary: MonthlySummary | null;
   trend: StatisticsTrendPoint[];
   categories: CategoryExpenseSummary[];

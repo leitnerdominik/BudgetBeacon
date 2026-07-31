@@ -162,6 +162,9 @@ const formatPeriodLabel = (
 const formatSavingsRate = (value: number | null) =>
   value === null ? "N/A" : `${percentFormatter.format(value)} %`;
 
+const formatOptionalCurrency = (value: number | undefined) =>
+  value === undefined ? "N/A" : formatCurrency(value);
+
 const toTransactionFilterDate = (value: string | null | undefined) =>
   value ? value.slice(0, 10) : "";
 
@@ -580,7 +583,7 @@ export const MonthlyOverview = () => {
                     Average Monthly Income
                   </Typography>
                   <Typography variant="h6" fontWeight={700}>
-                    {formatCurrency(data?.monthlyTotals.averageIncome ?? 0)}
+                    {formatOptionalCurrency(data?.monthlyTotals?.averageIncome)}
                   </Typography>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -588,7 +591,7 @@ export const MonthlyOverview = () => {
                     Median Monthly Income
                   </Typography>
                   <Typography variant="h6" fontWeight={700}>
-                    {formatCurrency(data?.monthlyTotals.medianIncome ?? 0)}
+                    {formatOptionalCurrency(data?.monthlyTotals?.medianIncome)}
                   </Typography>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -596,7 +599,7 @@ export const MonthlyOverview = () => {
                     Average Monthly Expenses
                   </Typography>
                   <Typography variant="h6" fontWeight={700}>
-                    {formatCurrency(data?.monthlyTotals.averageExpense ?? 0)}
+                    {formatOptionalCurrency(data?.monthlyTotals?.averageExpense)}
                   </Typography>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -604,7 +607,7 @@ export const MonthlyOverview = () => {
                     Median Monthly Expenses
                   </Typography>
                   <Typography variant="h6" fontWeight={700}>
-                    {formatCurrency(data?.monthlyTotals.medianExpense ?? 0)}
+                    {formatOptionalCurrency(data?.monthlyTotals?.medianExpense)}
                   </Typography>
                 </Grid>
               </Grid>
