@@ -33,8 +33,41 @@ public sealed class StatisticsAggregationServiceTests
         Assert.Equal(2, result.Trend[0].Month);
         Assert.Equal(0, result.Trend[1].TransactionCount);
         Assert.Equal(4, result.Trend[2].Month);
+        Assert.Equal(3, result.MonthlyTotals.MonthCount);
+        Assert.Equal(1000m / 3m, result.MonthlyTotals.AverageIncome);
+        Assert.Equal(0m, result.MonthlyTotals.MedianIncome);
+        Assert.Equal(50m, result.MonthlyTotals.AverageExpense);
+        Assert.Equal(50m, result.MonthlyTotals.MedianExpense);
         Assert.Equal(2, result.Categories.Count);
         Assert.Null(result.PreviousMonthSummary);
+    }
+
+    [Fact]
+    public void BuildFixedPeriod_CalculatesMonthlyTotalsAcrossAnEvenNumberOfMonths()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(new DateTime(2026, 1, 5), 100m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 1, 6), -10m, "Food & Groceries", "Market"),
+            CreateTransaction(new DateTime(2026, 2, 5), 200m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 2, 6), -20m, "Food & Groceries", "Market"),
+            CreateTransaction(new DateTime(2026, 5, 5), 300m, "Income", "Bonus"),
+            CreateTransaction(new DateTime(2026, 5, 6), -30m, "Transport", "Train"),
+            CreateTransaction(new DateTime(2026, 6, 5), 400m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 6, 6), -40m, "Transport", "Train")
+        };
+
+        var result = _sut.BuildFixedPeriod(
+            transactions,
+            new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 30, 23, 59, 59, DateTimeKind.Utc),
+            monthsBack: 6);
+
+        Assert.Equal(6, result.MonthlyTotals.MonthCount);
+        Assert.Equal(1000m / 6m, result.MonthlyTotals.AverageIncome);
+        Assert.Equal(150m, result.MonthlyTotals.MedianIncome);
+        Assert.Equal(100m / 6m, result.MonthlyTotals.AverageExpense);
+        Assert.Equal(15m, result.MonthlyTotals.MedianExpense);
     }
 
     [Fact]
@@ -93,6 +126,31 @@ public sealed class StatisticsAggregationServiceTests
         Assert.Empty(result.Categories);
         Assert.Empty(result.TopExpenses);
         Assert.Empty(result.RecurringExpenses);
+        Assert.Equal(0, result.MonthlyTotals.MonthCount);
+        Assert.Equal(0m, result.MonthlyTotals.AverageIncome);
+        Assert.Equal(0m, result.MonthlyTotals.MedianIncome);
+        Assert.Equal(0m, result.MonthlyTotals.AverageExpense);
+        Assert.Equal(0m, result.MonthlyTotals.MedianExpense);
+    }
+
+    [Fact]
+    public void BuildAllTime_IncludesEmptyMonthsInMonthlyTotals()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(new DateTime(2026, 1, 5), 600m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 1, 6), -90m, "Food & Groceries", "Market"),
+            CreateTransaction(new DateTime(2026, 3, 5), 1200m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 3, 6), -30m, "Transport", "Train")
+        };
+
+        var result = _sut.BuildAllTime(transactions);
+
+        Assert.Equal(3, result.MonthlyTotals.MonthCount);
+        Assert.Equal(600m, result.MonthlyTotals.AverageIncome);
+        Assert.Equal(600m, result.MonthlyTotals.MedianIncome);
+        Assert.Equal(40m, result.MonthlyTotals.AverageExpense);
+        Assert.Equal(30m, result.MonthlyTotals.MedianExpense);
     }
 
     [Fact]
@@ -184,6 +242,11 @@ public sealed class StatisticsAggregationServiceTests
         Assert.Equal(700m, result.Summary.InternalTransferTotal);
         Assert.Equal(15m, result.Summary.AdjustmentTotal);
         Assert.Equal(3, result.Summary.AnalyticsTransactionCount);
+        Assert.Equal(1, result.MonthlyTotals.MonthCount);
+        Assert.Equal(2500m, result.MonthlyTotals.AverageIncome);
+        Assert.Equal(2500m, result.MonthlyTotals.MedianIncome);
+        Assert.Equal(80m, result.MonthlyTotals.AverageExpense);
+        Assert.Equal(80m, result.MonthlyTotals.MedianExpense);
         var category = Assert.Single(result.Categories);
         Assert.Equal("Food & Groceries", category.Category);
         Assert.Equal(80m, category.TotalExpense);

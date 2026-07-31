@@ -27,6 +27,7 @@ public sealed partial class StatisticsAggregationService
         var previousMonthSummary = monthsBack == 1
             ? BuildSummary(FilterByDateRange(allTransactions, startDate.AddMonths(-1), startDate.AddTicks(-1)))
             : null;
+        var trend = BuildMonthlyTrend(periodTransactions, startDate, endDate);
 
         return new StatisticsOverview(
             AllTime: false,
@@ -35,8 +36,9 @@ public sealed partial class StatisticsAggregationService
             EndDate: endDate,
             TrendGranularity: "month",
             Summary: BuildSummary(periodTransactions),
+            MonthlyTotals: BuildMonthlyTotalsStatistics(trend),
             PreviousMonthSummary: previousMonthSummary,
-            Trend: BuildMonthlyTrend(periodTransactions, startDate, endDate),
+            Trend: trend,
             Categories: BuildCategorySummaries(periodTransactions),
             TopExpenses: BuildTopExpenses(periodTransactions, TopExpenseLimit),
             RecurringExpenses: monthsBack >= 2
@@ -55,6 +57,9 @@ public sealed partial class StatisticsAggregationService
         var endDate = allTransactions.Count > 0
             ? EndOfMonth(allTransactions[^1].Date)
             : (DateTime?)null;
+        var monthlyTrend = startDate.HasValue && endDate.HasValue
+            ? BuildMonthlyTrend(allTransactions, startDate.Value, endDate.Value)
+            : [];
 
         return new StatisticsOverview(
             AllTime: true,
@@ -63,6 +68,7 @@ public sealed partial class StatisticsAggregationService
             EndDate: endDate,
             TrendGranularity: "year",
             Summary: BuildSummary(allTransactions),
+            MonthlyTotals: BuildMonthlyTotalsStatistics(monthlyTrend),
             PreviousMonthSummary: null,
             Trend: BuildYearlyTrend(allTransactions),
             Categories: BuildCategorySummaries(allTransactions),
@@ -160,6 +166,44 @@ public sealed partial class StatisticsAggregationService
         }
 
         return points;
+    }
+
+    private static MonthlyTotalsStatistics BuildMonthlyTotalsStatistics(
+        IReadOnlyCollection<StatisticsTrendPoint> monthlyPoints)
+    {
+        if (monthlyPoints.Count == 0)
+        {
+            return new MonthlyTotalsStatistics(0, 0, 0, 0, 0);
+        }
+
+        var monthlyIncome = monthlyPoints
+            .Select(point => point.TotalIncome)
+            .ToList();
+        var monthlyExpenses = monthlyPoints
+            .Select(point => Math.Abs(point.TotalExpense))
+            .ToList();
+
+        return new MonthlyTotalsStatistics(
+            monthlyPoints.Count,
+            monthlyIncome.Average(),
+            CalculateMedian(monthlyIncome),
+            monthlyExpenses.Average(),
+            CalculateMedian(monthlyExpenses));
+    }
+
+    private static decimal CalculateMedian(IReadOnlyCollection<decimal> values)
+    {
+        if (values.Count == 0)
+        {
+            return 0;
+        }
+
+        var sortedValues = values.OrderBy(value => value).ToList();
+        var middleIndex = sortedValues.Count / 2;
+
+        return sortedValues.Count % 2 == 0
+            ? (sortedValues[middleIndex - 1] + sortedValues[middleIndex]) / 2m
+            : sortedValues[middleIndex];
     }
 
     private IReadOnlyList<StatisticsTrendPoint> BuildYearlyTrend(
