@@ -7,7 +7,8 @@ namespace BudgetBeacon.Core.Interfaces
     {
         Task<TransactionCategorizationResult> CategorizeTransactionsAsync(
             List<Transaction> transactions,
-            string? aiLocationContext = null);
+            string? aiLocationContext = null,
+            CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(IEnumerable<Transaction> transactions, string? aiLocationContext = null);
     }
 }

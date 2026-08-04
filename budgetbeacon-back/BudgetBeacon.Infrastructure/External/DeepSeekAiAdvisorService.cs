@@ -14,6 +14,7 @@ namespace BudgetBeacon.Infrastructure.External;
 
 public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 {
+    private const int CategorizationBatchSize = 10;
     private const string DefaultModel = "deepseek-v4-flash";
     private const string DefaultCategory = "Shopping & Personal";
     private static readonly string AllowedCategoryValues =
@@ -50,8 +51,11 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 
     public async Task<TransactionCategorizationResult> CategorizeTransactionsAsync(
         List<Transaction> transactions,
-        string? aiLocationContext = null)
+        string? aiLocationContext = null,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!transactions.Any())
             return TransactionCategorizationResult.Empty;
 
@@ -60,13 +64,14 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
             transactions.Count,
             _model);
 
-        var batches = transactions.Chunk(50).ToList();
+        var batches = transactions.Chunk(CategorizationBatchSize).ToList();
         var processedCount = 0;
         var changedCount = 0;
         var failedCount = 0;
 
         foreach (var batch in batches)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             processedCount += batch.Length;
             _logger.LogInformation("Processing batch... ({Processed}/{Total})", processedCount, transactions.Count);
 
@@ -83,7 +88,10 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 
             try
             {
-                var textResult = await SendPromptAsync(prompt, "categorization");
+                var textResult = await SendPromptAsync(
+                    prompt,
+                    "categorization",
+                    cancellationToken: cancellationToken);
                 var batchChangedCount = ApplyCategorizationResults(batch, textResult);
                 changedCount += batchChangedCount;
                 failedCount += batch.Length - batchChangedCount;
@@ -180,7 +188,11 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         }
     }
 
-    private async Task<string> SendPromptAsync(string prompt, string operation, double? temperature = null)
+    private async Task<string> SendPromptAsync(
+        string prompt,
+        string operation,
+        double? temperature = null,
+        CancellationToken cancellationToken = default)
     {
         var requestBody = new DeepSeekChatRequest
         {
@@ -205,7 +217,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         HttpResponseMessage response;
         try
         {
-            response = await _httpClient.SendAsync(request);
+            response = await _httpClient.SendAsync(request, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -217,7 +229,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                 _model);
             throw new ExternalServiceException($"AI {operation} is currently unavailable.", ex);
         }
-        catch (TaskCanceledException ex)
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogError(
                 ObservabilityEventIds.DeepSeekUpstreamFailure,
@@ -246,7 +258,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                 string responseBody;
                 try
                 {
-                    responseBody = await response.Content.ReadAsStringAsync();
+                    responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 }
                 catch (HttpRequestException ex)
                 {
@@ -258,7 +270,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                         _model);
                     throw new ExternalServiceException($"AI {operation} is currently unavailable.", ex);
                 }
-                catch (TaskCanceledException ex)
+                catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
                 {
                     _logger.LogError(
                         ObservabilityEventIds.DeepSeekUpstreamFailure,

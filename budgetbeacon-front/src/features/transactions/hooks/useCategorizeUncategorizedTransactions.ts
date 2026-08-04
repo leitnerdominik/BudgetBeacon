@@ -1,36 +1,79 @@
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { categorizeUncategorizedTransactions } from "../../../api/transactionsApi";
+import {
+  categorizeTransactionBatch,
+  getCategorizationCandidates,
+} from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
 import { clearTipsQueryCache } from "../../tips/tipsCache";
+import {
+  emptyCategorizationProgress,
+  runTransactionCategorization,
+  type CategorizationProgress,
+} from "../categorizationRunner";
 
 export const useCategorizeUncategorizedTransactions = () => {
   const queryClient = useQueryClient();
   const { showNotification } = useNotification();
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const [progress, setProgress] = useState<CategorizationProgress>(
+    emptyCategorizationProgress,
+  );
 
-  return useMutation({
-    mutationFn: categorizeUncategorizedTransactions,
+  useEffect(
+    () => () => {
+      abortControllerRef.current?.abort();
+    },
+    [],
+  );
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      abortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+      setProgress(emptyCategorizationProgress);
+
+      try {
+        return await runTransactionCategorization(
+          {
+            getCandidates: getCategorizationCandidates,
+            categorizeBatch: categorizeTransactionBatch,
+            onProgress: setProgress,
+          },
+          abortController.signal,
+        );
+      } finally {
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
+      }
+    },
     onSuccess: (data) => {
       if (data.changedCount > 0) {
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
         clearTipsQueryCache(queryClient);
       }
 
       showNotification({
         severity:
-          data.failedCount > 0
+          data.outcome === "failed"
+            ? "error"
+            : data.outcome === "partial"
             ? "warning"
             : data.changedCount > 0
               ? "success"
               : "info",
-        message:
-          data.failedCount > 0
-            ? `${data.changedCount} transaction(s) categorized; ${data.failedCount} could not be categorized.`
-            : data.changedCount > 0
-              ? `${data.changedCount} uncategorized transaction(s) categorized.`
-            : "All transactions are already categorized.",
+        message: data.message,
       });
     },
     onError: (error) => {
+      if (
+        error instanceof Error &&
+        (error.name === "AbortError" || error.name === "CanceledError")
+      ) {
+        return;
+      }
+
       console.error("Failed to categorize transactions:", error);
       showNotification({
         severity: "error",
@@ -40,5 +83,19 @@ export const useCategorizeUncategorizedTransactions = () => {
             : "Failed to categorize transactions.",
       });
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
   });
+
+  const reset = () => {
+    mutation.reset();
+    setProgress(emptyCategorizationProgress);
+  };
+
+  return {
+    ...mutation,
+    progress,
+    reset,
+  };
 };

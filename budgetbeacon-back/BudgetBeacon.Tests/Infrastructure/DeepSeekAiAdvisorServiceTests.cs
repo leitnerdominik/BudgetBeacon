@@ -73,6 +73,22 @@ public sealed class DeepSeekAiAdvisorServiceTests
     }
 
     [Fact]
+    public async Task CategorizeTransactionsAsync_PropagatesCallerCancellation()
+    {
+        var handler = new StubHttpMessageHandler();
+        var sut = CreateService(handler);
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            sut.CategorizeTransactionsAsync(
+                [new Transaction()],
+                cancellationToken: cancellationTokenSource.Token));
+
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
     public async Task CategorizeTransactionsAsync_MapsNormalizedCategoriesAndClampedConfidence()
     {
         var transportId = Guid.NewGuid();
@@ -190,9 +206,9 @@ public sealed class DeepSeekAiAdvisorServiceTests
     }
 
     [Fact]
-    public async Task CategorizeTransactionsAsync_SplitsRequestsIntoBatchesOfFifty()
+    public async Task CategorizeTransactionsAsync_SplitsRequestsIntoBatchesOfTen()
     {
-        var transactions = Enumerable.Range(0, 51)
+        var transactions = Enumerable.Range(0, 11)
             .Select(index => new Transaction
             {
                 Id = Guid.NewGuid(),
@@ -202,18 +218,18 @@ public sealed class DeepSeekAiAdvisorServiceTests
             .ToList();
         var handler = new StubHttpMessageHandler();
         handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[0].Id}\",\"Category\":\"Food & Groceries\",\"Confidence\":0.7}}]"));
-        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
+        handler.Enqueue(DeepSeekResponse($"[{{\"Id\":\"{transactions[10].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         var result = await sut.CategorizeTransactionsAsync(transactions);
 
         Assert.Equal(2, handler.Requests.Count);
         Assert.Equal("Food & Groceries", transactions[0].Category);
-        Assert.Equal("Transport", transactions[50].Category);
-        Assert.Equal(51, result.ProcessedCount);
+        Assert.Equal("Transport", transactions[10].Category);
+        Assert.Equal(11, result.ProcessedCount);
         Assert.Equal(2, result.ChangedCount);
-        Assert.Equal(49, result.FailedCount);
-        Assert.Equal(49, result.RemainingCount);
+        Assert.Equal(9, result.FailedCount);
+        Assert.Equal(9, result.RemainingCount);
     }
 
     [Fact]
@@ -312,22 +328,22 @@ public sealed class DeepSeekAiAdvisorServiceTests
     [Fact]
     public async Task CategorizeTransactionsAsync_ContinuesAfterFailedBatch()
     {
-        var transactions = Enumerable.Range(0, 51)
+        var transactions = Enumerable.Range(0, 11)
             .Select(_ => new Transaction())
             .ToList();
         var handler = new StubHttpMessageHandler();
         handler.Enqueue(DeepSeekResponse("not json"));
         handler.Enqueue(DeepSeekResponse(
-            $"[{{\"Id\":\"{transactions[50].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
+            $"[{{\"Id\":\"{transactions[10].Id}\",\"Category\":\"Transport\",\"Confidence\":0.8}}]"));
         var sut = CreateService(handler);
 
         var result = await sut.CategorizeTransactionsAsync(transactions);
 
-        Assert.Equal(51, result.ProcessedCount);
+        Assert.Equal(11, result.ProcessedCount);
         Assert.Equal(1, result.ChangedCount);
-        Assert.Equal(50, result.FailedCount);
-        Assert.Equal(50, result.RemainingCount);
-        Assert.Equal("Transport", transactions[50].Category);
+        Assert.Equal(10, result.FailedCount);
+        Assert.Equal(10, result.RemainingCount);
+        Assert.Equal("Transport", transactions[10].Category);
     }
 
     [Fact]

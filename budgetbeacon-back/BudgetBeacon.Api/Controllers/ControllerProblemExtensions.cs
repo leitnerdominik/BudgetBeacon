@@ -10,7 +10,8 @@ public static class ControllerProblemExtensions
         int statusCode,
         string title,
         string detail,
-        string type)
+        string type,
+        Action<ProblemDetails>? configure = null)
     {
         var problemDetails = new ProblemDetails
         {
@@ -23,6 +24,7 @@ public static class ControllerProblemExtensions
 
         problemDetails.Extensions["traceId"] = controller.HttpContext.TraceIdentifier;
         problemDetails.Extensions["message"] = detail;
+        configure?.Invoke(problemDetails);
 
         return new ObjectResult(problemDetails)
         {

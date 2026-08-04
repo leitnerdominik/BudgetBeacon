@@ -1741,20 +1741,71 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
-    public async Task TriggerCategorization_ReturnsNoOpWhenThereAreNoUncategorizedTransactions()
+    public async Task GetCategorizationCandidates_ReturnsCurrentUsersUncategorizedIds()
     {
-        var aiService = new FakeAiAdvisorService();
-        var repository = new FakeTransactionRepository();
-        var controller = CreateController(repository, aiService: aiService);
+        var uncategorized = new Transaction { Category = "Uncategorized" };
+        var categorized = new Transaction { Category = "Transport" };
+        var repository = new FakeTransactionRepository
+        {
+            UncategorizedTransactions = [uncategorized, categorized]
+        };
+        var controller = CreateController(repository);
 
-        var result = await controller.TriggerCategorization();
+        var result = await controller.GetCategorizationCandidates();
 
         var ok = Assert.IsType<OkObjectResult>(result);
+        var transactionIds = GetValue<List<Guid>>(ok.Value, "TransactionIds");
+        Assert.Equal([uncategorized.Id], transactionIds);
+        Assert.Equal("user-1", repository.LastCategorizationCandidateUserId);
+    }
+
+    [Fact]
+    public async Task TriggerCategorization_RejectsMoreThanTenTransactionIds()
+    {
+        var controller = CreateController();
+        var request = new TransactionsController.CategorizeTransactionsRequest(
+            Enumerable.Range(0, 11).Select(_ => Guid.NewGuid()).ToList());
+
+        var result = await controller.TriggerCategorization(request);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
+        Assert.Contains("TransactionIds", problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task TriggerCategorization_RejectsDuplicateTransactionIds()
+    {
+        var transactionId = Guid.NewGuid();
+        var controller = CreateController();
+        var request = new TransactionsController.CategorizeTransactionsRequest(
+            [transactionId, transactionId]);
+
+        var result = await controller.TriggerCategorization(request);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task TriggerCategorization_ReturnsSkippedResultForStaleOrForeignIds()
+    {
+        var remainingTransaction = new Transaction { Category = "Uncategorized" };
+        var aiService = new FakeAiAdvisorService();
+        var repository = new FakeTransactionRepository
+        {
+            UncategorizedTransactions = [remainingTransaction]
+        };
+        var controller = CreateController(repository, aiService: aiService);
+        var request = new TransactionsController.CategorizeTransactionsRequest(
+            [Guid.NewGuid()]);
+
+        var result = await controller.TriggerCategorization(request);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, GetValue<int>(ok.Value, "RequestedCount"));
         Assert.Equal(0, GetValue<int>(ok.Value, "ProcessedCount"));
-        Assert.Equal(0, GetValue<int>(ok.Value, "ChangedCount"));
-        Assert.Equal(0, GetValue<int>(ok.Value, "FailedCount"));
-        Assert.Equal(0, GetValue<int>(ok.Value, "RemainingCount"));
-        Assert.Equal(0, GetValue<int>(ok.Value, "CategorizedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "SkippedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "RemainingCount"));
         Assert.Equal(0, aiService.CategorizeCalls);
         Assert.False(repository.SaveChangesCalled);
     }
@@ -1781,13 +1832,17 @@ public sealed class TransactionsControllerTests
             }
         };
         var controller = CreateController(repository, aiService: aiService);
+        var request = new TransactionsController.CategorizeTransactionsRequest(
+            transactions.Select(transaction => transaction.Id).ToList());
 
-        var result = await controller.TriggerCategorization();
+        var result = await controller.TriggerCategorization(request);
 
         var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(2, GetValue<int>(ok.Value, "RequestedCount"));
         Assert.Equal(2, GetValue<int>(ok.Value, "ProcessedCount"));
         Assert.Equal(2, GetValue<int>(ok.Value, "ChangedCount"));
         Assert.Equal(0, GetValue<int>(ok.Value, "FailedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "SkippedCount"));
         Assert.Equal(0, GetValue<int>(ok.Value, "RemainingCount"));
         Assert.Equal(2, GetValue<int>(ok.Value, "CategorizedCount"));
         Assert.Equal("Categorization successful.", GetValue<string>(ok.Value, "Message"));
@@ -1819,13 +1874,17 @@ public sealed class TransactionsControllerTests
             }
         };
         var controller = CreateController(repository, preferencesRepository, aiService: aiService);
+        var request = new TransactionsController.CategorizeTransactionsRequest(
+            [transactions[0].Id, transactions[1].Id, Guid.NewGuid()]);
 
-        var result = await controller.TriggerCategorization();
+        var result = await controller.TriggerCategorization(request);
 
         var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(3, GetValue<int>(ok.Value, "RequestedCount"));
         Assert.Equal(2, GetValue<int>(ok.Value, "ProcessedCount"));
         Assert.Equal(1, GetValue<int>(ok.Value, "ChangedCount"));
         Assert.Equal(1, GetValue<int>(ok.Value, "FailedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "SkippedCount"));
         Assert.Equal(1, GetValue<int>(ok.Value, "RemainingCount"));
         Assert.Equal(1, GetValue<int>(ok.Value, "CategorizedCount"));
         Assert.Contains("partially", GetValue<string>(ok.Value, "Message"), StringComparison.OrdinalIgnoreCase);
@@ -1850,13 +1909,47 @@ public sealed class TransactionsControllerTests
             CategorizeAction = _ => new TransactionCategorizationResult(2, 0, 2, 2)
         };
         var controller = CreateController(repository, aiService: aiService);
+        var request = new TransactionsController.CategorizeTransactionsRequest(
+            repository.UncategorizedTransactions.Select(transaction => transaction.Id).ToList());
 
-        var result = await controller.TriggerCategorization();
+        var result = await controller.TriggerCategorization(request);
 
         var badGateway = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status502BadGateway, badGateway.StatusCode);
         var problem = Assert.IsType<ProblemDetails>(badGateway.Value);
         Assert.Equal("urn:budgetbeacon:external-service", problem.Type);
+        Assert.Equal(2, Assert.IsType<int>(problem.Extensions["requestedCount"]));
+        Assert.Equal(2, Assert.IsType<int>(problem.Extensions["failedCount"]));
+        Assert.Equal(2, Assert.IsType<int>(problem.Extensions["remainingCount"]));
+        Assert.False(repository.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task TriggerCategorization_PropagatesCancellationWithoutSaving()
+    {
+        var transaction = new Transaction { Category = "Uncategorized" };
+        var repository = new FakeTransactionRepository
+        {
+            UncategorizedTransactions = [transaction]
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAsyncAction = async (_, cancellationToken) =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                return TransactionCategorizationResult.Empty;
+            }
+        };
+        var controller = CreateController(repository, aiService: aiService);
+        var request = new TransactionsController.CategorizeTransactionsRequest([transaction.Id]);
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        var categorizationTask = controller.TriggerCategorization(
+            request,
+            cancellationTokenSource.Token);
+        cancellationTokenSource.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => categorizationTask);
         Assert.False(repository.SaveChangesCalled);
     }
 
@@ -2144,6 +2237,9 @@ public sealed class TransactionsControllerTests
         public DateTime? LastDateRangeEndDate { get; private set; }
         public string? LastPagedUserId { get; private set; }
         public string? LastFingerprintLookupUserId { get; private set; }
+        public string? LastCategorizationCandidateUserId { get; private set; }
+        public string? LastCategorizationBatchUserId { get; private set; }
+        public IReadOnlyCollection<Guid> LastCategorizationBatchIds { get; private set; } = [];
         public TransactionQueryOptions? LastPagedOptions { get; private set; }
         public int? LastPagedPageNumber { get; private set; }
         public int? LastPagedPageSize { get; private set; }
@@ -2202,8 +2298,9 @@ public sealed class TransactionsControllerTests
             return Task.FromResult<Transaction?>(TransactionById);
         }
 
-        public Task SaveChangesAsync()
+        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             SaveChangesCalled = true;
             return Task.CompletedTask;
         }
@@ -2253,9 +2350,40 @@ public sealed class TransactionsControllerTests
             return Task.FromResult(AllTransactions);
         }
 
-        public Task<List<Transaction>> GetUncategorizedAsync(string userId)
+        public Task<List<Guid>> GetUncategorizedIdsAsync(
+            string userId,
+            CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(UncategorizedTransactions);
+            cancellationToken.ThrowIfCancellationRequested();
+            LastCategorizationCandidateUserId = userId;
+            return Task.FromResult(UncategorizedTransactions
+                .Where(transaction => transaction.Category == "Uncategorized")
+                .Select(transaction => transaction.Id)
+                .ToList());
+        }
+
+        public Task<List<Transaction>> GetUncategorizedByIdsAsync(
+            string userId,
+            IReadOnlyCollection<Guid> transactionIds,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastCategorizationBatchUserId = userId;
+            LastCategorizationBatchIds = transactionIds;
+            return Task.FromResult(UncategorizedTransactions
+                .Where(transaction =>
+                    transaction.Category == "Uncategorized" &&
+                    transactionIds.Contains(transaction.Id))
+                .ToList());
+        }
+
+        public Task<int> CountUncategorizedAsync(
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(UncategorizedTransactions.Count(transaction =>
+                transaction.Category == "Uncategorized"));
         }
 
         public Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month)
@@ -2326,15 +2454,24 @@ public sealed class TransactionsControllerTests
         public string? LastCategorizationLocationContext { get; private set; }
         public string? LastSavingsTipsLocationContext { get; private set; }
         public Func<List<Transaction>, TransactionCategorizationResult>? CategorizeAction { get; init; }
+        public Func<List<Transaction>, CancellationToken, Task<TransactionCategorizationResult>>?
+            CategorizeAsyncAction { get; init; }
         public IReadOnlyList<SavingsTip> SavingTips { get; init; } = [];
 
-        public Task<TransactionCategorizationResult> CategorizeTransactionsAsync(
+        public async Task<TransactionCategorizationResult> CategorizeTransactionsAsync(
             List<Transaction> transactions,
-            string? aiLocationContext = null)
+            string? aiLocationContext = null,
+            CancellationToken cancellationToken = default)
         {
             CategorizeCalls++;
             LastCategorizationLocationContext = aiLocationContext;
-            return Task.FromResult(
+            if (CategorizeAsyncAction is not null)
+            {
+                return await CategorizeAsyncAction(transactions, cancellationToken);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            return
                 CategorizeAction?.Invoke(transactions) ??
                 new TransactionCategorizationResult(
                     transactions.Count,
@@ -2344,7 +2481,7 @@ public sealed class TransactionsControllerTests
                         string.Equals(
                             transaction.Category,
                             "Uncategorized",
-                            StringComparison.OrdinalIgnoreCase))));
+                            StringComparison.OrdinalIgnoreCase)));
         }
 
         public Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(
