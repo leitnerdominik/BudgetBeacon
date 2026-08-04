@@ -1,4 +1,4 @@
-import { apiClient } from "./httpClient";
+import { ApiError, apiClient } from "./httpClient";
 import type {
   MonthlySummaryWithPeriod,
   PaginatedTransactions,
@@ -37,13 +37,29 @@ const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
     transaction.metadata?.rawDescription?.trim() || "No description",
 });
 
-export interface CategorizeUncategorizedTransactionsResponse {
+export interface CategorizationCandidatesResponse {
+  transactionIds: string[];
+}
+
+export interface CategorizeTransactionsBatchResponse {
   message: string;
+  requestedCount: number;
   processedCount: number;
   changedCount: number;
   failedCount: number;
+  skippedCount: number;
   remainingCount: number;
   categorizedCount: number;
+}
+
+export class CategorizationBatchApiError extends Error {
+  readonly batchResult: CategorizeTransactionsBatchResponse;
+
+  constructor(message: string, batchResult: CategorizeTransactionsBatchResponse) {
+    super(message);
+    this.name = "CategorizationBatchApiError";
+    this.batchResult = batchResult;
+  }
 }
 
 export interface TransactionWriteRequest {
@@ -232,13 +248,72 @@ export const getStatistics = async (
   );
 };
 
-export const categorizeUncategorizedTransactions =
-  async (): Promise<CategorizeUncategorizedTransactionsResponse> => {
-    return apiClient.post<
-      CategorizeUncategorizedTransactionsResponse,
-      CategorizeUncategorizedTransactionsResponse
-    >("/transactions/ai/categorize", {});
+export const getCategorizationCandidates = async (
+  signal?: AbortSignal,
+): Promise<CategorizationCandidatesResponse> => {
+  return apiClient.get<
+    CategorizationCandidatesResponse,
+    CategorizationCandidatesResponse
+  >("/transactions/ai/categorization-candidates", { signal });
+};
+
+const parseCategorizationBatchFailure = (
+  data: unknown,
+): CategorizeTransactionsBatchResponse | null => {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const value = data as Record<string, unknown>;
+  const countKeys = [
+    "requestedCount",
+    "processedCount",
+    "changedCount",
+    "failedCount",
+    "skippedCount",
+    "remainingCount",
+    "categorizedCount",
+  ] as const;
+
+  if (countKeys.some((key) => typeof value[key] !== "number")) {
+    return null;
+  }
+
+  return {
+    message:
+      typeof value.message === "string"
+        ? value.message
+        : "The AI provider could not categorize this batch.",
+    requestedCount: value.requestedCount as number,
+    processedCount: value.processedCount as number,
+    changedCount: value.changedCount as number,
+    failedCount: value.failedCount as number,
+    skippedCount: value.skippedCount as number,
+    remainingCount: value.remainingCount as number,
+    categorizedCount: value.categorizedCount as number,
   };
+};
+
+export const categorizeTransactionBatch = async (
+  transactionIds: string[],
+  signal?: AbortSignal,
+): Promise<CategorizeTransactionsBatchResponse> => {
+  try {
+    return await apiClient.post<
+      CategorizeTransactionsBatchResponse,
+      CategorizeTransactionsBatchResponse
+    >("/transactions/ai/categorize", { transactionIds }, { signal });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 502) {
+      const batchResult = parseCategorizationBatchFailure(error.data);
+      if (batchResult) {
+        throw new CategorizationBatchApiError(error.message, batchResult);
+      }
+    }
+
+    throw error;
+  }
+};
 
 export const uploadTransactions = async (
   file: File,

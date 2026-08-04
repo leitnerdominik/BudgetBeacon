@@ -303,23 +303,39 @@ export const TransactionList = () => {
     });
   };
 
-  const categorizeProgressValue =
-    categorizeMutation.isSuccess || categorizeMutation.isError ? 100 : 0;
+  const categorizeSummary = categorizeMutation.data ?? categorizeMutation.progress;
   const categorizeHasPartialFailure =
-    categorizeMutation.isSuccess && categorizeMutation.data.failedCount > 0;
+    categorizeMutation.isSuccess && categorizeMutation.data.outcome === "partial";
+  const categorizeHasFailed =
+    categorizeMutation.isError ||
+    (categorizeMutation.isSuccess && categorizeMutation.data.outcome === "failed");
+  const categorizeProgressValue =
+    categorizeSummary.totalCount > 0
+      ? Math.round(
+          (categorizeSummary.completedCount / categorizeSummary.totalCount) * 100,
+        )
+      : categorizeMutation.isSuccess
+        ? 100
+        : 0;
   const categorizeStatusLabel = categorizeMutation.isPending
     ? "Categorizing uncategorized transactions..."
     : categorizeMutation.isSuccess
-      ? categorizeHasPartialFailure
-        ? "Categorization partially completed"
-        : "Categorization completed"
+      ? categorizeHasFailed
+        ? "Categorization stopped"
+        : categorizeHasPartialFailure
+          ? "Categorization partially completed"
+          : "Categorization completed"
       : categorizeMutation.isError
         ? "Categorization failed"
         : "Ready to categorize";
   const categorizeProgressLabel = categorizeMutation.isPending
-    ? "In progress"
+    ? categorizeSummary.totalCount > 0
+      ? `${categorizeSummary.completedCount} of ${categorizeSummary.totalCount}`
+      : "Preparing..."
     : categorizeMutation.isSuccess
-      ? "100%"
+      ? categorizeSummary.totalCount > 0
+        ? `${categorizeProgressValue}%`
+        : "Complete"
       : categorizeMutation.isError
         ? "Failed"
         : "Waiting";
@@ -1048,10 +1064,14 @@ export const TransactionList = () => {
                 </Typography>
               </Stack>
               <LinearProgress
-                variant={categorizeMutation.isPending ? "indeterminate" : "determinate"}
+                variant={
+                  categorizeMutation.isPending && categorizeSummary.totalCount === 0
+                    ? "indeterminate"
+                    : "determinate"
+                }
                 value={categorizeProgressValue}
                 color={
-                  categorizeMutation.isError
+                  categorizeHasFailed
                     ? "error"
                     : categorizeHasPartialFailure
                       ? "warning"
@@ -1063,49 +1083,61 @@ export const TransactionList = () => {
 
             {categorizeMutation.isPending ? (
               <DialogContentText>
-                Transactions without a category are being analyzed. This can take a
-                moment depending on the number of entries.
+                Transactions are being analyzed in small batches. Completed batches are
+                saved immediately.
               </DialogContentText>
             ) : null}
 
             {categorizeMutation.isSuccess ? (
+              <Typography
+                variant="body2"
+                color={categorizeHasFailed ? "error" : "text.primary"}
+              >
+                {categorizeMutation.data.message}
+              </Typography>
+            ) : null}
+
+            {(categorizeSummary.totalCount > 0 || categorizeMutation.isSuccess) ? (
               <Stack spacing={1}>
-                <Typography variant="body2">
-                  {categorizeMutation.data.message}
-                </Typography>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                   <Chip
-                    label={`${categorizeMutation.data.processedCount} processed`}
+                    label={`${categorizeSummary.processedCount} processed`}
                     color="primary"
                     variant="outlined"
                   />
                   <Chip
-                    label={`${categorizeMutation.data.changedCount} changed`}
+                    label={`${categorizeSummary.changedCount} changed`}
                     color={
-                      categorizeMutation.data.changedCount > 0
+                      categorizeSummary.changedCount > 0
                         ? "success"
                         : "default"
                     }
                     variant="outlined"
                   />
                   <Chip
-                    label={`${categorizeMutation.data.failedCount} failed`}
+                    label={`${categorizeSummary.failedCount} failed`}
                     color={
-                      categorizeMutation.data.failedCount > 0
+                      categorizeSummary.failedCount > 0
                         ? "warning"
                         : "default"
                     }
                     variant="outlined"
                   />
                   <Chip
-                    label={`${categorizeMutation.data.remainingCount} remaining`}
+                    label={`${categorizeSummary.remainingCount} remaining`}
                     color={
-                      categorizeMutation.data.remainingCount > 0
+                      categorizeSummary.remainingCount > 0
                         ? "warning"
                         : "default"
                     }
                     variant="outlined"
                   />
+                  {categorizeSummary.skippedCount > 0 ? (
+                    <Chip
+                      label={`${categorizeSummary.skippedCount} skipped`}
+                      variant="outlined"
+                    />
+                  ) : null}
                 </Stack>
               </Stack>
             ) : null}

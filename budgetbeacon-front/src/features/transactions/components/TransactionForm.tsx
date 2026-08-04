@@ -1,8 +1,12 @@
 import { useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SaveIcon from "@mui/icons-material/Save";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   ButtonBase,
@@ -43,15 +47,20 @@ type TransactionDirection = "expense" | "income";
 
 type TransactionFormProps = {
   transaction?: Transaction;
+  mode?: "standard" | "quick";
 };
 
-export const TransactionForm = ({ transaction }: TransactionFormProps) => {
+export const TransactionForm = ({
+  transaction,
+  mode = "standard",
+}: TransactionFormProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const isOnline = useNetworkStatus();
   const createTransactionMutation = useCreateTransaction();
   const updateTransactionMutation = useUpdateTransaction();
   const isEdit = Boolean(transaction);
+  const isQuickEntry = mode === "quick" && !isEdit;
   const transactionsReturnPath = getTransactionsReturnPath(location.search);
   const [date, setDate] = useState(
     transaction ? transaction.date.slice(0, 10) : getLocalCalendarDate,
@@ -146,7 +155,13 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
     createTransactionMutation.isPending || updateTransactionMutation.isPending;
 
   return (
-    <Box sx={{ width: "100%", maxWidth: 960, mx: "auto" }}>
+    <Box
+      sx={{
+        width: "100%",
+        maxWidth: isQuickEntry ? 640 : 960,
+        mx: "auto",
+      }}
+    >
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1.5}
@@ -156,12 +171,18 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
       >
         <Box>
           <Typography variant="h4" component="h1">
-            {isEdit ? "Edit transaction" : "Add transaction"}
+            {isEdit
+              ? "Edit transaction"
+              : isQuickEntry
+                ? "Quick add transaction"
+                : "Add transaction"}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {isEdit
               ? "Update the details of this transaction."
-              : "Record one income or expense entry manually."}
+              : isQuickEntry
+                ? "Capture the essentials now. You can add more details if needed."
+                : "Record one income or expense entry manually."}
           </Typography>
         </Box>
         <Button
@@ -176,7 +197,11 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
 
       <Card>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-          <Stack component="form" spacing={3} onSubmit={handleSubmit}>
+          <Stack
+            component="form"
+            spacing={isQuickEntry ? 2 : 3}
+            onSubmit={handleSubmit}
+          >
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
                 Transaction type
@@ -210,171 +235,344 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
               </ToggleButtonGroup>
             </Box>
 
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Date"
-                  type="date"
-                  value={date}
-                  onChange={(event) => setDate(event.target.value)}
-                  disabled={isPending}
-                  slotProps={{
-                    inputLabel: { shrink: true },
-                    htmlInput: {
-                      min: minimumSupportedTransactionDate,
-                      max: maximumSupportedTransactionDate,
-                    },
-                  }}
-                  error={dateValidationError !== null}
-                  helperText={dateValidationError ?? " "}
-                  required
-                  fullWidth
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Amount"
-                  type="number"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  disabled={isPending}
-                  slotProps={{
-                    htmlInput: {
-                      step: "0.01",
-                      min: "0.01",
-                      max: maximumAbsoluteTransactionAmountInput,
-                    },
-                  }}
-                  error={amount.trim().length > 0 && !isAmountValid}
-                  helperText={
-                    amount.trim().length > 0 && !isAmountValid
-                      ? amountValidation.error
-                      : " "
-                  }
-                  required
-                  fullWidth
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  label="Description"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  disabled={isPending}
-                  slotProps={{ htmlInput: { maxLength: 200 } }}
-                  helperText={`${description.length}/200`}
-                  required
-                  fullWidth
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  label="Notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  disabled={isPending}
-                  slotProps={{ htmlInput: { maxLength: 500 } }}
-                  helperText={`${notes.length}/500 / Optional`}
-                  minRows={3}
-                  multiline
-                  fullWidth
-                />
-              </Grid>
-            </Grid>
-
-            <Divider />
-
-            <Box>
-              <Typography variant="subtitle1" fontWeight={700}>
-                Category
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
-                Choose the category that best matches this transaction.
-              </Typography>
-              <Grid container spacing={1.5} role="group" aria-label="Transaction category">
-                {transactionCategoryOptions.map((option) => {
-                  const selected = option.value === category;
-
-                  return (
-                    <Grid key={option.value} size={{ xs: 12, sm: 6, md: 4 }}>
-                      <ButtonBase
-                        onClick={() => handleCategoryChange(option.value)}
-                        disabled={isPending}
-                        aria-pressed={selected}
-                        sx={{
-                          width: "100%",
-                          height: "100%",
-                          minHeight: 142,
-                          p: 1.5,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          border: "1px solid",
-                          borderColor: selected ? "primary.main" : "divider",
-                          borderRadius: 1,
-                          color: selected ? "primary.dark" : "text.primary",
-                          bgcolor: selected ? "primary.light" : "background.paper",
-                          transition: "border-color 0.2s ease, background-color 0.2s ease",
-                          "&:hover": {
-                            borderColor: "primary.main",
-                            bgcolor: selected ? "primary.light" : "action.hover",
-                          },
-                          "&:focus-visible": {
-                            outline: "2px solid",
-                            outlineColor: "primary.main",
-                            outlineOffset: 2,
-                          },
-                        }}
-                      >
-                        <Stack
-                          spacing={1}
-                          alignItems="center"
-                          justifyContent="center"
-                          sx={{ width: "100%", height: "100%", textAlign: "center" }}
-                        >
-                          <option.Icon color="inherit" />
+            {isQuickEntry ? (
+              <>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      autoFocus
+                      label="Amount"
+                      type="number"
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      disabled={isPending}
+                      slotProps={{
+                        htmlInput: {
+                          inputMode: "decimal",
+                          step: "0.01",
+                          min: "0.01",
+                          max: maximumAbsoluteTransactionAmountInput,
+                        },
+                      }}
+                      error={amount.trim().length > 0 && !isAmountValid}
+                      helperText={
+                        amount.trim().length > 0 && !isAmountValid
+                          ? amountValidation.error
+                          : " "
+                      }
+                      required
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      label="Description"
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      disabled={isPending}
+                      slotProps={{ htmlInput: { maxLength: 200 } }}
+                      helperText={`${description.length}/200`}
+                      required
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Category"
+                      select
+                      value={category}
+                      onChange={(event) => handleCategoryChange(event.target.value)}
+                      disabled={isPending}
+                      fullWidth
+                    >
+                      {transactionCategoryOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
                           <Box>
-                            <Typography variant="body2" fontWeight={700}>
-                              {option.value}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              color={selected ? "primary.dark" : "text.secondary"}
-                              sx={{ display: "block", mt: 0.5, lineHeight: 1.35 }}
-                            >
+                            <Typography variant="body2">{option.value}</Typography>
+                            <Typography variant="caption" color="text.secondary">
                               {option.description}
                             </Typography>
                           </Box>
-                        </Stack>
-                      </ButtonBase>
-                    </Grid>
-                  );
-                })}
-              </Grid>
-            </Box>
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Date"
+                      type="date"
+                      value={date}
+                      onChange={(event) => setDate(event.target.value)}
+                      disabled={isPending}
+                      slotProps={{
+                        inputLabel: { shrink: true },
+                        htmlInput: {
+                          min: minimumSupportedTransactionDate,
+                          max: maximumSupportedTransactionDate,
+                        },
+                      }}
+                      error={dateValidationError !== null}
+                      helperText={dateValidationError ?? " "}
+                      required
+                      fullWidth
+                    />
+                  </Grid>
+                </Grid>
 
-            <TextField
-              label="Statistics treatment"
-              select
-              value={treatment}
-              onChange={(event) =>
-                setTreatment(event.target.value as Transaction["treatment"])
-              }
-              disabled={isPending}
-              helperText="Expenses affect spending charts; transfers do not; savings and investments are tracked separately."
-              fullWidth
-            >
-              {transactionTreatmentOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  <Box>
-                    <Typography variant="body2">{option.label}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {option.description}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </TextField>
+                <Accordion
+                  disableGutters
+                  elevation={0}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    "&:before": { display: "none" },
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    aria-controls="quick-add-more-details-content"
+                    id="quick-add-more-details-header"
+                  >
+                    <Box>
+                      <Typography variant="subtitle2">More details</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Notes and statistics treatment
+                      </Typography>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails id="quick-add-more-details-content">
+                    <Stack spacing={2}>
+                      <TextField
+                        label="Notes"
+                        value={notes}
+                        onChange={(event) => setNotes(event.target.value)}
+                        disabled={isPending}
+                        slotProps={{ htmlInput: { maxLength: 500 } }}
+                        helperText={`${notes.length}/500 / Optional`}
+                        minRows={3}
+                        multiline
+                        fullWidth
+                      />
+                      <TextField
+                        label="Statistics treatment"
+                        select
+                        value={treatment}
+                        onChange={(event) =>
+                          setTreatment(
+                            event.target.value as Transaction["treatment"],
+                          )
+                        }
+                        disabled={isPending}
+                        helperText="Expenses affect spending charts; transfers do not; savings and investments are tracked separately."
+                        fullWidth
+                      >
+                        {transactionTreatmentOptions.map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            <Box>
+                              <Typography variant="body2">{option.label}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {option.description}
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+              </>
+            ) : (
+              <>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Date"
+                      type="date"
+                      value={date}
+                      onChange={(event) => setDate(event.target.value)}
+                      disabled={isPending}
+                      slotProps={{
+                        inputLabel: { shrink: true },
+                        htmlInput: {
+                          min: minimumSupportedTransactionDate,
+                          max: maximumSupportedTransactionDate,
+                        },
+                      }}
+                      error={dateValidationError !== null}
+                      helperText={dateValidationError ?? " "}
+                      required
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Amount"
+                      type="number"
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      disabled={isPending}
+                      slotProps={{
+                        htmlInput: {
+                          step: "0.01",
+                          min: "0.01",
+                          max: maximumAbsoluteTransactionAmountInput,
+                        },
+                      }}
+                      error={amount.trim().length > 0 && !isAmountValid}
+                      helperText={
+                        amount.trim().length > 0 && !isAmountValid
+                          ? amountValidation.error
+                          : " "
+                      }
+                      required
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      label="Description"
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      disabled={isPending}
+                      slotProps={{ htmlInput: { maxLength: 200 } }}
+                      helperText={`${description.length}/200`}
+                      required
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      label="Notes"
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      disabled={isPending}
+                      slotProps={{ htmlInput: { maxLength: 500 } }}
+                      helperText={`${notes.length}/500 / Optional`}
+                      minRows={3}
+                      multiline
+                      fullWidth
+                    />
+                  </Grid>
+                </Grid>
+
+                <Divider />
+
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    Category
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 0.5, mb: 2 }}
+                  >
+                    Choose the category that best matches this transaction.
+                  </Typography>
+                  <Grid
+                    container
+                    spacing={1.5}
+                    role="group"
+                    aria-label="Transaction category"
+                  >
+                    {transactionCategoryOptions.map((option) => {
+                      const selected = option.value === category;
+
+                      return (
+                        <Grid key={option.value} size={{ xs: 12, sm: 6, md: 4 }}>
+                          <ButtonBase
+                            onClick={() => handleCategoryChange(option.value)}
+                            disabled={isPending}
+                            aria-pressed={selected}
+                            sx={{
+                              width: "100%",
+                              height: "100%",
+                              minHeight: 142,
+                              p: 1.5,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              border: "1px solid",
+                              borderColor: selected ? "primary.main" : "divider",
+                              borderRadius: 1,
+                              color: selected ? "primary.dark" : "text.primary",
+                              bgcolor: selected ? "primary.light" : "background.paper",
+                              transition:
+                                "border-color 0.2s ease, background-color 0.2s ease",
+                              "&:hover": {
+                                borderColor: "primary.main",
+                                bgcolor: selected
+                                  ? "primary.light"
+                                  : "action.hover",
+                              },
+                              "&:focus-visible": {
+                                outline: "2px solid",
+                                outlineColor: "primary.main",
+                                outlineOffset: 2,
+                              },
+                            }}
+                          >
+                            <Stack
+                              spacing={1}
+                              alignItems="center"
+                              justifyContent="center"
+                              sx={{
+                                width: "100%",
+                                height: "100%",
+                                textAlign: "center",
+                              }}
+                            >
+                              <option.Icon color="inherit" />
+                              <Box>
+                                <Typography variant="body2" fontWeight={700}>
+                                  {option.value}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color={
+                                    selected ? "primary.dark" : "text.secondary"
+                                  }
+                                  sx={{
+                                    display: "block",
+                                    mt: 0.5,
+                                    lineHeight: 1.35,
+                                  }}
+                                >
+                                  {option.description}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                          </ButtonBase>
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
+                </Box>
+
+                <TextField
+                  label="Statistics treatment"
+                  select
+                  value={treatment}
+                  onChange={(event) =>
+                    setTreatment(event.target.value as Transaction["treatment"])
+                  }
+                  disabled={isPending}
+                  helperText="Expenses affect spending charts; transfers do not; savings and investments are tracked separately."
+                  fullWidth
+                >
+                  {transactionTreatmentOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      <Box>
+                        <Typography variant="body2">{option.label}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {option.description}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </>
+            )}
 
             {!isOnline ? (
               <Typography variant="body2" color="error">
@@ -397,6 +595,7 @@ export const TransactionForm = ({ transaction }: TransactionFormProps) => {
               <Button
                 type="submit"
                 variant="contained"
+                fullWidth={isQuickEntry}
                 startIcon={
                   isPending ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />
                 }

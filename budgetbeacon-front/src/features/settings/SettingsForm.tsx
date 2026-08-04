@@ -59,7 +59,7 @@ export const SettingsForm = ({
   isOnline,
 }: SettingsFormProps) => {
   const updateMutation = useUpdateUserPreferences();
-  const { canInstall, installApp } = usePwaInstall();
+  const { canInstall, isInstalled, installApp } = usePwaInstall();
   const [aiLocationContext, setAiLocationContext] = useState(
     initialAiLocationContext,
   );
@@ -191,27 +191,42 @@ export const SettingsForm = ({
 
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2.5}>
-          {canInstall ? (
+          {canInstall || isInstalled ? (
             <>
               <Stack spacing={1.25}>
                 <Box>
                   <Typography variant="subtitle1" fontWeight={700}>
-                    Install BudgetBeacon
+                    {isInstalled
+                      ? "Quick add from your home screen"
+                      : "Install BudgetBeacon"}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Add BudgetBeacon to this device for quicker access from your
-                    home screen or app launcher.
+                    {isInstalled
+                      ? "Touch and hold the BudgetBeacon icon, then choose Add transaction to open the quick-entry form."
+                      : "Install BudgetBeacon to add it to your home screen and enable the Add transaction shortcut."}
                   </Typography>
+                  {isInstalled ? (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mt: 0.75 }}
+                    >
+                      On supported Android launchers, you can touch and drag the
+                      shortcut to give it its own place on your home screen.
+                    </Typography>
+                  ) : null}
                 </Box>
-                <Button
-                  type="button"
-                  variant="outlined"
-                  startIcon={<InstallMobileIcon />}
-                  onClick={handleInstallApp}
-                  sx={{ alignSelf: "flex-start" }}
-                >
-                  Install app
-                </Button>
+                {canInstall ? (
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    startIcon={<InstallMobileIcon />}
+                    onClick={handleInstallApp}
+                    sx={{ alignSelf: "flex-start" }}
+                  >
+                    Install app
+                  </Button>
+                ) : null}
               </Stack>
 
               <Divider />

@@ -147,9 +147,9 @@ public class TransactionRepository : ITransactionRepository
             .SingleOrDefaultAsync(candidate => candidate.Id == transactionId && candidate.UserId == userId);
     }
 
-    public async Task SaveChangesAsync()
+    public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update)
@@ -203,12 +203,47 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync();
     }
 
-    public async Task<List<Transaction>> GetUncategorizedAsync(string userId)
+    public async Task<List<Guid>> GetUncategorizedIdsAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
     {
         return await _context.Transactions
             .Where(t => t.UserId == userId && t.Category == "Uncategorized")
             .OrderByDescending(t => t.Date)
-            .ToListAsync();
+            .ThenByDescending(t => t.Id)
+            .Select(t => t.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<Transaction>> GetUncategorizedByIdsAsync(
+        string userId,
+        IReadOnlyCollection<Guid> transactionIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (transactionIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await _context.Transactions
+            .Where(transaction =>
+                transaction.UserId == userId &&
+                transaction.Category == "Uncategorized" &&
+                transactionIds.Contains(transaction.Id))
+            .OrderByDescending(transaction => transaction.Date)
+            .ThenByDescending(transaction => transaction.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountUncategorizedAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.Transactions.CountAsync(
+            transaction =>
+                transaction.UserId == userId &&
+                transaction.Category == "Uncategorized",
+            cancellationToken);
     }
 
     public async Task<IEnumerable<Transaction>> GetByMonthAsync(string userId, int year, int month)

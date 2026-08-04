@@ -13,6 +13,7 @@ namespace BudgetBeacon.Api.Controllers;
 [Route("api/[controller]")]
 public class TransactionsController : ControllerBase
 {
+    private const int MaxCategorizationBatchSize = 10;
     private const long MaxTransactionImportSizeBytes = 5 * 1024 * 1024;
     private static readonly HashSet<string> AllowedTransactionImportExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -922,8 +923,27 @@ public class TransactionsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("ai/categorization-candidates")]
+    public async Task<IActionResult> GetCategorizationCandidates(
+        CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to categorize transactions.");
+        }
+
+        var transactionIds = await _repository.GetUncategorizedIdsAsync(
+            userId,
+            cancellationToken);
+
+        return Ok(new { TransactionIds = transactionIds });
+    }
+
     [HttpPost("{transactionId:guid}/ai/categorize")]
-    public async Task<IActionResult> RegenerateCategory(Guid transactionId)
+    public async Task<IActionResult> RegenerateCategory(
+        Guid transactionId,
+        CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -940,7 +960,8 @@ public class TransactionsController : ControllerBase
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
         var categorizationResult = await _aiService.CategorizeTransactionsAsync(
             [transaction],
-            aiLocationContext);
+            aiLocationContext,
+            cancellationToken);
 
         if (categorizationResult.ChangedCount == 0 &&
             categorizationResult.FailedCount > 0)
@@ -952,13 +973,15 @@ public class TransactionsController : ControllerBase
                 "urn:budgetbeacon:external-service");
         }
 
-        await _repository.SaveChangesAsync();
+        await _repository.SaveChangesAsync(cancellationToken);
 
         return Ok(transaction);
     }
 
     [HttpPost("ai/categorize")]
-    public async Task<IActionResult> TriggerCategorization()
+    public async Task<IActionResult> TriggerCategorization(
+        [FromBody] CategorizeTransactionsRequest? request,
+        CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -966,19 +989,46 @@ public class TransactionsController : ControllerBase
             return UnauthorizedProblem("A valid authenticated user is required to categorize transactions.");
         }
 
-        _logger.LogInformation("API triggered AI categorization.");
-
-        var uncategorized = await _repository.GetUncategorizedAsync(userId);
-
-        if (!uncategorized.Any())
+        var transactionIds = request?.TransactionIds ?? [];
+        var hasDuplicateIds = transactionIds.Distinct().Count() != transactionIds.Count;
+        var hasEmptyId = transactionIds.Contains(Guid.Empty);
+        if (transactionIds.Count is < 1 or > MaxCategorizationBatchSize ||
+            hasDuplicateIds ||
+            hasEmptyId)
         {
+            return this.ApiValidationProblem(
+                "Invalid categorization batch",
+                $"Provide between 1 and {MaxCategorizationBatchSize} unique transaction IDs.",
+                errors => errors.AddModelError(
+                    nameof(CategorizeTransactionsRequest.TransactionIds),
+                    $"Transaction IDs must contain between 1 and {MaxCategorizationBatchSize} unique, non-empty values."));
+        }
+
+        _logger.LogInformation(
+            "API triggered AI categorization for a batch of {RequestedCount} transactions.",
+            transactionIds.Count);
+
+        var uncategorized = await _repository.GetUncategorizedByIdsAsync(
+            userId,
+            transactionIds,
+            cancellationToken);
+        var skippedCount = transactionIds.Count - uncategorized.Count;
+
+        if (uncategorized.Count == 0)
+        {
+            var remainingCount = await _repository.CountUncategorizedAsync(
+                userId,
+                cancellationToken);
+
             return Ok(new
             {
-                Message = "All transactions are already categorized. Nothing to do.",
+                Message = "The requested transactions no longer require categorization.",
+                RequestedCount = transactionIds.Count,
                 ProcessedCount = 0,
                 ChangedCount = 0,
                 FailedCount = 0,
-                RemainingCount = 0,
+                SkippedCount = skippedCount,
+                RemainingCount = remainingCount,
                 CategorizedCount = 0
             });
         }
@@ -986,34 +1036,57 @@ public class TransactionsController : ControllerBase
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
         var categorizationResult = await _aiService.CategorizeTransactionsAsync(
             uncategorized,
-            aiLocationContext);
+            aiLocationContext,
+            cancellationToken);
 
         if (categorizationResult.ChangedCount == 0 &&
             categorizationResult.FailedCount > 0)
         {
+            var remainingCount = await _repository.CountUncategorizedAsync(
+                userId,
+                cancellationToken);
+
             return this.ApiProblem(
                 StatusCodes.Status502BadGateway,
                 "Upstream service failure",
                 "The AI provider did not return any valid categorization results.",
-                "urn:budgetbeacon:external-service");
+                "urn:budgetbeacon:external-service",
+                problem =>
+                {
+                    problem.Extensions["requestedCount"] = transactionIds.Count;
+                    problem.Extensions["processedCount"] = categorizationResult.ProcessedCount;
+                    problem.Extensions["changedCount"] = 0;
+                    problem.Extensions["failedCount"] = categorizationResult.FailedCount;
+                    problem.Extensions["skippedCount"] = skippedCount;
+                    problem.Extensions["remainingCount"] = remainingCount;
+                    problem.Extensions["categorizedCount"] = 0;
+                });
         }
 
         if (categorizationResult.ChangedCount > 0)
         {
-            await _repository.SaveChangesAsync();
+            await _repository.SaveChangesAsync(cancellationToken);
         }
+
+        var totalRemainingCount = await _repository.CountUncategorizedAsync(
+            userId,
+            cancellationToken);
 
         var message = categorizationResult.FailedCount > 0
             ? "Categorization partially completed. Some transactions could not be categorized."
-            : "Categorization successful.";
+            : skippedCount > 0
+                ? "Categorization completed. Some requested transactions no longer required categorization."
+                : "Categorization successful.";
 
         return Ok(new
         {
             Message = message,
+            RequestedCount = transactionIds.Count,
             categorizationResult.ProcessedCount,
             categorizationResult.ChangedCount,
             categorizationResult.FailedCount,
-            categorizationResult.RemainingCount,
+            SkippedCount = skippedCount,
+            RemainingCount = totalRemainingCount,
             CategorizedCount = categorizationResult.ChangedCount
         });
     }
@@ -1274,6 +1347,7 @@ public class TransactionsController : ControllerBase
     }
 
     public sealed record UpdateTransactionCategoryRequest(string? Category);
+    public sealed record CategorizeTransactionsRequest(IReadOnlyList<Guid>? TransactionIds);
     public sealed record CreateTransactionRequest(
         DateOnly Date,
         decimal Amount,

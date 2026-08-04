@@ -79,6 +79,10 @@ export const router = createBrowserRouter([
             element: withSuspense(<CreateTransactionPage />),
           },
           {
+            path: "transactions/quick-add",
+            element: withSuspense(<CreateTransactionPage mode="quick" />),
+          },
+          {
             path: "transactions/:transactionId/edit",
             element: withSuspense(<EditTransactionPage />),
           },
