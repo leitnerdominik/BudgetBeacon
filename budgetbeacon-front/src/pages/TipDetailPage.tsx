@@ -216,7 +216,6 @@ export const TipDetailPage = () => {
     error: tipsError,
     isLoading,
     isError,
-    refreshTips,
     asOfDate,
   } = useTips({
     timeframe,
@@ -270,13 +269,11 @@ export const TipDetailPage = () => {
           title={isOnline ? "Tip details are unavailable" : "You're offline"}
           description={
             isOnline
-              ? "We couldn't load this AI tip right now. Please try again."
-              : "Reconnect to the internet and retry to load this AI tip."
+              ? "We couldn't load this generated AI tip right now. Return to the tips page to generate it again."
+              : "Reconnect to the internet, then return to the tips page to generate this tip again."
           }
-          actionLabel="Retry"
-          onAction={() => {
-            void refreshTips();
-          }}
+          actionLabel="View all tips"
+          onAction={handleBack}
         />
       </Box>
     );
@@ -290,7 +287,7 @@ export const TipDetailPage = () => {
         </Button>
         <StatusMessage
           title="Tip not found"
-          description="This tip is no longer available for the selected timeframe."
+          description="This tip is no longer available for the selected timeframe. Generate tips manually from the tips page to create a new set."
           actionLabel="View all tips"
           onAction={handleBack}
         />

@@ -18,8 +18,8 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
-import RefreshIcon from "@mui/icons-material/Refresh";
 
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
@@ -51,12 +51,13 @@ export const TipList = ({
     isFetching,
     isLoading,
     isError,
-    refreshTips,
+    generateTips,
   } = useTips({
     timeframe: selectedTimeframe,
   });
   const isSlowLoading = useSlowLoading(isLoading);
   const hasNoTransactionsForTips = isTipsSourceDataNotFound(tipsError);
+  const hasGeneratedTips = tips !== undefined;
 
   const handleTimeframeChange = (
     _: MouseEvent<HTMLElement>,
@@ -148,19 +149,23 @@ export const TipList = ({
         <Button
           variant="outlined"
           onClick={() => {
-            void refreshTips();
+            void generateTips();
           }}
           disabled={!isOnline || isFetching}
           startIcon={
-            isFetching && !isLoading ? (
+            isFetching ? (
               <CircularProgress size={18} color="inherit" />
             ) : (
-              <RefreshIcon />
+              <AutoAwesomeIcon />
             )
           }
           sx={{ whiteSpace: "nowrap" }}
         >
-          {isFetching && !isLoading ? "Refreshing..." : "Refresh tips"}
+          {isFetching
+            ? "Generating..."
+            : hasGeneratedTips
+              ? "Regenerate tips"
+              : "Generate tips"}
         </Button>
       </Stack>
     </Stack>
@@ -171,7 +176,7 @@ export const TipList = ({
       <Box sx={{ flexGrow: 1 }}>
         {renderHeader()}
         <LoadingState
-          label="Loading AI financial tips..."
+          label="Generating AI financial tips..."
           isOffline={!isOnline}
           isSlow={isSlowLoading}
           minHeight={180}
@@ -217,25 +222,37 @@ export const TipList = ({
           title={isOnline ? "AI tips are currently unavailable" : "You're offline"}
           description={
             isOnline
-              ? "We couldn't load AI financial tips right now. Please try again."
-              : "Reconnect to the internet and retry to load your latest AI financial tips."
+              ? "We couldn't generate AI financial tips right now. Please try again."
+              : "Reconnect to the internet and try generating your AI financial tips again."
           }
-          actionLabel="Retry"
+          actionLabel="Try again"
           onAction={() => {
-            void refreshTips();
+            void generateTips();
           }}
         />
       </Box>
     );
   }
 
-  if (!tips || tips.length === 0) {
+  if (!tips) {
     return (
       <Box sx={{ flexGrow: 1 }}>
         {renderHeader()}
         <StatusMessage
-          title="No AI tips available yet"
-          description="Add fresh transaction data or check back later for new savings recommendations."
+          title="Generate your AI financial tips"
+          description="Choose a timeframe, then use the Generate tips button to create personalized savings recommendations."
+        />
+      </Box>
+    );
+  }
+
+  if (tips.length === 0) {
+    return (
+      <Box sx={{ flexGrow: 1 }}>
+        {renderHeader()}
+        <StatusMessage
+          title="No AI tips were generated"
+          description="Add fresh transaction data or try regenerating your savings recommendations later."
         />
       </Box>
     );

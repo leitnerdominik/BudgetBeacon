@@ -53,11 +53,11 @@ export const Dashboard = () => {
     data: tips,
     error: tipsError,
     isError: isTipsError,
-    isLoading: isLoadingTips,
-    refetch: refetchTips,
+    isFetching: isGeneratingTips,
+    generateTips,
   } = useTips({ showSuccessNotification: false });
   const isTransactionsSlow = useSlowLoading(isLoadingTransactions);
-  const isTipsSlow = useSlowLoading(isLoadingTips);
+  const isTipsSlow = useSlowLoading(isGeneratingTips);
 
   const tipOfTheDay = tips?.[0];
   const hasNoTransactionsForTips = isTipsSourceDataNotFound(tipsError);
@@ -274,14 +274,15 @@ export const Dashboard = () => {
         <Grid size={{ xs: 12, md: 4 }}>
           <TipOfTheDayCard
             tip={tipOfTheDay}
-            isLoading={isLoadingTips}
+            hasGeneratedTips={tips !== undefined}
+            isGenerating={isGeneratingTips}
             isError={isTipsError}
             hasNoTransactionsForTips={hasNoTransactionsForTips}
             isOnline={isOnline}
             isSmallScreen={isSmallScreen}
             isSlow={isTipsSlow}
-            onRetry={() => {
-              void refetchTips();
+            onGenerate={() => {
+              void generateTips();
             }}
           />
         </Grid>

@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { getRegionalTips } from "../../api/tipsApi";
@@ -18,8 +17,6 @@ export const useTips = (options?: UseTipsOptions) => {
   const location = useLocation();
   const { user } = useAuth();
   const { showNotification } = useNotification();
-  const hasShownSuccessRef = useRef(false);
-  const lastErrorMessageRef = useRef<string | null>(null);
   const userId = user?.id;
   const timeframe = options?.timeframe ?? DEFAULT_TIPS_TIMEFRAME;
   const asOfDate = useLocalCalendarDate();
@@ -40,60 +37,46 @@ export const useTips = (options?: UseTipsOptions) => {
 
       return getRegionalTips(timeframe, asOfDate);
     },
-    enabled: !!userId,
+    enabled: false,
     staleTime: Infinity,
     gcTime: 1000 * 60 * 60 * 24,
-    refetchOnMount: true,
+    refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
 
-  const refreshTips = () => query.refetch();
+  const generateTips = async () => {
+    const result = await query.refetch();
 
-  useEffect(() => {
     if (
       shouldShowSuccessNotification &&
-      query.isSuccess &&
-      query.data.length > 0 &&
-      !hasShownSuccessRef.current
+      result.isSuccess &&
+      result.data.length > 0
     ) {
-      hasShownSuccessRef.current = true;
       showNotification({
         severity: "success",
-        message: `${query.data.length} AI tip(s) loaded successfully.`,
+        message: `${result.data.length} AI tip(s) generated successfully.`,
       });
     }
-  }, [query.data, query.isSuccess, shouldShowSuccessNotification, showNotification]);
 
-  useEffect(() => {
-    if (!shouldShowErrorNotification) {
-      return;
+    if (shouldShowErrorNotification && result.isError) {
+      const message =
+        result.error instanceof Error
+          ? result.error.message
+          : "Could not generate AI tips.";
+
+      showNotification({
+        severity: "error",
+        message,
+      });
     }
 
-    if (!query.isError) {
-      lastErrorMessageRef.current = null;
-      return;
-    }
-
-    const message =
-      query.error instanceof Error
-        ? query.error.message
-        : "Could not load AI tips.";
-
-    if (lastErrorMessageRef.current === message) {
-      return;
-    }
-
-    lastErrorMessageRef.current = message;
-    showNotification({
-      severity: "error",
-      message,
-    });
-  }, [query.error, query.isError, shouldShowErrorNotification, showNotification]);
+    return result;
+  };
 
   return {
     ...query,
-    refreshTips,
+    generateTips,
     asOfDate,
   };
 };
