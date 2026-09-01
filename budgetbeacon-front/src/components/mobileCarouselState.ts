@@ -48,12 +48,28 @@ export const getCarouselScrollTransition = (
   activeIndex: number,
   observedIndex: number,
   programmaticTargetIndex: number | null,
+  hasSettled = false,
 ): CarouselScrollTransition => {
   if (programmaticTargetIndex !== null) {
+    if (observedIndex === programmaticTargetIndex) {
+      return {
+        activeIndex,
+        programmaticTargetIndex: null,
+        shouldNotify: false,
+      };
+    }
+
+    if (hasSettled) {
+      return {
+        activeIndex: observedIndex,
+        programmaticTargetIndex: null,
+        shouldNotify: observedIndex !== activeIndex,
+      };
+    }
+
     return {
       activeIndex,
-      programmaticTargetIndex:
-        observedIndex === programmaticTargetIndex ? null : programmaticTargetIndex,
+      programmaticTargetIndex,
       shouldNotify: false,
     };
   }

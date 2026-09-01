@@ -14,6 +14,8 @@ import {
   resolveCarouselActiveIndex,
 } from "./mobileCarouselState";
 
+const scrollIdleDelayMs = 150;
+
 export type MobileStatisticsCarouselSlide = {
   id: string;
   label: string;
@@ -47,6 +49,7 @@ export const MobileStatisticsCarousel = ({
   const visibleIndexRef = useRef(controlledActiveIndex);
   const slideIdsRef = useRef(slideIds);
   const animationFrameRef = useRef<number | null>(null);
+  const scrollIdleTimerRef = useRef<number | null>(null);
   const programmaticTargetIndexRef = useRef<number | null>(null);
   const hasAlignedViewportRef = useRef(false);
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -71,6 +74,13 @@ export const MobileStatisticsCarousel = ({
     );
   }, []);
 
+  const clearScrollIdleTimer = useCallback(() => {
+    if (scrollIdleTimerRef.current !== null) {
+      window.clearTimeout(scrollIdleTimerRef.current);
+      scrollIdleTimerRef.current = null;
+    }
+  }, []);
+
   const navigateToIndex = useCallback(
     (requestedIndex: number, behavior: ScrollBehavior) => {
       const currentSlideIds = slideIdsRef.current;
@@ -87,6 +97,7 @@ export const MobileStatisticsCarousel = ({
       const previousId = currentSlideIds[visibleIndexRef.current];
 
       if (targetId !== previousId) {
+        clearScrollIdleTimer();
         programmaticTargetIndexRef.current = targetIndex;
         updateVisibleIndex(targetIndex);
         onActiveSlideChange(targetId);
@@ -100,7 +111,7 @@ export const MobileStatisticsCarousel = ({
         });
       }
     },
-    [onActiveSlideChange, updateVisibleIndex],
+    [clearScrollIdleTimer, onActiveSlideChange, updateVisibleIndex],
   );
 
   useEffect(() => {
@@ -108,6 +119,7 @@ export const MobileStatisticsCarousel = ({
       return;
     }
 
+    clearScrollIdleTimer();
     programmaticTargetIndexRef.current = controlledActiveIndex;
     visibleIndexRef.current = controlledActiveIndex;
 
@@ -120,25 +132,10 @@ export const MobileStatisticsCarousel = ({
     }
 
     hasAlignedViewportRef.current = true;
-  }, [controlledActiveIndex, controlledStateKey, prefersReducedMotion]);
+  }, [clearScrollIdleTimer, controlledActiveIndex, controlledStateKey, prefersReducedMotion]);
 
-  useEffect(
-    () => () => {
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current);
-      }
-    },
-    [],
-  );
-
-  const handleScroll = useCallback(() => {
-    if (animationFrameRef.current !== null) {
-      return;
-    }
-
-    animationFrameRef.current = window.requestAnimationFrame(() => {
-      animationFrameRef.current = null;
-
+  const reconcileScrollPosition = useCallback(
+    (hasSettled: boolean) => {
       const viewport = viewportRef.current;
       if (viewport === null) {
         return;
@@ -158,6 +155,7 @@ export const MobileStatisticsCarousel = ({
         visibleIndexRef.current,
         nextIndex,
         programmaticTargetIndexRef.current,
+        hasSettled,
       );
       programmaticTargetIndexRef.current = transition.programmaticTargetIndex;
 
@@ -165,8 +163,38 @@ export const MobileStatisticsCarousel = ({
         updateVisibleIndex(transition.activeIndex);
         onActiveSlideChange(nextId);
       }
+    },
+    [onActiveSlideChange, updateVisibleIndex],
+  );
+
+  useEffect(
+    () => () => {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+      }
+
+      clearScrollIdleTimer();
+    },
+    [clearScrollIdleTimer],
+  );
+
+  const handleScroll = useCallback(() => {
+    clearScrollIdleTimer();
+    scrollIdleTimerRef.current = window.setTimeout(() => {
+      scrollIdleTimerRef.current = null;
+      reconcileScrollPosition(true);
+    }, scrollIdleDelayMs);
+
+    if (animationFrameRef.current !== null) {
+      return;
+    }
+
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+
+      reconcileScrollPosition(false);
     });
-  }, [onActiveSlideChange, updateVisibleIndex]);
+  }, [clearScrollIdleTimer, reconcileScrollPosition]);
 
   const movementBehavior: ScrollBehavior = prefersReducedMotion ? "auto" : "smooth";
   const rootSx = {
@@ -176,9 +204,6 @@ export const MobileStatisticsCarousel = ({
   } satisfies SxProps<Theme>;
   const combinedSx: SxProps<Theme> =
     sx === undefined ? rootSx : Array.isArray(sx) ? [rootSx, ...sx] : [rootSx, sx];
-  const clearProgrammaticTarget = () => {
-    programmaticTargetIndexRef.current = null;
-  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) {
@@ -211,9 +236,7 @@ export const MobileStatisticsCarousel = ({
       tabIndex={0}
     >
       <Box
-        onPointerDown={clearProgrammaticTarget}
         onScroll={handleScroll}
-        onWheel={clearProgrammaticTarget}
         ref={viewportRef}
         sx={{
           display: "flex",

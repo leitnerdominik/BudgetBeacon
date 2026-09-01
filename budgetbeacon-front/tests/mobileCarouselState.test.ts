@@ -75,3 +75,17 @@ test("reports native user scrolls after programmatic suppression is cleared", ()
     shouldNotify: false,
   });
 });
+
+test("adopts an interrupted programmatic scroll once it settles away from its target", () => {
+  assert.deepEqual(getCarouselScrollTransition(2, 1, 2, true), {
+    activeIndex: 1,
+    programmaticTargetIndex: null,
+    shouldNotify: true,
+  });
+
+  assert.deepEqual(getCarouselScrollTransition(2, 2, 2, true), {
+    activeIndex: 2,
+    programmaticTargetIndex: null,
+    shouldNotify: false,
+  });
+});
