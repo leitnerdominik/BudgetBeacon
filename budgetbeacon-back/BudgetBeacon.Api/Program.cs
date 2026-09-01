@@ -250,6 +250,7 @@ try
 
     builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
     builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
+    builder.Services.AddScoped<DevelopmentDataSeeder>();
     builder.Services.AddScoped<FinanceAggregationService>();
     builder.Services.AddScoped<StatisticsAggregationService>();
     builder.Services.AddScoped<TransactionImportDescriptionRedactionService>();
@@ -371,6 +372,32 @@ try
                 .ForContext("EventName", ObservabilityEventIds.DatabaseMigrationFailed.Name)
                 .Fatal(ex, "Database migration failed during startup.");
             throw;
+        }
+
+        if (app.Environment.IsDevelopment())
+        {
+            var seedOptions = app.Configuration
+                .GetSection(DevelopmentSeedOptions.SectionName)
+                .Get<DevelopmentSeedOptions>() ?? new DevelopmentSeedOptions();
+
+            if (seedOptions.Enabled)
+            {
+                try
+                {
+                    var seeder = scope.ServiceProvider.GetRequiredService<DevelopmentDataSeeder>();
+                    var result = await seeder.SeedAsync(seedOptions, DateTime.UtcNow);
+
+                    Log.Information(
+                        "Development data seed completed. Account created: {AccountCreated}; transactions inserted: {TransactionsInserted}.",
+                        result.AccountCreated,
+                        result.TransactionsInserted);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Development data seeding failed during startup.");
+                    throw;
+                }
+            }
         }
     }
 

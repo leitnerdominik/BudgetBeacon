@@ -1,27 +1,6 @@
 import { useMemo } from "react";
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  IconButton,
-  Stack,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
-import Grid from "@mui/material/Grid";
+import { Box, useMediaQuery, useTheme } from "@mui/material";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
-import BarChartIcon from "@mui/icons-material/BarChart";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SavingsIcon from "@mui/icons-material/Savings";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
@@ -37,12 +16,9 @@ import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
 import { formatCurrency } from "../../utils/formatDate";
 import { buildTransactionListSearchParams } from "../transactions/transactionListUrlState";
-import { CategoryBreakdown } from "./CategoryBreakdown";
-import { MonthComparison } from "./MonthComparison";
-import { MonthlyTrend } from "./MonthlyTrend";
-import { RecurringExpenses } from "./RecurringExpenses";
-import { SpendingPace } from "./SpendingPace";
-import { TopExpenses } from "./TopExpenses";
+import { DesktopStatisticsView } from "./DesktopStatisticsView";
+import { StatisticsPeriodControls } from "./StatisticsPeriodControls";
+import type { StatisticsMetric } from "./StatisticsMetricGrid";
 import {
   buildStatisticsSearchParams,
   formatPeriodLabel,
@@ -50,19 +26,10 @@ import {
   parseMonthInputValue,
   parseTimeframeValue,
   shiftMonth,
-  STATISTICS_TIMEFRAME_OPTIONS,
-  toMonthInputValue,
   type MonthReference,
   type StatisticsTimeframeValue,
 } from "./statisticsPeriod";
 import { useStatistics } from "./useStatistics";
-
-type MetricCard = {
-  color: string;
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-};
 
 const percentFormatter = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 1,
@@ -71,9 +38,6 @@ const percentFormatter = new Intl.NumberFormat("de-DE", {
 
 const formatSavingsRate = (value: number | null) =>
   value === null ? "N/A" : `${percentFormatter.format(value)} %`;
-
-const formatOptionalCurrency = (value: number | undefined) =>
-  value === undefined ? "N/A" : formatCurrency(value);
 
 const toTransactionFilterDate = (value: string | null | undefined) =>
   value ? value.slice(0, 10) : "";
@@ -120,7 +84,7 @@ export const MonthlyOverview = () => {
   const isSlow = useSlowLoading(isLoading);
   const summary = data?.summary;
 
-  const metrics = useMemo<MetricCard[]>(() => {
+  const metrics = useMemo<StatisticsMetric[]>(() => {
     const income = summary?.totalIncome ?? 0;
     const expenses = Math.abs(summary?.totalExpense ?? 0);
     const netBalance = summary?.netBalance ?? 0;
@@ -167,10 +131,6 @@ export const MonthlyOverview = () => {
     ];
   }, [summary]);
 
-  const hasTransactions = (summary?.transactionCount ?? 0) > 0;
-  const excludedTotal =
-    (summary?.internalTransferTotal ?? 0) + (summary?.adjustmentTotal ?? 0);
-
   const updatePeriodSearchParams = (
     nextTimeframe: StatisticsTimeframeValue,
     nextSelectedMonth: MonthReference,
@@ -202,7 +162,7 @@ export const MonthlyOverview = () => {
   };
 
   const handleCategorySelect = (category: string) => {
-    const searchParams = buildTransactionListSearchParams({
+    const transactionSearchParams = buildTransactionListSearchParams({
       page: 0,
       pageSize: 10,
       query: {
@@ -214,147 +174,23 @@ export const MonthlyOverview = () => {
       },
     });
 
-    navigate(`/transactions?${searchParams.toString()}`);
+    navigate(`/transactions?${transactionSearchParams.toString()}`);
   };
 
   return (
     <Box sx={{ flexGrow: 1, minWidth: 0, maxWidth: "100%" }}>
-      <Stack
-        direction={{ xs: "column", md: "row" }}
-        spacing={{ xs: 1.75, sm: 2 }}
-        justifyContent="space-between"
-        alignItems={{ xs: "stretch", md: "flex-start" }}
-        sx={{ mb: { xs: 2, sm: 3 }, minWidth: 0, maxWidth: "100%" }}
-      >
-        <Box sx={{ minWidth: 0 }}>
-          <Stack direction="row" spacing={1.25} alignItems="center">
-            <Box
-              aria-hidden="true"
-              sx={{
-                width: { xs: 34, sm: 38 },
-                height: { xs: 34, sm: 38 },
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
-                borderRadius: 1,
-                color: "primary.dark",
-                bgcolor: "primary.light",
-                border: "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <BarChartIcon fontSize={isSmallScreen ? "small" : "medium"} />
-            </Box>
-            <Typography variant={isSmallScreen ? "h5" : "h4"} fontWeight={700}>
-              Statistics
-            </Typography>
-          </Stack>
-          <Typography
-            variant="body1"
-            color="text.secondary"
-            sx={{ mt: 0.75, overflowWrap: "anywhere" }}
-          >
-            {periodLabel}
-          </Typography>
-        </Box>
-
-        <Stack
-          spacing={1}
-          alignItems={{ xs: "stretch", md: "flex-end" }}
-          sx={{ width: { xs: "100%", md: "auto" }, minWidth: 0, maxWidth: "100%" }}
-        >
-          <ToggleButtonGroup
-            value={timeframe}
-            exclusive
-            onChange={(_, value: StatisticsTimeframeValue | null) => {
-              if (value) {
-                handleTimeframeChange(value);
-              }
-            }}
-            aria-label="Statistics timeframe"
-            size="small"
-            sx={{
-              width: { xs: "100%", md: "auto" },
-              flexWrap: "wrap",
-              "& .MuiToggleButton-root": {
-                flex: { xs: "1 1 calc(50% - 1px)", sm: "initial" },
-                minWidth: { xs: 0, sm: "auto" },
-                px: { xs: 1, sm: 1.5 },
-                whiteSpace: "nowrap",
-              },
-            }}
-          >
-            {STATISTICS_TIMEFRAME_OPTIONS.map((option) => (
-              <ToggleButton
-                key={option.value}
-                value={option.value}
-                aria-label={option.label}
-              >
-                {option.label}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-
-          {!isAllTime ? (
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={1}
-              alignItems={{ xs: "stretch", sm: "center" }}
-              sx={{
-                width: { xs: "100%", sm: "auto" },
-                minWidth: 0,
-                p: { xs: 1, sm: 0 },
-                border: { xs: "1px solid", sm: "none" },
-                borderColor: "divider",
-                borderRadius: { xs: 1, sm: 0 },
-                bgcolor: { xs: "background.paper", sm: "transparent" },
-              }}
-            >
-              <Stack direction="row" spacing={0.75} sx={{ minWidth: 0 }}>
-                <Tooltip title="Previous month">
-                  <IconButton
-                    aria-label="Previous month"
-                    onClick={() => handleMonthShift(-1)}
-                    sx={{ flex: { xs: 1, sm: "initial" } }}
-                  >
-                    <ChevronLeftIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Next month">
-                  <IconButton
-                    aria-label="Next month"
-                    onClick={() => handleMonthShift(1)}
-                    sx={{ flex: { xs: 1, sm: "initial" } }}
-                  >
-                    <ChevronRightIcon />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-              <TextField
-                label={isMonthlyView ? "Month" : "End month"}
-                type="month"
-                size="small"
-                value={toMonthInputValue(selectedMonth)}
-                onChange={(event) => handleMonthChange(event.target.value)}
-                inputProps={{
-                  min: "2000-01",
-                  max: "2100-12",
-                }}
-                InputLabelProps={{ shrink: true }}
-                sx={{ minWidth: 0, width: { xs: "100%", sm: 170 } }}
-              />
-              <Button
-                variant="outlined"
-                startIcon={<CalendarMonthIcon />}
-                onClick={handleCurrentMonthSelect}
-                sx={{ whiteSpace: "nowrap", width: { xs: "100%", sm: "auto" } }}
-              >
-                Current
-              </Button>
-            </Stack>
-          ) : null}
-        </Stack>
-      </Stack>
+      <StatisticsPeriodControls
+        timeframe={timeframe}
+        selectedMonth={selectedMonth}
+        periodLabel={periodLabel}
+        isSmallScreen={isSmallScreen}
+        isAllTime={isAllTime}
+        isMonthlyView={isMonthlyView}
+        onTimeframeChange={handleTimeframeChange}
+        onMonthChange={handleMonthChange}
+        onMonthShift={handleMonthShift}
+        onCurrentMonthSelect={handleCurrentMonthSelect}
+      />
 
       {isLoading ? (
         <LoadingState
@@ -378,203 +214,17 @@ export const MonthlyOverview = () => {
           minHeight={340}
         />
       ) : (
-        <>
-          {isFetching ? (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 1.5 }}
-            >
-              Refreshing statistics...
-            </Typography>
-          ) : null}
-
-          <Grid container spacing={{ xs: 1.25, sm: 2 }}>
-            {metrics.map((metric) => (
-              <Grid size={{ xs: 6, sm: 6, lg: 2 }} key={metric.label}>
-                <Card
-                  elevation={1}
-                  sx={{
-                    height: "100%",
-                    borderRadius: 1,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    overflow: "hidden",
-                  }}
-                >
-                  <CardContent sx={{ p: { xs: 1.5, sm: 2.25 } }}>
-                    <Stack spacing={{ xs: 1, sm: 1.5 }}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                        justifyContent="space-between"
-                      >
-                        <Typography variant="overline" color="text.secondary">
-                          {metric.label}
-                        </Typography>
-                        <Box sx={{ color: metric.color, display: "flex" }}>
-                          {metric.icon}
-                        </Box>
-                      </Stack>
-                      <Typography
-                        variant={isSmallScreen ? "h6" : "h5"}
-                        fontWeight={700}
-                        color={metric.color}
-                        sx={{
-                          fontSize: { xs: "1rem", sm: "1.5rem" },
-                          lineHeight: 1.2,
-                          overflowWrap: "anywhere",
-                        }}
-                      >
-                        {metric.value}
-                      </Typography>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-
-          <Card
-            elevation={1}
-            sx={{
-              mt: 2,
-              borderRadius: 1,
-              border: "1px solid",
-              borderColor: "divider",
-            }}
-          >
-            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1.5}
-                alignItems={{ xs: "flex-start", sm: "center" }}
-                justifyContent="space-between"
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="h6" fontWeight={700}>
-                    Period Overview
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ overflowWrap: "anywhere" }}
-                  >
-                    {hasTransactions
-                      ? `Income, expenses and balance for ${periodLabel}.`
-                      : `No transactions found for ${periodLabel}.`}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={
-                    excludedTotal > 0
-                      ? `Excluded ${formatCurrency(excludedTotal)}`
-                      : hasTransactions
-                        ? "Data available"
-                        : "No data"
-                  }
-                  color={excludedTotal > 0 ? "default" : hasTransactions ? "success" : "default"}
-                  variant={hasTransactions && excludedTotal === 0 ? "filled" : "outlined"}
-                />
-              </Stack>
-              {excludedTotal > 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Internal transfers and adjustments are excluded from income,
-                  expenses, net balance, savings rate, and spending charts.
-                </Typography>
-              ) : null}
-
-              <Divider sx={{ my: 2 }} />
-
-              <Grid container spacing={{ xs: 1.5, sm: 2 }}>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Average Monthly Income
-                  </Typography>
-                  <Typography variant="h6" fontWeight={700}>
-                    {formatOptionalCurrency(data?.monthlyTotals?.averageIncome)}
-                  </Typography>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Median Monthly Income
-                  </Typography>
-                  <Typography variant="h6" fontWeight={700}>
-                    {formatOptionalCurrency(data?.monthlyTotals?.medianIncome)}
-                  </Typography>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Average Monthly Expenses
-                  </Typography>
-                  <Typography variant="h6" fontWeight={700}>
-                    {formatOptionalCurrency(data?.monthlyTotals?.averageExpense)}
-                  </Typography>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Median Monthly Expenses
-                  </Typography>
-                  <Typography variant="h6" fontWeight={700}>
-                    {formatOptionalCurrency(data?.monthlyTotals?.medianExpense)}
-                  </Typography>
-                </Grid>
-              </Grid>
-
-              <Divider sx={{ my: 2 }} />
-
-              <Grid container spacing={{ xs: 1.5, sm: 2 }}>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Expense Ratio
-                  </Typography>
-                  <Typography variant="h6" fontWeight={700}>
-                    {summary && summary.totalIncome > 0
-                      ? formatSavingsRate(
-                          (Math.abs(summary.totalExpense) / summary.totalIncome) * 100,
-                        )
-                      : "N/A"}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-
-          {isMonthlyView ? (
-            <>
-              <SpendingPace month={selectedMonth} summary={summary} />
-              {summary && data?.previousMonthSummary ? (
-                <MonthComparison
-                  month={selectedMonth}
-                  current={summary}
-                  previous={data.previousMonthSummary}
-                />
-              ) : null}
-            </>
-          ) : null}
-
-          <CategoryBreakdown
-            categories={data?.categories ?? []}
-            onCategorySelect={handleCategorySelect}
-            periodLabel={periodLabel}
-          />
-
-          <TopExpenses expenses={data?.topExpenses ?? []} periodLabel={periodLabel} />
-
-          {!isMonthlyView ? (
-            <RecurringExpenses
-              candidates={data?.recurringExpenses ?? []}
-              periodLabel={periodLabel}
-            />
-          ) : null}
-
-          <MonthlyTrend
-            points={data?.trend ?? []}
-            granularity={data?.trendGranularity ?? (isAllTime ? "year" : "month")}
-            periodLabel={periodLabel}
-          />
-        </>
+        <DesktopStatisticsView
+          data={data}
+          metrics={metrics}
+          selectedMonth={selectedMonth}
+          periodLabel={periodLabel}
+          isAllTime={isAllTime}
+          isMonthlyView={isMonthlyView}
+          isFetching={isFetching}
+          isSmallScreen={isSmallScreen}
+          onCategorySelect={handleCategorySelect}
+        />
       )}
     </Box>
   );
