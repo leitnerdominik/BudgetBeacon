@@ -4,12 +4,12 @@ import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import type { SystemStyleObject } from "@mui/system/styleFunctionSx";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { SxProps, Theme } from "@mui/material/styles";
 
 import {
   getAdjacentCarouselIndex,
+  getCarouselScrollTransition,
   getNearestCarouselIndex,
   resolveCarouselActiveIndex,
 } from "./mobileCarouselState";
@@ -47,6 +47,7 @@ export const MobileStatisticsCarousel = ({
   const visibleIndexRef = useRef(controlledActiveIndex);
   const slideIdsRef = useRef(slideIds);
   const animationFrameRef = useRef<number | null>(null);
+  const programmaticTargetIndexRef = useRef<number | null>(null);
   const hasAlignedViewportRef = useRef(false);
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
@@ -84,9 +85,10 @@ export const MobileStatisticsCarousel = ({
       }
 
       const previousId = currentSlideIds[visibleIndexRef.current];
-      updateVisibleIndex(targetIndex);
 
       if (targetId !== previousId) {
+        programmaticTargetIndexRef.current = targetIndex;
+        updateVisibleIndex(targetIndex);
         onActiveSlideChange(targetId);
       }
 
@@ -106,6 +108,7 @@ export const MobileStatisticsCarousel = ({
       return;
     }
 
+    programmaticTargetIndexRef.current = controlledActiveIndex;
     visibleIndexRef.current = controlledActiveIndex;
 
     const viewport = viewportRef.current;
@@ -147,29 +150,35 @@ export const MobileStatisticsCarousel = ({
         slideIdsRef.current.length,
       );
       const nextId = slideIdsRef.current[nextIndex];
-      const previousId = slideIdsRef.current[visibleIndexRef.current];
-
-      if (nextId === undefined || nextId === previousId) {
+      if (nextId === undefined) {
         return;
       }
 
-      updateVisibleIndex(nextIndex);
-      onActiveSlideChange(nextId);
+      const transition = getCarouselScrollTransition(
+        visibleIndexRef.current,
+        nextIndex,
+        programmaticTargetIndexRef.current,
+      );
+      programmaticTargetIndexRef.current = transition.programmaticTargetIndex;
+
+      if (transition.shouldNotify) {
+        updateVisibleIndex(transition.activeIndex);
+        onActiveSlideChange(nextId);
+      }
     });
   }, [onActiveSlideChange, updateVisibleIndex]);
 
   const movementBehavior: ScrollBehavior = prefersReducedMotion ? "auto" : "smooth";
-  const rootSx: SystemStyleObject<Theme> = {
+  const rootSx = {
     display: "flex",
     flexDirection: "column",
     height: "100%",
-  };
+  } satisfies SxProps<Theme>;
   const combinedSx: SxProps<Theme> =
-    sx === undefined
-      ? rootSx
-      : Array.isArray(sx)
-        ? [rootSx, ...sx]
-        : [rootSx, sx];
+    sx === undefined ? rootSx : Array.isArray(sx) ? [rootSx, ...sx] : [rootSx, sx];
+  const clearProgrammaticTarget = () => {
+    programmaticTargetIndexRef.current = null;
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) {
@@ -202,7 +211,9 @@ export const MobileStatisticsCarousel = ({
       tabIndex={0}
     >
       <Box
+        onPointerDown={clearProgrammaticTarget}
         onScroll={handleScroll}
+        onWheel={clearProgrammaticTarget}
         ref={viewportRef}
         sx={{
           display: "flex",

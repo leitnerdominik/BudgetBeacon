@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getAdjacentCarouselIndex,
+  getCarouselScrollTransition,
   getNearestCarouselIndex,
   resolveCarouselActiveIndex,
 } from "../src/components/mobileCarouselState.ts";
@@ -45,4 +46,32 @@ test("clamps negative and excessive scroll offsets to valid slides", () => {
 test("returns no nearest index without slides or a positive viewport width", () => {
   assert.equal(getNearestCarouselIndex(0, 100, 0), -1);
   assert.equal(getNearestCarouselIndex(0, 0, 3), -1);
+});
+
+test("suppresses intermediate programmatic scroll positions until the latest target is reached", () => {
+  assert.deepEqual(getCarouselScrollTransition(2, 0, 2), {
+    activeIndex: 2,
+    programmaticTargetIndex: 2,
+    shouldNotify: false,
+  });
+
+  assert.deepEqual(getCarouselScrollTransition(2, 2, 2), {
+    activeIndex: 2,
+    programmaticTargetIndex: null,
+    shouldNotify: false,
+  });
+});
+
+test("reports native user scrolls after programmatic suppression is cleared", () => {
+  assert.deepEqual(getCarouselScrollTransition(2, 1, null), {
+    activeIndex: 1,
+    programmaticTargetIndex: null,
+    shouldNotify: true,
+  });
+
+  assert.deepEqual(getCarouselScrollTransition(1, 1, null), {
+    activeIndex: 1,
+    programmaticTargetIndex: null,
+    shouldNotify: false,
+  });
 });

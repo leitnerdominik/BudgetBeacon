@@ -37,3 +37,30 @@ export const getNearestCarouselIndex = (
 
   return clampCarouselIndex(Math.round(scrollLeft / viewportWidth), slideCount);
 };
+
+export type CarouselScrollTransition = {
+  activeIndex: number;
+  programmaticTargetIndex: number | null;
+  shouldNotify: boolean;
+};
+
+export const getCarouselScrollTransition = (
+  activeIndex: number,
+  observedIndex: number,
+  programmaticTargetIndex: number | null,
+): CarouselScrollTransition => {
+  if (programmaticTargetIndex !== null) {
+    return {
+      activeIndex,
+      programmaticTargetIndex:
+        observedIndex === programmaticTargetIndex ? null : programmaticTargetIndex,
+      shouldNotify: false,
+    };
+  }
+
+  return {
+    activeIndex: observedIndex,
+    programmaticTargetIndex: null,
+    shouldNotify: observedIndex !== activeIndex,
+  };
+};
