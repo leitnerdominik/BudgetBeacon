@@ -43,7 +43,19 @@ import { MonthlyTrend } from "./MonthlyTrend";
 import { RecurringExpenses } from "./RecurringExpenses";
 import { SpendingPace } from "./SpendingPace";
 import { TopExpenses } from "./TopExpenses";
-import { useStatistics, type MonthReference } from "./useStatistics";
+import {
+  buildStatisticsSearchParams,
+  formatPeriodLabel,
+  getCurrentMonthSelection,
+  parseMonthInputValue,
+  parseTimeframeValue,
+  shiftMonth,
+  STATISTICS_TIMEFRAME_OPTIONS,
+  toMonthInputValue,
+  type MonthReference,
+  type StatisticsTimeframeValue,
+} from "./statisticsPeriod";
+import { useStatistics } from "./useStatistics";
 
 type MetricCard = {
   color: string;
@@ -52,112 +64,10 @@ type MetricCard = {
   value: string | number;
 };
 
-type TimeframeValue = "all" | "12" | "6" | "3" | "1";
-
-const timeframeOptions: Array<{ label: string; value: TimeframeValue }> = [
-  { value: "all", label: "All time" },
-  { value: "12", label: "1 year" },
-  { value: "6", label: "6 months" },
-  { value: "3", label: "3 months" },
-  { value: "1", label: "1 month" },
-];
-
-const timeframeValues = new Set<TimeframeValue>(
-  timeframeOptions.map((option) => option.value),
-);
-
-const monthFormatter = new Intl.DateTimeFormat("de-DE", {
-  month: "long",
-  year: "numeric",
-});
-
 const percentFormatter = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 0,
 });
-
-const getCurrentMonthSelection = (): MonthReference => {
-  const today = new Date();
-
-  return {
-    month: today.getMonth() + 1,
-    year: today.getFullYear(),
-  };
-};
-
-const toMonthInputValue = ({ month, year }: MonthReference) =>
-  `${year}-${String(month).padStart(2, "0")}`;
-
-const parseMonthInputValue = (value: string): MonthReference | null => {
-  const [yearValue, monthValue] = value.split("-");
-  const year = Number(yearValue);
-  const month = Number(monthValue);
-
-  if (!Number.isInteger(year) || !Number.isInteger(month)) {
-    return null;
-  }
-
-  if (year < 2000 || year > 2100 || month < 1 || month > 12) {
-    return null;
-  }
-
-  return { year, month };
-};
-
-const parseTimeframeValue = (value: string | null): TimeframeValue =>
-  value && timeframeValues.has(value as TimeframeValue)
-    ? (value as TimeframeValue)
-    : "1";
-
-const buildStatisticsSearchParams = (
-  currentSearchParams: URLSearchParams,
-  timeframe: TimeframeValue,
-  selectedMonth: MonthReference,
-) => {
-  const params = new URLSearchParams(currentSearchParams);
-
-  params.set("timeframe", timeframe);
-
-  if (timeframe === "all") {
-    params.delete("month");
-  } else {
-    params.set("month", toMonthInputValue(selectedMonth));
-  }
-
-  return params;
-};
-
-const shiftMonth = (
-  { month, year }: MonthReference,
-  offset: number,
-): MonthReference => {
-  const date = new Date(year, month - 1 + offset, 1);
-
-  return {
-    month: date.getMonth() + 1,
-    year: date.getFullYear(),
-  };
-};
-
-const formatMonthLabel = ({ month, year }: MonthReference) =>
-  monthFormatter.format(new Date(year, month - 1, 1));
-
-const formatPeriodLabel = (
-  timeframe: TimeframeValue,
-  endMonth: MonthReference,
-) => {
-  if (timeframe === "all") {
-    return "All time";
-  }
-
-  const monthCount = Number(timeframe);
-  if (monthCount === 1) {
-    return formatMonthLabel(endMonth);
-  }
-
-  const startMonth = shiftMonth(endMonth, -monthCount + 1);
-  return `${formatMonthLabel(startMonth)} - ${formatMonthLabel(endMonth)}`;
-};
 
 const formatSavingsRate = (value: number | null) =>
   value === null ? "N/A" : `${percentFormatter.format(value)} %`;
@@ -262,7 +172,7 @@ export const MonthlyOverview = () => {
     (summary?.internalTransferTotal ?? 0) + (summary?.adjustmentTotal ?? 0);
 
   const updatePeriodSearchParams = (
-    nextTimeframe: TimeframeValue,
+    nextTimeframe: StatisticsTimeframeValue,
     nextSelectedMonth: MonthReference,
   ) => {
     setSearchParams(
@@ -279,7 +189,7 @@ export const MonthlyOverview = () => {
     }
   };
 
-  const handleTimeframeChange = (value: TimeframeValue) => {
+  const handleTimeframeChange = (value: StatisticsTimeframeValue) => {
     updatePeriodSearchParams(value, selectedMonth);
   };
 
@@ -356,7 +266,7 @@ export const MonthlyOverview = () => {
           <ToggleButtonGroup
             value={timeframe}
             exclusive
-            onChange={(_, value: TimeframeValue | null) => {
+            onChange={(_, value: StatisticsTimeframeValue | null) => {
               if (value) {
                 handleTimeframeChange(value);
               }
@@ -374,7 +284,7 @@ export const MonthlyOverview = () => {
               },
             }}
           >
-            {timeframeOptions.map((option) => (
+            {STATISTICS_TIMEFRAME_OPTIONS.map((option) => (
               <ToggleButton
                 key={option.value}
                 value={option.value}

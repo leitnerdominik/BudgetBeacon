@@ -13,7 +13,7 @@ import SpeedIcon from "@mui/icons-material/Speed";
 import { StatusMessage } from "../../components/AsyncState";
 import type { MonthlySummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
-import type { MonthReference } from "./useStatistics";
+import type { MonthReference } from "./statisticsPeriod";
 
 type SpendingPaceProps = {
   month: MonthReference;

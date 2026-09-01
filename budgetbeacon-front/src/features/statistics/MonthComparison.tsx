@@ -11,7 +11,7 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 
 import type { MonthlySummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
-import type { MonthReference } from "./useStatistics";
+import { shiftMonth, type MonthReference } from "./statisticsPeriod";
 
 type MonthComparisonProps = {
   current: MonthlySummary;
@@ -36,11 +36,6 @@ const percentFormatter = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 0,
 });
-
-const shiftMonth = ({ month, year }: MonthReference, offset: number) => {
-  const date = new Date(year, month - 1 + offset, 1);
-  return { month: date.getMonth() + 1, year: date.getFullYear() };
-};
 
 const formatShortMonthLabel = ({ month, year }: MonthReference) =>
   shortMonthFormatter.format(new Date(year, month - 1, 1));
