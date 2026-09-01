@@ -1,6 +1,8 @@
 const clampCarouselIndex = (index: number, slideCount: number): number =>
   Math.min(Math.max(index, 0), slideCount - 1);
 
+const carouselAlignmentTolerancePx = 1;
+
 export const resolveCarouselActiveIndex = (
   slideIds: readonly string[],
   activeSlideId: string | null,
@@ -36,6 +38,22 @@ export const getNearestCarouselIndex = (
   }
 
   return clampCarouselIndex(Math.round(scrollLeft / viewportWidth), slideCount);
+};
+
+export const getCarouselProgrammaticTargetIndex = (
+  scrollLeft: number,
+  viewportWidth: number,
+  targetIndex: number,
+): number | null => {
+  if (viewportWidth <= 0) {
+    return null;
+  }
+
+  const targetScrollLeft = targetIndex * viewportWidth;
+
+  return Math.abs(scrollLeft - targetScrollLeft) <= carouselAlignmentTolerancePx
+    ? null
+    : targetIndex;
 };
 
 export type CarouselScrollTransition = {

@@ -4,11 +4,19 @@ import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import type { SxProps, Theme } from "@mui/material/styles";
 
 import {
   getAdjacentCarouselIndex,
+  getCarouselProgrammaticTargetIndex,
   getCarouselScrollTransition,
   getNearestCarouselIndex,
   resolveCarouselActiveIndex,
@@ -48,6 +56,8 @@ export const MobileStatisticsCarousel = ({
   const viewportRef = useRef<HTMLDivElement>(null);
   const visibleIndexRef = useRef(controlledActiveIndex);
   const slideIdsRef = useRef(slideIds);
+  const controlledActiveIndexRef = useRef(controlledActiveIndex);
+  const onActiveSlideChangeRef = useRef(onActiveSlideChange);
   const animationFrameRef = useRef<number | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
   const programmaticTargetIndexRef = useRef<number | null>(null);
@@ -63,9 +73,11 @@ export const MobileStatisticsCarousel = ({
 
   const visibleIndex = visibleState.index;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     slideIdsRef.current = slideIds;
-  }, [slideIds]);
+    controlledActiveIndexRef.current = controlledActiveIndex;
+    onActiveSlideChangeRef.current = onActiveSlideChange;
+  }, [controlledActiveIndex, onActiveSlideChange, slideIds]);
 
   const updateVisibleIndex = useCallback((index: number) => {
     visibleIndexRef.current = index;
@@ -81,6 +93,15 @@ export const MobileStatisticsCarousel = ({
     }
   }, []);
 
+  const cancelPendingScrollWork = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    clearScrollIdleTimer();
+  }, [clearScrollIdleTimer]);
+
   const navigateToIndex = useCallback(
     (requestedIndex: number, behavior: ScrollBehavior) => {
       const currentSlideIds = slideIdsRef.current;
@@ -95,44 +116,59 @@ export const MobileStatisticsCarousel = ({
       }
 
       const previousId = currentSlideIds[visibleIndexRef.current];
+      const viewport = viewportRef.current;
 
       if (targetId !== previousId) {
-        clearScrollIdleTimer();
-        programmaticTargetIndexRef.current = targetIndex;
+        cancelPendingScrollWork();
+        programmaticTargetIndexRef.current =
+          viewport === null
+            ? null
+            : getCarouselProgrammaticTargetIndex(
+                viewport.scrollLeft,
+                viewport.clientWidth,
+                targetIndex,
+              );
         updateVisibleIndex(targetIndex);
-        onActiveSlideChange(targetId);
+        onActiveSlideChangeRef.current(targetId);
       }
 
-      const viewport = viewportRef.current;
-      if (viewport !== null) {
+      if (viewport !== null && programmaticTargetIndexRef.current !== null) {
         viewport.scrollTo({
           left: targetIndex * viewport.clientWidth,
           behavior,
         });
       }
     },
-    [clearScrollIdleTimer, onActiveSlideChange, updateVisibleIndex],
+    [cancelPendingScrollWork, updateVisibleIndex],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (controlledActiveIndex === -1) {
       return;
     }
 
-    clearScrollIdleTimer();
-    programmaticTargetIndexRef.current = controlledActiveIndex;
-    visibleIndexRef.current = controlledActiveIndex;
+    cancelPendingScrollWork();
+    visibleIndexRef.current = controlledActiveIndexRef.current;
 
     const viewport = viewportRef.current;
-    if (viewport !== null) {
+    programmaticTargetIndexRef.current =
+      viewport === null
+        ? null
+        : getCarouselProgrammaticTargetIndex(
+            viewport.scrollLeft,
+            viewport.clientWidth,
+            controlledActiveIndexRef.current,
+          );
+
+    if (viewport !== null && programmaticTargetIndexRef.current !== null) {
       viewport.scrollTo({
-        left: controlledActiveIndex * viewport.clientWidth,
+        left: controlledActiveIndexRef.current * viewport.clientWidth,
         behavior: hasAlignedViewportRef.current && !prefersReducedMotion ? "smooth" : "auto",
       });
     }
 
     hasAlignedViewportRef.current = true;
-  }, [clearScrollIdleTimer, controlledActiveIndex, controlledStateKey, prefersReducedMotion]);
+  }, [cancelPendingScrollWork, controlledActiveIndex, controlledStateKey, prefersReducedMotion]);
 
   const reconcileScrollPosition = useCallback(
     (hasSettled: boolean) => {
@@ -161,22 +197,13 @@ export const MobileStatisticsCarousel = ({
 
       if (transition.shouldNotify) {
         updateVisibleIndex(transition.activeIndex);
-        onActiveSlideChange(nextId);
+        onActiveSlideChangeRef.current(nextId);
       }
     },
-    [onActiveSlideChange, updateVisibleIndex],
+    [updateVisibleIndex],
   );
 
-  useEffect(
-    () => () => {
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current);
-      }
-
-      clearScrollIdleTimer();
-    },
-    [clearScrollIdleTimer],
-  );
+  useLayoutEffect(() => () => cancelPendingScrollWork(), [cancelPendingScrollWork]);
 
   const handleScroll = useCallback(() => {
     clearScrollIdleTimer();
@@ -310,13 +337,21 @@ export const MobileStatisticsCarousel = ({
                 key={slide.id}
                 onClick={() => navigateToIndex(index, movementBehavior)}
                 sx={{
-                  bgcolor: isActive ? "primary.main" : "action.disabled",
-                  borderRadius: "50%",
                   flex: "0 0 auto",
-                  height: 8,
-                  width: 8,
+                  height: 40,
+                  width: 40,
                 }}
-              />
+              >
+                <Box
+                  aria-hidden="true"
+                  sx={{
+                    bgcolor: isActive ? "primary.main" : "action.disabled",
+                    borderRadius: "50%",
+                    height: 8,
+                    width: 8,
+                  }}
+                />
+              </ButtonBase>
             );
           })}
         </Box>

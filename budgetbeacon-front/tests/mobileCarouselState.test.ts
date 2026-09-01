@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getAdjacentCarouselIndex,
+  getCarouselProgrammaticTargetIndex,
   getCarouselScrollTransition,
   getNearestCarouselIndex,
   resolveCarouselActiveIndex,
@@ -87,5 +88,16 @@ test("adopts an interrupted programmatic scroll once it settles away from its ta
     activeIndex: 2,
     programmaticTargetIndex: null,
     shouldNotify: false,
+  });
+});
+
+test("does not suppress the first native observation after a no-op alignment", () => {
+  const programmaticTargetIndex = getCarouselProgrammaticTargetIndex(200, 100, 2);
+
+  assert.equal(programmaticTargetIndex, null);
+  assert.deepEqual(getCarouselScrollTransition(2, 1, programmaticTargetIndex), {
+    activeIndex: 1,
+    programmaticTargetIndex: null,
+    shouldNotify: true,
   });
 });
