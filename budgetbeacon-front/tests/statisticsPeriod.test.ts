@@ -7,10 +7,18 @@ import {
   getCurrentMonthSelection,
   parseMonthInputValue,
   parseTimeframeValue,
+  shouldShowStatisticsPeriodOptions,
   shiftMonth,
   toMonthInputValue,
   type StatisticsTimeframeValue,
 } from "../src/features/statistics/statisticsPeriod.ts";
+
+test("shows period options on desktop and only when expanded on mobile", () => {
+  assert.equal(shouldShowStatisticsPeriodOptions(false, false), true);
+  assert.equal(shouldShowStatisticsPeriodOptions(false, true), true);
+  assert.equal(shouldShowStatisticsPeriodOptions(true, false), false);
+  assert.equal(shouldShowStatisticsPeriodOptions(true, true), true);
+});
 
 test("accepts every supported statistics timeframe", () => {
   const supportedValues: StatisticsTimeframeValue[] = ["all", "12", "6", "3", "1"];

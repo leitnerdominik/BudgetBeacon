@@ -5,6 +5,11 @@ export type MonthReference = {
   year: number;
 };
 
+export const shouldShowStatisticsPeriodOptions = (
+  isMobileView: boolean,
+  isExpanded: boolean,
+) => !isMobileView || isExpanded;
+
 export const STATISTICS_TIMEFRAME_OPTIONS: ReadonlyArray<{
   label: string;
   value: StatisticsTimeframeValue;
