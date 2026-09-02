@@ -16,8 +16,9 @@ import { StatusMessage } from "../../components/AsyncState";
 import type { RecurringExpenseCandidate } from "../../types/api";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
+import type { StatisticsCardLayoutProps } from "./statisticsLayout";
 
-type RecurringExpensesProps = {
+type RecurringExpensesProps = StatisticsCardLayoutProps & {
   candidates: RecurringExpenseCandidate[];
   periodLabel: string;
 };
@@ -25,22 +26,37 @@ type RecurringExpensesProps = {
 export const RecurringExpenses = ({
   candidates,
   periodLabel,
+  layout = "page",
 }: RecurringExpensesProps) => (
   <Card
     elevation={1}
+    tabIndex={layout === "slide" ? 0 : undefined}
+    role={layout === "slide" ? "region" : undefined}
+    aria-label={layout === "slide" ? "Recurring Expense Candidates" : undefined}
     sx={{
-      mt: 2,
+      mt: layout === "slide" ? 0 : 2,
+      height: layout === "slide" ? "100%" : undefined,
+      minHeight: layout === "slide" ? 0 : undefined,
+      overflowY: layout === "slide" ? "auto" : undefined,
       minWidth: 0,
       maxWidth: "100%",
       borderRadius: 1,
       border: "1px solid",
       borderColor: "divider",
+      ...(layout === "slide" && {
+        "&:focus-visible": {
+          outline: "none",
+          boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
+        },
+      }),
     }}
   >
-    <CardContent sx={{ p: { xs: 2, sm: 2.5 }, minWidth: 0 }}>
+    <CardContent
+      sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 }, minWidth: 0 }}
+    >
       <Stack
         direction={{ xs: "column", sm: "row" }}
-        spacing={1.5}
+        spacing={layout === "slide" ? 1 : 1.5}
         alignItems={{ xs: "flex-start", sm: "center" }}
         justifyContent="space-between"
         sx={{ minWidth: 0 }}
@@ -73,13 +89,13 @@ export const RecurringExpenses = ({
         />
       </Stack>
 
-      <Divider sx={{ my: 2 }} />
+      <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
 
       {candidates.length === 0 ? (
         <StatusMessage
           title="No recurring candidates"
           description="No expense pattern appeared in at least two months of the selected period."
-          minHeight={220}
+          minHeight={layout === "slide" ? 0 : 220}
         />
       ) : (
         <List disablePadding>
@@ -89,7 +105,7 @@ export const RecurringExpenses = ({
               disableGutters
               divider
               sx={{
-                py: { xs: 1.25, sm: 1.5 },
+                py: layout === "slide" ? 1 : { xs: 1.25, sm: 1.5 },
                 alignItems: { xs: "flex-start", sm: "center" },
                 flexDirection: { xs: "column", sm: "row" },
                 gap: { xs: 0.75, sm: 0 },

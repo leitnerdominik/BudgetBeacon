@@ -12,8 +12,9 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import type { MonthlySummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
 import { shiftMonth, type MonthReference } from "./statisticsPeriod";
+import type { StatisticsCardLayoutProps } from "./statisticsLayout";
 
-type MonthComparisonProps = {
+type MonthComparisonProps = StatisticsCardLayoutProps & {
   current: MonthlySummary;
   month: MonthReference;
   previous: MonthlySummary;
@@ -69,6 +70,7 @@ export const MonthComparison = ({
   current,
   month,
   previous,
+  layout = "page",
 }: MonthComparisonProps) => {
   const previousMonth = shiftMonth(month, -1);
   const currentIncome = current.totalIncome;
@@ -117,14 +119,26 @@ export const MonthComparison = ({
   return (
     <Card
       elevation={1}
+      tabIndex={layout === "slide" ? 0 : undefined}
+      role={layout === "slide" ? "region" : undefined}
+      aria-label={layout === "slide" ? "Month Comparison" : undefined}
       sx={{
-        mt: 2,
+        mt: layout === "slide" ? 0 : 2,
+        height: layout === "slide" ? "100%" : undefined,
+        minHeight: layout === "slide" ? 0 : undefined,
+        overflowY: layout === "slide" ? "auto" : undefined,
         borderRadius: 1,
         border: "1px solid",
         borderColor: "divider",
+        ...(layout === "slide" && {
+          "&:focus-visible": {
+            outline: "none",
+            boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
+          },
+        }),
       }}
     >
-      <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+      <CardContent sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 } }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <CompareArrowsIcon color="primary" />
           <Box>
@@ -137,18 +151,18 @@ export const MonthComparison = ({
           </Box>
         </Stack>
 
-        <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
 
-        <Grid container spacing={1.5}>
+        <Grid container spacing={layout === "slide" ? 1 : 1.5}>
           {metrics.map((metric) => (
-            <Grid size={{ xs: 6, sm: 6, lg: 3 }} key={metric.label}>
+            <Grid size={{ xs: 6, sm: 6, lg: layout === "slide" ? 6 : 3 }} key={metric.label}>
               <Box
                 sx={{
                   height: "100%",
                   border: "1px solid",
                   borderColor: "divider",
                   borderRadius: 1,
-                  p: 2,
+                  p: layout === "slide" ? 1.25 : 2,
                 }}
               >
                 <Typography variant="overline" color="text.secondary">
