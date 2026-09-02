@@ -234,6 +234,7 @@ export const MonthlyOverview = () => {
           selectedMonth={selectedMonth}
           periodLabel={periodLabel}
           isSmallScreen={isSmallScreen}
+          isMobileView={isMobileView}
           isAllTime={isAllTime}
           isMonthlyView={isMonthlyView}
           onTimeframeChange={handleTimeframeChange}

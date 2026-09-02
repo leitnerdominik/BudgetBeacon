@@ -23,20 +23,6 @@ export const MobileKeyMetricsSlide = ({
       minWidth: 0,
     }}
   >
-    <Typography
-      variant="subtitle2"
-      color="text.secondary"
-      sx={{
-        flexShrink: 0,
-        maxWidth: "100%",
-        minWidth: 0,
-        mb: 1,
-        overflowWrap: "anywhere",
-      }}
-    >
-      {periodLabel}
-    </Typography>
-
     <Box
       aria-label={`Key metrics for ${periodLabel}`}
       role="region"
