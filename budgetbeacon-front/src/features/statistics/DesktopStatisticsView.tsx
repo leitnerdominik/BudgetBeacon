@@ -1,5 +1,3 @@
-import { Typography } from "@mui/material";
-
 import type { StatisticsOverview } from "../../types/api";
 import { CategoryBreakdown } from "./CategoryBreakdown";
 import { MonthComparison } from "./MonthComparison";
@@ -21,7 +19,6 @@ type DesktopStatisticsViewProps = {
   periodLabel: string;
   isAllTime: boolean;
   isMonthlyView: boolean;
-  isFetching: boolean;
   isSmallScreen: boolean;
   onCategorySelect: (category: string) => void;
 };
@@ -33,7 +30,6 @@ export const DesktopStatisticsView = ({
   periodLabel,
   isAllTime,
   isMonthlyView,
-  isFetching,
   isSmallScreen,
   onCategorySelect,
 }: DesktopStatisticsViewProps) => {
@@ -41,16 +37,6 @@ export const DesktopStatisticsView = ({
 
   return (
     <>
-      {isFetching ? (
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mb: 1.5 }}
-        >
-          Refreshing statistics...
-        </Typography>
-      ) : null}
-
       <StatisticsMetricGrid metrics={metrics} isSmallScreen={isSmallScreen} />
 
       <PeriodOverview
