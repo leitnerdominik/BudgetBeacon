@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --test tests/calendarDate.test.ts tests/tipsTimeframes.test.ts tests/categorizationRunner.test.ts tests/pwaManifest.test.ts tests/statisticsPeriod.test.ts tests/statisticsSlides.test.ts tests/mobileCarouselState.test.ts",
+    "test": "node --test tests/calendarDate.test.ts tests/tipsTimeframes.test.ts tests/categorizationRunner.test.ts tests/pwaManifest.test.ts tests/statisticsPeriod.test.ts tests/statisticsSlides.test.ts tests/mobileCarouselState.test.ts tests/statisticsTrend.test.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
