@@ -13,8 +13,9 @@ import { StatusMessage } from "../../components/AsyncState";
 import type { CategoryExpenseSummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
+import type { StatisticsCardLayoutProps } from "./statisticsLayout";
 
-type CategoryBreakdownProps = {
+type CategoryBreakdownProps = StatisticsCardLayoutProps & {
   categories: CategoryExpenseSummary[];
   onCategorySelect: (category: string) => void;
   periodLabel: string;
@@ -31,6 +32,7 @@ export const CategoryBreakdown = ({
   categories,
   onCategorySelect,
   periodLabel,
+  layout = "page",
 }: CategoryBreakdownProps) => {
   const maxExpense = Math.max(
     1,
@@ -44,16 +46,30 @@ export const CategoryBreakdown = ({
   return (
     <Card
       elevation={1}
+      tabIndex={layout === "slide" ? 0 : undefined}
+      role={layout === "slide" ? "region" : undefined}
+      aria-label={layout === "slide" ? "Expenses by Category" : undefined}
       sx={{
-        mt: 2,
+        mt: layout === "slide" ? 0 : 2,
+        height: layout === "slide" ? "100%" : undefined,
+        minHeight: layout === "slide" ? 0 : undefined,
+        overflowY: layout === "slide" ? "auto" : undefined,
         minWidth: 0,
         maxWidth: "100%",
         borderRadius: 1,
         border: "1px solid",
         borderColor: "divider",
+        ...(layout === "slide" && {
+          "&:focus-visible": {
+            outline: "none",
+            boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
+          },
+        }),
       }}
     >
-      <CardContent sx={{ p: { xs: 2, sm: 2.5 }, minWidth: 0 }}>
+      <CardContent
+        sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 }, minWidth: 0 }}
+      >
         <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
           <CategoryIcon color="primary" sx={{ flexShrink: 0 }} />
           <Box sx={{ minWidth: 0 }}>
@@ -70,16 +86,16 @@ export const CategoryBreakdown = ({
           </Box>
         </Stack>
 
-        <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
 
         {categories.length === 0 ? (
           <StatusMessage
             title="No expenses for this period"
             description={`No expense categories were found for ${periodLabel}.`}
-            minHeight={220}
+            minHeight={layout === "slide" ? 0 : 220}
           />
         ) : (
-          <Stack spacing={1.75}>
+          <Stack spacing={layout === "slide" ? 1.25 : 1.75}>
             {categories.map((category) => (
               <ButtonBase
                 key={category.category}

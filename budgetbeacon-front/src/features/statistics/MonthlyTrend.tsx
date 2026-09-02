@@ -13,8 +13,13 @@ import TimelineIcon from "@mui/icons-material/Timeline";
 
 import type { StatisticsTrendPoint } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
+import type { StatisticsCardLayoutProps } from "./statisticsLayout";
+import {
+  getCondensedTrendPoints,
+  MOBILE_TREND_POINT_LIMIT,
+} from "./statisticsTrend";
 
-type MonthlyTrendProps = {
+type MonthlyTrendProps = StatisticsCardLayoutProps & {
   granularity: "month" | "year";
   periodLabel: string;
   points: StatisticsTrendPoint[];
@@ -69,10 +74,15 @@ export const MonthlyTrend = ({
   granularity,
   periodLabel,
   points,
+  layout = "page",
 }: MonthlyTrendProps) => {
+  const chartPoints =
+    layout === "slide" ? getCondensedTrendPoints(points) : points;
   const maxBarValue = Math.max(
     1,
-    ...points.map((point) => Math.max(point.totalIncome, getExpenseValue(point))),
+    ...chartPoints.map((point) =>
+      Math.max(point.totalIncome, getExpenseValue(point)),
+    ),
   );
   const totalIncome = points.reduce((sum, point) => sum + point.totalIncome, 0);
   const totalExpenses = points.reduce(
@@ -81,8 +91,10 @@ export const MonthlyTrend = ({
   );
   const netBalance = points.reduce((sum, point) => sum + point.netBalance, 0);
   const hasTrendData = points.some((point) => point.transactionCount > 0);
-  const trendPointCount = Math.max(points.length, 1);
+  const trendPointCount = Math.max(chartPoints.length, 1);
   const mobileChartMinWidth = trendPointCount * 72 + (trendPointCount - 1) * 8;
+  const isTruncated = layout === "slide" && chartPoints.length < points.length;
+  const trendUnit = granularity === "year" ? "years" : "months";
   const trendSummaryMetrics: TrendSummaryMetric[] = [
     {
       label: "Income",
@@ -109,20 +121,34 @@ export const MonthlyTrend = ({
   return (
     <Card
       elevation={1}
+      tabIndex={layout === "slide" ? 0 : undefined}
+      role={layout === "slide" ? "region" : undefined}
+      aria-label={layout === "slide" ? "Trend Over Time" : undefined}
       sx={{
-        mt: 2,
+        mt: layout === "slide" ? 0 : 2,
+        height: layout === "slide" ? "100%" : undefined,
+        minHeight: layout === "slide" ? 0 : undefined,
+        overflowY: layout === "slide" ? "auto" : undefined,
         minWidth: 0,
         maxWidth: "100%",
         borderRadius: 1,
         border: "1px solid",
         borderColor: "divider",
-        overflow: "hidden",
+        ...(layout === "page" && { overflow: "hidden" }),
+        ...(layout === "slide" && {
+          "&:focus-visible": {
+            outline: "none",
+            boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
+          },
+        }),
       }}
     >
-      <CardContent sx={{ p: { xs: 2, sm: 2.5 }, minWidth: 0 }}>
+      <CardContent
+        sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 }, minWidth: 0 }}
+      >
         <Stack
           direction={{ xs: "column", sm: "row" }}
-          spacing={1.5}
+          spacing={layout === "slide" ? 1 : 1.5}
           alignItems={{ xs: "flex-start", sm: "center" }}
           justifyContent="space-between"
           sx={{ minWidth: 0 }}
@@ -153,53 +179,64 @@ export const MonthlyTrend = ({
           </Stack>
         </Stack>
 
-        <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
 
         <Box
           sx={{
             width: "100%",
             maxWidth: "100%",
             minWidth: 0,
-            overflowX: "auto",
-            overflowY: "hidden",
-            WebkitOverflowScrolling: "touch",
+            ...(layout === "page" && {
+              overflowX: "auto",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+            }),
           }}
         >
           <Box
             sx={{
               display: "grid",
-              gridTemplateColumns: `repeat(${trendPointCount}, minmax(72px, 1fr))`,
-              gap: { xs: 1, sm: 1.5 },
-              minWidth: {
-                xs: `${mobileChartMinWidth}px`,
-                sm: 0,
-              },
-              minHeight: 240,
-              pb: 1,
+              gridTemplateColumns:
+                layout === "slide"
+                  ? `repeat(${trendPointCount}, minmax(0, 1fr))`
+                  : `repeat(${trendPointCount}, minmax(72px, 1fr))`,
+              gap: layout === "slide" ? 0.5 : { xs: 1, sm: 1.5 },
+              minWidth:
+                layout === "slide"
+                  ? 0
+                  : {
+                      xs: `${mobileChartMinWidth}px`,
+                      sm: 0,
+                    },
+              minHeight: layout === "slide" ? 176 : 240,
+              pb: layout === "slide" ? 0.5 : 1,
             }}
           >
-            {points.map((point) => {
+            {chartPoints.map((point) => {
               const income = point.totalIncome;
               const expenses = getExpenseValue(point);
               const net = point.netBalance;
               const label = formatPointLabel(point);
+              const pointDescription = `${label}: income ${formatCurrency(income)}, expenses ${formatCurrency(expenses)}, net balance ${formatCurrency(net)}`;
 
               return (
                 <Stack
                   key={`${point.year}-${point.month ?? "year"}`}
-                  spacing={1}
+                  role={layout === "slide" ? "group" : undefined}
+                  aria-label={layout === "slide" ? pointDescription : undefined}
+                  spacing={layout === "slide" ? 0.5 : 1}
                   alignItems="center"
                   justifyContent="flex-end"
-                  sx={{ minWidth: 72 }}
+                  sx={{ minWidth: layout === "slide" ? 0 : 72 }}
                 >
                   <Box
                     sx={{
-                      height: 150,
+                      height: layout === "slide" ? 112 : 150,
                       width: "100%",
                       display: "flex",
                       alignItems: "flex-end",
                       justifyContent: "center",
-                      gap: 0.75,
+                      gap: layout === "slide" ? 0.5 : 0.75,
                       borderBottom: "1px solid",
                       borderColor: "divider",
                     }}
@@ -208,28 +245,38 @@ export const MonthlyTrend = ({
                       color="success.main"
                       height={getBarHeight(income, maxBarValue)}
                       label={`${label} income: ${formatCurrency(income)}`}
+                      decorative={layout === "slide"}
                     />
                     <TooltipBar
                       color="error.main"
                       height={getBarHeight(expenses, maxBarValue)}
                       label={`${label} expenses: ${formatCurrency(expenses)}`}
+                      decorative={layout === "slide"}
                     />
                   </Box>
                   <Typography variant="caption" color="text.secondary">
                     {label}
                   </Typography>
-                  <Typography
-                    variant="caption"
-                    fontWeight={700}
-                    color={net < 0 ? "error.main" : "primary.main"}
-                  >
-                    {formatCurrency(net)}
-                  </Typography>
+                  {layout === "page" ? (
+                    <Typography
+                      variant="caption"
+                      fontWeight={700}
+                      color={net < 0 ? "error.main" : "primary.main"}
+                    >
+                      {formatCurrency(net)}
+                    </Typography>
+                  ) : null}
                 </Stack>
               );
             })}
           </Box>
         </Box>
+
+        {isTruncated ? (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            Showing the latest {MOBILE_TREND_POINT_LIMIT} of {points.length} {trendUnit}.
+          </Typography>
+        ) : null}
 
         {!hasTrendData ? (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
@@ -237,7 +284,7 @@ export const MonthlyTrend = ({
           </Typography>
         ) : null}
 
-        <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid container spacing={layout === "slide" ? 1 : 2} sx={{ mt: 1 }}>
           {trendSummaryMetrics.map((metric) => (
             <Grid size={{ xs: 6, md: 3 }} key={metric.label}>
               <Typography variant="body2" color="text.secondary">
@@ -256,15 +303,17 @@ export const MonthlyTrend = ({
 
 type TooltipBarProps = {
   color: string;
+  decorative?: boolean;
   height: string;
   label: string;
 };
 
-const TooltipBar = ({ color, height, label }: TooltipBarProps) => (
+const TooltipBar = ({ color, decorative = false, height, label }: TooltipBarProps) => (
   <Box
-    aria-label={label}
-    role="img"
-    title={label}
+    aria-hidden={decorative || undefined}
+    aria-label={decorative ? undefined : label}
+    role={decorative ? undefined : "img"}
+    title={decorative ? undefined : label}
     sx={{
       width: { xs: 14, sm: 18 },
       height,
