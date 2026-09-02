@@ -89,52 +89,56 @@ test("keeps slides visible regardless of whether their datasets are empty", () =
 });
 
 test("preserves an active slide that remains visible", () => {
-  const previous = getStatisticsSlides({ timeframe: "1", hasMonthComparison: true });
   const next = getStatisticsSlides({ timeframe: "1", hasMonthComparison: false });
 
   assert.equal(
-    resolveActiveStatisticsSlideId(previous, next, "categories"),
+    resolveActiveStatisticsSlideId(next, "categories"),
     "categories",
   );
 });
 
-test("falls back to the previous index when month comparison is removed", () => {
-  const previous = getStatisticsSlides({ timeframe: "1", hasMonthComparison: true });
+test("falls back to KPI Overview when month comparison is removed", () => {
   const next = getStatisticsSlides({ timeframe: "1", hasMonthComparison: false });
 
   assert.equal(
-    resolveActiveStatisticsSlideId(previous, next, "month-comparison"),
-    "categories",
+    resolveActiveStatisticsSlideId(next, "month-comparison"),
+    "kpi-overview",
   );
 });
 
-test("falls back to the previous index when recurring expenses is removed", () => {
-  const previous = getStatisticsSlides({ timeframe: "3", hasMonthComparison: false });
-  const next = getStatisticsSlides({ timeframe: "1", hasMonthComparison: false });
-
-  assert.equal(
-    resolveActiveStatisticsSlideId(previous, next, "recurring-expenses"),
-    "largest-expenses",
-  );
-});
-
-test("clamps removal fallback to the last new slide", () => {
-  const previous = [
-    ...getStatisticsSlides({ timeframe: "1", hasMonthComparison: true }),
-    { ...getStatisticsSlides({ timeframe: "1", hasMonthComparison: true })[0], id: "old" as StatisticsSlideId },
-  ];
-  const next = getStatisticsSlides({ timeframe: "1", hasMonthComparison: false });
-
-  assert.equal(resolveActiveStatisticsSlideId(previous, next, "old"), "trend");
-});
-
-test("uses the first new slide for an unknown active ID", () => {
-  const previous = getStatisticsSlides({ timeframe: "1", hasMonthComparison: true });
+test("falls back to KPI Overview when spending pace is removed", () => {
   const next = getStatisticsSlides({ timeframe: "3", hasMonthComparison: false });
 
-  assert.equal(resolveActiveStatisticsSlideId(previous, next, "unknown" as StatisticsSlideId), "kpi-overview");
+  assert.equal(
+    resolveActiveStatisticsSlideId(next, "spending-pace"),
+    "kpi-overview",
+  );
+});
+
+test("falls back to KPI Overview when recurring expenses is removed", () => {
+  const next = getStatisticsSlides({ timeframe: "1", hasMonthComparison: false });
+
+  assert.equal(
+    resolveActiveStatisticsSlideId(next, "recurring-expenses"),
+    "kpi-overview",
+  );
+});
+
+test("uses the first visible slide for a null active ID", () => {
+  const next = getStatisticsSlides({ timeframe: "3", hasMonthComparison: false });
+
+  assert.equal(resolveActiveStatisticsSlideId(next, null), "kpi-overview");
+});
+
+test("uses the first visible slide for an unknown active ID", () => {
+  const next = getStatisticsSlides({ timeframe: "3", hasMonthComparison: false });
+
+  assert.equal(
+    resolveActiveStatisticsSlideId(next, "unknown" as StatisticsSlideId),
+    "kpi-overview",
+  );
 });
 
 test("returns null when there are no next slides", () => {
-  assert.equal(resolveActiveStatisticsSlideId([], [], null), null);
+  assert.equal(resolveActiveStatisticsSlideId([], null), null);
 });

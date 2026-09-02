@@ -84,7 +84,6 @@ export const getStatisticsSlides = (
   });
 
 export const resolveActiveStatisticsSlideId = (
-  previousSlides: readonly StatisticsSlideDefinition[],
   nextSlides: readonly StatisticsSlideDefinition[],
   activeSlideId: StatisticsSlideId | null,
 ): StatisticsSlideId | null => {
@@ -96,12 +95,5 @@ export const resolveActiveStatisticsSlideId = (
     return activeSlideId;
   }
 
-  const previousIndex = activeSlideId
-    ? previousSlides.findIndex(({ id }) => id === activeSlideId)
-    : -1;
-  const nextIndex = previousIndex < 0
-    ? 0
-    : Math.min(previousIndex, nextSlides.length - 1);
-
-  return nextSlides[nextIndex]?.id ?? null;
+  return nextSlides[0].id;
 };
