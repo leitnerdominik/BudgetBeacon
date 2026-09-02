@@ -323,6 +323,7 @@ export const MobileStatisticsCarousel = ({
             display: "flex",
             flex: "1 1 auto",
             gap: 0.5,
+            justifyContent: "center",
             minWidth: 0,
             overflowX: "auto",
           }}
@@ -354,10 +355,6 @@ export const MobileStatisticsCarousel = ({
               </ButtonBase>
             );
           })}
-        </Box>
-
-        <Box aria-live="polite" role="status" sx={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>
-          Slide {visibleIndex + 1} of {slides.length}
         </Box>
 
         <IconButton
