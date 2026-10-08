@@ -5,10 +5,24 @@ import { renderToString } from "react-dom/server";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createServer } from "vite";
-import { ThemeProvider, type Theme } from "@mui/material/styles";
+import { createTheme, ThemeProvider, type Theme } from "@mui/material/styles";
 
 import type { StatisticsOverview } from "../src/types/api.ts";
 import { STATISTICS_VIEWS, type StatisticsView } from "../src/features/statistics/statisticsViews.ts";
+import { formatCurrency } from "../src/utils/formatDate.ts";
+import type { StatisticsTimeframeValue } from "../src/features/statistics/statisticsPeriod.ts";
+
+const section = (html: string, label: string) => {
+  const match = html.match(new RegExp(`<section\\b[^>]*aria-label="${label}"[^>]*>([\\s\\S]*?)</section>`));
+  assert.ok(match, `Missing ${label} section`);
+  return match[1];
+};
+
+const definitionText = (html: string, tag: "dt" | "dd") =>
+  [...html.matchAll(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, "g"))].map((match) => match[1]
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/g, "")
+    .replace(/<svg\b[\s\S]*?<\/svg>/g, "")
+    .replace(/<[^>]*>/g, ""));
 
 const summary = {
   totalIncome: 1000, totalExpense: -100, netBalance: 900,
@@ -50,9 +64,14 @@ test("server-renders production Statistics shell, navigation, content and reques
       loading?: boolean;
       refreshing?: boolean;
       online?: boolean;
+      mobile?: boolean;
+      timeframe?: StatisticsTimeframeValue;
     } = {}) => {
       const client = new QueryClient({ defaultOptions: { queries: { retryOnMount: false } } });
-      const queryKey = ["transactions", "statistics", { allTime: false, endYear: 2026, endMonth: 1, monthsBack: 1 }];
+      const timeframe = options.timeframe ?? "1";
+      const queryKey = ["transactions", "statistics", timeframe === "all" ? { allTime: true } : {
+        allTime: false, endYear: 2026, endMonth: 1, monthsBack: Number(timeframe),
+      }];
       client.setQueryData(queryKey, options.response ?? data);
       const query = client.getQueryCache().find({ queryKey });
       assert.ok(query);
@@ -67,12 +86,17 @@ test("server-renders production Statistics shell, navigation, content and reques
           { path: "spending", element: createElement(MonthlyOverview, { view: "spending" }) },
           { path: "trends", element: createElement(MonthlyOverview, { view: "trends" }) },
         ],
-      }], { initialEntries: [`${path}?timeframe=1&month=2026-01&tag=a&tag=b`] });
+      }], { initialEntries: [`${path}?timeframe=${timeframe}&month=2026-01&tag=a&tag=b`] });
+      const theme = options.mobile ? createTheme(appTheme, {
+        components: { MuiUseMediaQuery: { defaultProps: {
+          ssrMatchMedia: (query: string) => ({ matches: query.includes("max-width") }),
+        } } },
+      }) : appTheme;
       const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
       Object.defineProperty(globalThis, "navigator", { value: { onLine: options.online ?? true }, configurable: true });
       try {
         return renderToString(createElement(QueryClientProvider, { client },
-          createElement(ThemeProvider, { theme: appTheme }, createElement(RouterProvider, { router })),
+          createElement(ThemeProvider, { theme }, createElement(RouterProvider, { router })),
         )).replace(/<!--.*?-->/g, "");
       } finally {
         if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
@@ -136,6 +160,56 @@ test("server-renders production Statistics shell, navigation, content and reques
     assert.match(empty, /Month Comparison/);
     assert.match(empty, /No transactions found in this trend range/);
     assert.match(empty, /N\/A/);
+
+    const metricCases = [
+      { name: "normal", summary, rate: "90 %" },
+      { name: "income only", summary: { ...zeroSummary, totalIncome: 100, netBalance: 100, transactionCount: 1 }, rate: "100 %" },
+      { name: "negative balance", summary: { ...summary, totalIncome: 100, totalExpense: -125, netBalance: -25 }, rate: "-25 %" },
+      { name: "no income", summary: { ...zeroSummary, totalExpense: -10, netBalance: -10 }, rate: "N/A" },
+      { name: "no income with positive balance", summary: { ...zeroSummary, netBalance: 10 }, rate: "N/A" },
+      { name: "negative income", summary: { ...zeroSummary, totalIncome: -10, totalExpense: -20, netBalance: -30 }, rate: "N/A" },
+      { name: "empty", summary: zeroSummary, rate: "N/A" },
+      { name: "fractional", summary: { ...summary, totalIncome: 3, totalExpense: -2, netBalance: 1, totalSavedOrInvested: 0.35, transactionCount: 4 }, rate: "33,3 %" },
+      { name: "large", summary: { ...summary, totalIncome: 9876543210.12, totalExpense: -12345678901.23, netBalance: -2469135691.11, totalSavedOrInvested: 1234567890.12 }, rate: "-25 %" },
+      { name: "positive expense total", summary: { ...summary, totalIncome: 100, totalExpense: 25, netBalance: 75 }, rate: "75 %" },
+    ];
+    for (const mobile of [false, true]) {
+      for (const { name, summary: current, rate } of metricCases) {
+        const response = { ...data, summary: current };
+        const before = structuredClone(response);
+        const html = render("overview", { response, mobile });
+        assert.equal(html.includes('aria-roledescription="carousel"'), mobile, name);
+        const headline = section(html, "Headline metrics");
+        assert.deepEqual(definitionText(headline, "dt"), ["Income", "Expenses", "Net Balance", "Savings Rate"], name);
+        assert.deepEqual(definitionText(headline, "dd"), [
+          formatCurrency(current.totalIncome), formatCurrency(Math.abs(current.totalExpense)), formatCurrency(current.netBalance), rate,
+        ], name);
+        assert.match(headline, /Savings Rate is net balance as a share of income\. It is distinct from Saved \/ Invested\./);
+        const secondary = section(html, "Additional period information");
+        assert.deepEqual(definitionText(secondary, "dt"), ["Saved / Invested", "Transactions"], name);
+        assert.deepEqual(definitionText(secondary, "dd"), [formatCurrency(current.totalSavedOrInvested), String(current.transactionCount)], name);
+        // The secondary information follows the entire desktop/mobile view, not a headline card or slide.
+        assert.ok(html.indexOf('aria-label="Additional period information"') > html.lastIndexOf('aria-label="Headline metrics"'));
+        assert.match(html, /Trend Over Time/);
+        assert.ok(html.indexOf('aria-label="Additional period information"') > html.indexOf("Trend Over Time"));
+        if (mobile) {
+          assert.match(html, /aria-label="Next slide"/);
+          assert.ok(html.indexOf('aria-label="Additional period information"') > html.indexOf('aria-label="Next slide"'));
+        }
+        assert.equal(html.includes("Internal transfers and adjustments are excluded"), current.internalTransferTotal + current.adjustmentTotal > 0);
+        assert.doesNotMatch(html, /Infinity|NaN/);
+        assert.deepEqual(response, before, "Rendering must not mutate server data");
+      }
+      for (const timeframe of ["1", "3", "6", "12", "all"] as const) {
+        const html = render("overview", { timeframe, mobile });
+        assert.equal(definitionText(section(html, "Headline metrics"), "dt").length, 4);
+        assert.match(section(html, "Additional period information"), /Saved \/ Invested/);
+      }
+      for (const view of ["spending", "trends"] as const) {
+        const html = render(view, { mobile });
+        assert.doesNotMatch(html, /aria-label="Headline metrics"|aria-label="Additional period information"|Savings Rate is net balance/);
+      }
+    }
   } finally {
     await server.close();
   }
