@@ -1,3 +1,3 @@
-import { MonthlyOverview } from "../features/statistics/MonthlyOverview";
+import { StatisticsShell } from "../features/statistics/StatisticsShell";
 
-export const StatisticsPage = () => <MonthlyOverview />;
+export const StatisticsPage = () => <StatisticsShell />;

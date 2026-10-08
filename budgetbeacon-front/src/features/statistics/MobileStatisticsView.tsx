@@ -116,8 +116,8 @@ export const MobileStatisticsView = ({
       sx={{
         display: "flex",
         flexDirection: "column",
-        flex: "1 1 auto",
-        height: "100%",
+        flex: "0 0 auto",
+        height: "max(360px, 60dvh)",
         minHeight: 0,
         minWidth: 0,
       }}

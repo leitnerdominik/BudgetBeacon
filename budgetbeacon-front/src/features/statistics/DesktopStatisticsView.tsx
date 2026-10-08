@@ -11,8 +11,10 @@ import {
 } from "./StatisticsMetricGrid";
 import { TopExpenses } from "./TopExpenses";
 import type { MonthReference } from "./statisticsPeriod";
+import type { StatisticsView } from "./statisticsViews";
 
 type DesktopStatisticsViewProps = {
+  view: StatisticsView;
   data: StatisticsOverview | undefined;
   metrics: StatisticsMetric[];
   selectedMonth: MonthReference;
@@ -24,6 +26,7 @@ type DesktopStatisticsViewProps = {
 };
 
 export const DesktopStatisticsView = ({
+  view,
   data,
   metrics,
   selectedMonth,
@@ -35,29 +38,8 @@ export const DesktopStatisticsView = ({
 }: DesktopStatisticsViewProps) => {
   const summary = data?.summary;
 
-  return (
+  if (view === "spending") return (
     <>
-      <StatisticsMetricGrid metrics={metrics} isSmallScreen={isSmallScreen} />
-
-      <PeriodOverview
-        summary={summary}
-        monthlyTotals={data?.monthlyTotals}
-        periodLabel={periodLabel}
-      />
-
-      {isMonthlyView ? (
-        <>
-          <SpendingPace month={selectedMonth} summary={summary} />
-          {summary && data?.previousMonthSummary ? (
-            <MonthComparison
-              month={selectedMonth}
-              current={summary}
-              previous={data.previousMonthSummary}
-            />
-          ) : null}
-        </>
-      ) : null}
-
       <CategoryBreakdown
         categories={data?.categories ?? []}
         onCategorySelect={onCategorySelect}
@@ -72,12 +54,28 @@ export const DesktopStatisticsView = ({
           periodLabel={periodLabel}
         />
       ) : null}
+      {isMonthlyView ? <SpendingPace month={selectedMonth} summary={summary} /> : null}
+    </>
+  );
 
+  return (
+    <>
+      {view === "overview" ? (
+        <>
+          <StatisticsMetricGrid metrics={metrics} isSmallScreen={isSmallScreen} />
+          {isMonthlyView && summary && data?.previousMonthSummary ? (
+            <MonthComparison month={selectedMonth} current={summary} previous={data.previousMonthSummary} />
+          ) : null}
+        </>
+      ) : null}
       <MonthlyTrend
         points={data?.trend ?? []}
         granularity={data?.trendGranularity ?? (isAllTime ? "year" : "month")}
         periodLabel={periodLabel}
       />
+      {view === "trends" ? (
+        <PeriodOverview summary={summary} monthlyTotals={data?.monthlyTotals} periodLabel={periodLabel} />
+      ) : null}
     </>
   );
 };

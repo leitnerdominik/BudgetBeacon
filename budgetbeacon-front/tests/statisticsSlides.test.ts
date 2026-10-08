@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getStatisticsSlides,
+  getStatisticsViewSlides,
   resolveActiveStatisticsSlideId,
   STATISTICS_SLIDE_DEFINITIONS,
   type StatisticsSlideId,
@@ -141,4 +142,36 @@ test("uses the first visible slide for an unknown active ID", () => {
 
 test("returns null when there are no next slides", () => {
   assert.equal(resolveActiveStatisticsSlideId([], null), null);
+});
+
+test("groups all existing sections into distinct destinations with Spending in the specified order", () => {
+  const context = { timeframe: "1", hasMonthComparison: true } as const;
+  assert.deepEqual(getStatisticsViewSlides("overview", context).map(({ id }) => id), ["kpi-overview", "month-comparison", "trend"]);
+  assert.deepEqual(getStatisticsViewSlides("spending", context).map(({ id }) => id), ["categories", "largest-expenses", "spending-pace"]);
+  assert.deepEqual(getStatisticsViewSlides("trends", context).map(({ id }) => id), ["trend", "period-overview"]);
+  for (const timeframe of ["3", "6", "12", "all"] as const) {
+    assert.deepEqual(getStatisticsViewSlides("spending", { timeframe, hasMonthComparison: true }).map(({ id }) => id), ["categories", "largest-expenses", "recurring-expenses"]);
+    assert.deepEqual(getStatisticsViewSlides("overview", { timeframe, hasMonthComparison: true }).map(({ id }) => id), ["kpi-overview", "trend"]);
+  }
+});
+
+test("keeps all range-supported sections reachable across views, including empty datasets", () => {
+  for (const timeframe of ["1", "3", "6", "12", "all"] as const) {
+    for (const hasMonthComparison of [true, false]) {
+      const context = { timeframe, hasMonthComparison };
+      const reachable = new Set(["overview", "spending", "trends"].flatMap((view) => getStatisticsViewSlides(view as "overview" | "spending" | "trends", context).map(({ id }) => id)));
+      assert.deepEqual([...reachable].sort(), getStatisticsSlides(context).map(({ id }) => id).sort());
+    }
+  }
+});
+
+test("view changes and range changes fall back to the first available destination slide", () => {
+  const spending = getStatisticsViewSlides("spending", { timeframe: "1", hasMonthComparison: false });
+  assert.equal(resolveActiveStatisticsSlideId(spending, "kpi-overview"), "categories");
+  assert.equal(resolveActiveStatisticsSlideId(spending, "categories"), "categories");
+  assert.equal(resolveActiveStatisticsSlideId(spending, "recurring-expenses"), "categories");
+  const longer = getStatisticsViewSlides("spending", { timeframe: "3", hasMonthComparison: false });
+  assert.equal(resolveActiveStatisticsSlideId(longer, "spending-pace"), "categories");
+  assert.equal(resolveActiveStatisticsSlideId(getStatisticsViewSlides("trends", { timeframe: "1", hasMonthComparison: false }), "categories"), "trend");
+  assert.equal(resolveActiveStatisticsSlideId(getStatisticsViewSlides("overview", { timeframe: "1", hasMonthComparison: false }), "month-comparison"), "kpi-overview");
 });

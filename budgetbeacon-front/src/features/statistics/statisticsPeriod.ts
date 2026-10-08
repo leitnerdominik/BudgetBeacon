@@ -63,6 +63,16 @@ export const parseTimeframeValue = (
     ? (value as StatisticsTimeframeValue)
     : "1";
 
+export const resolveStatisticsPeriod = (
+  searchParams: URLSearchParams,
+  referenceDate: Date = new Date(),
+) => ({
+  timeframe: parseTimeframeValue(searchParams.get("timeframe")),
+  selectedMonth:
+    parseMonthInputValue(searchParams.get("month") ?? "") ??
+    getCurrentMonthSelection(referenceDate),
+});
+
 export const shiftMonth = (
   { month, year }: MonthReference,
   offset: number,

@@ -1,4 +1,5 @@
 import type { StatisticsTimeframeValue } from "./statisticsPeriod.ts";
+import type { StatisticsView } from "./statisticsViews.ts";
 
 export type StatisticsSlideId =
   | "kpi-overview"
@@ -82,6 +83,22 @@ export const getStatisticsSlides = (
 
     return !visibility.requiresMonthComparison || context.hasMonthComparison;
   });
+
+const viewSlideIds: Record<StatisticsView, readonly StatisticsSlideId[]> = {
+  overview: ["kpi-overview", "month-comparison", "trend"],
+  spending: ["categories", "largest-expenses", "recurring-expenses", "spending-pace"],
+  trends: ["trend", "period-overview"],
+};
+
+export const getStatisticsViewSlides = (
+  view: StatisticsView,
+  context: StatisticsSlideContext,
+): readonly StatisticsSlideDefinition[] => {
+  const available = getStatisticsSlides(context);
+  return viewSlideIds[view].flatMap((id) =>
+    available.filter((definition) => definition.id === id),
+  );
+};
 
 export const resolveActiveStatisticsSlideId = (
   nextSlides: readonly StatisticsSlideDefinition[],
