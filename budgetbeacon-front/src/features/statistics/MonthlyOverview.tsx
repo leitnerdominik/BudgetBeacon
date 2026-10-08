@@ -1,7 +1,6 @@
 import { useLayoutEffect, useMemo, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
-import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SavingsIcon from "@mui/icons-material/Savings";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -10,6 +9,7 @@ import { useOutletContext } from "react-router-dom";
 import { formatCurrency } from "../../utils/formatDate";
 import { DesktopStatisticsView } from "./DesktopStatisticsView";
 import { MobileStatisticsView } from "./MobileStatisticsView";
+import { StatisticsSecondaryInfo } from "./StatisticsSecondaryInfo";
 import type { StatisticsMetric } from "./StatisticsMetricGrid";
 import type { StatisticsContext } from "./statisticsContext";
 import type { StatisticsView } from "./statisticsViews";
@@ -60,45 +60,32 @@ export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
     const income = summary?.totalIncome ?? 0;
     const expenses = Math.abs(summary?.totalExpense ?? 0);
     const netBalance = summary?.netBalance ?? 0;
-    const savedOrInvested = summary?.totalSavedOrInvested ?? 0;
     const savingsRate = income > 0 ? (netBalance / income) * 100 : null;
 
     return [
       {
         label: "Income",
         value: formatCurrency(income),
-        color: "success.main",
+        color: "text.primary",
         icon: <TrendingUpIcon />,
       },
       {
         label: "Expenses",
         value: formatCurrency(expenses),
-        color: "error.main",
+        color: "text.primary",
         icon: <TrendingDownIcon />,
       },
       {
         label: "Net Balance",
         value: formatCurrency(netBalance),
-        color: netBalance < 0 ? "error.main" : "primary.main",
+        color: netBalance < 0 ? "error.main" : "text.primary",
         icon: <AccountBalanceWalletIcon />,
       },
       {
         label: "Savings Rate",
         value: formatSavingsRate(savingsRate),
-        color: savingsRate !== null && savingsRate < 0 ? "error.main" : "success.main",
+        color: savingsRate !== null && savingsRate < 0 ? "error.main" : "text.primary",
         icon: <SavingsIcon />,
-      },
-      {
-        label: "Saved / Invested",
-        value: formatCurrency(savedOrInvested),
-        color: "primary.main",
-        icon: <SavingsIcon />,
-      },
-      {
-        label: "Transactions",
-        value: summary?.transactionCount ?? 0,
-        color: "text.primary",
-        icon: <ReceiptLongIcon />,
       },
     ];
   }, [summary]);
@@ -145,6 +132,7 @@ export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
           onCategorySelect={onCategorySelect}
         />
       )}
+      {view === "overview" ? <StatisticsSecondaryInfo summary={summary} /> : null}
     </Box>
   );
 };
