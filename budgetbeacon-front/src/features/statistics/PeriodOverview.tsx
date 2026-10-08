@@ -37,8 +37,6 @@ export const PeriodOverview = ({
   layout = "page",
 }: PeriodOverviewProps) => {
   const hasTransactions = (summary?.transactionCount ?? 0) > 0;
-  const excludedTotal =
-    (summary?.internalTransferTotal ?? 0) + (summary?.adjustmentTotal ?? 0);
 
   return (
     <Card
@@ -84,23 +82,11 @@ export const PeriodOverview = ({
             </Typography>
           </Box>
           <Chip
-            label={
-              excludedTotal > 0
-                ? `Excluded ${formatCurrency(excludedTotal)}`
-                : hasTransactions
-                  ? "Data available"
-                  : "No data"
-            }
-            color={excludedTotal > 0 ? "default" : hasTransactions ? "success" : "default"}
-            variant={hasTransactions && excludedTotal === 0 ? "filled" : "outlined"}
+            label={hasTransactions ? "Data available" : "No data"}
+            color={hasTransactions ? "success" : "default"}
+            variant={hasTransactions ? "filled" : "outlined"}
           />
         </Stack>
-        {excludedTotal > 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Internal transfers and adjustments are excluded from income,
-            expenses, net balance, savings rate, and spending charts.
-          </Typography>
-        ) : null}
 
         <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
 

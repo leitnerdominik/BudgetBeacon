@@ -5,6 +5,7 @@ import { createBrowserRouter } from "react-router-dom";
 
 import { GlobalError } from "./components/GlobalError";
 import { NotFound } from "./components/NotFound";
+import { STATISTICS_VIEW_PATHS } from "./features/statistics/statisticsViews";
 
 const RootLayout = lazy(async () => ({
   default: (await import("./components/RootLayout")).RootLayout,
@@ -23,6 +24,9 @@ const EditTransactionPage = lazy(async () => ({
 }));
 const StatisticsPage = lazy(async () => ({
   default: (await import("./pages/StatisticsPage")).StatisticsPage,
+}));
+const StatisticsView = lazy(async () => ({
+  default: (await import("./features/statistics/MonthlyOverview")).MonthlyOverview,
 }));
 const TipsPage = lazy(async () => ({
   default: (await import("./pages/TipsPage")).TipsPage,
@@ -86,7 +90,15 @@ export const router = createBrowserRouter([
             path: "transactions/:transactionId/edit",
             element: withSuspense(<EditTransactionPage />),
           },
-          { path: "statistics", element: withSuspense(<StatisticsPage />) },
+          {
+            path: "statistics",
+            element: withSuspense(<StatisticsPage />),
+            children: [
+              { index: true, element: withSuspense(<StatisticsView view="overview" />) },
+              { path: STATISTICS_VIEW_PATHS.spending, element: withSuspense(<StatisticsView view="spending" />) },
+              { path: STATISTICS_VIEW_PATHS.trends, element: withSuspense(<StatisticsView view="trends" />) },
+            ],
+          },
           { path: "tips", element: withSuspense(<TipsPage />) },
           { path: "tips/:tipId", element: withSuspense(<TipDetailPage />) },
           { path: "settings", element: withSuspense(<SettingsPage />) },
