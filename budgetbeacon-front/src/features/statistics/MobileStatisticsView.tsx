@@ -72,6 +72,7 @@ export const MobileStatisticsView = ({
     "month-comparison": summary && data?.previousMonthSummary ? (
       <MonthComparison
         layout="slide"
+        timeframe={timeframe}
         current={summary}
         month={selectedMonth}
         previous={data.previousMonthSummary}
@@ -116,27 +117,32 @@ export const MobileStatisticsView = ({
   }));
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        flex: "0 0 auto",
-        height: "max(360px, 60dvh)",
-        minHeight: 0,
-        minWidth: 0,
-      }}
-    >
-      <MobileStatisticsCarousel
-        activeSlideId={activeSlideId}
-        ariaLabel={`Statistics for ${periodLabel}`}
-        onActiveSlideChange={(slideId) => {
-          if (isVisibleStatisticsSlideId(slideId, slideDefinitions)) {
-            onActiveSlideChange(slideId);
-          }
+    <>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: "0 0 auto",
+          height: "max(360px, 60dvh)",
+          minHeight: 0,
+          minWidth: 0,
         }}
-        slides={slides}
-        sx={{ flex: "1 1 auto", minHeight: 0, minWidth: 0 }}
-      />
-    </Box>
+      >
+        <MobileStatisticsCarousel
+          activeSlideId={activeSlideId}
+          ariaLabel={`Statistics for ${periodLabel}`}
+          onActiveSlideChange={(slideId) => {
+            if (isVisibleStatisticsSlideId(slideId, slideDefinitions)) {
+              onActiveSlideChange(slideId);
+            }
+          }}
+          slides={slides}
+          sx={{ flex: "1 1 auto", minHeight: 0, minWidth: 0 }}
+        />
+      </Box>
+      {view === "overview" && (timeframe !== "1" || !summary || !data?.previousMonthSummary) ? (
+        <MonthComparison month={selectedMonth} timeframe={timeframe} current={summary} previous={data?.previousMonthSummary} />
+      ) : null}
+    </>
   );
 };
