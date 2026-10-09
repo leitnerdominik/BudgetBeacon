@@ -128,39 +128,26 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
     }
 
     public async Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(
-        IEnumerable<Transaction> transactions,
-        string? aiLocationContext = null)
+        SavingsTipsSummary summary,
+        string? aiLocationContext = null,
+        CancellationToken cancellationToken = default)
     {
-        var transactionList = transactions.ToList();
+        cancellationToken.ThrowIfCancellationRequested();
 
-        if (!transactionList.Any())
+        if (summary.TransactionCount == 0)
             return Array.Empty<SavingsTip>();
 
         _logger.LogInformation(
             "Generating AI savings tips for {Count} transactions via DeepSeek model {Model}.",
-            transactionList.Count,
+            summary.TransactionCount,
             _model);
 
-        var expensesByCategory = transactionList
-            .Where(t => string.Equals(
-                TransactionTreatment.Normalize(t.Treatment) ??
-                TransactionTreatment.GetDefault(t.Amount, t.Category),
-                TransactionTreatment.Expense,
-                StringComparison.Ordinal))
-            .GroupBy(t => t.Category)
-            .Select(g => new
-            {
-                Category = g.Key,
-                TotalSpent = Math.Abs(g.Sum(t => t.Amount))
-            })
-            .OrderByDescending(x => x.TotalSpent)
-            .ToList();
-
-        var jsonPayload = JsonSerializer.Serialize(expensesByCategory);
+        var jsonPayload = JsonSerializer.Serialize(summary.ExpensesByCategory);
 
         var prompt = BuildSavingsTipsPrompt(jsonPayload, aiLocationContext);
 
-        var textResult = await SendPromptAsync(prompt, "savings tips", temperature: 0.7);
+        var textResult = await SendPromptAsync(
+            prompt, "savings tips", temperature: 0.7, cancellationToken: cancellationToken);
 
         if (string.IsNullOrWhiteSpace(textResult))
             return Array.Empty<SavingsTip>();

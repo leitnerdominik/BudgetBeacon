@@ -1126,32 +1126,27 @@ public class TransactionsController : ControllerBase
         var inclusiveEndDate = effectiveAsOfDate.ToDateTime(
             TimeOnly.MaxValue,
             DateTimeKind.Utc);
-        IEnumerable<Transaction> transactions;
+        DateTime? startDate = null;
         string timeframe;
 
         if (allTime)
         {
             _logger.LogInformation("API requested AI savings tips for all available transactions.");
-            transactions = await _repository.GetAllAsync(userId, inclusiveEndDate);
             timeframe = "All time";
         }
         else
         {
             _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
-            var startDate = effectiveAsOfDate
+            startDate = effectiveAsOfDate
                 .AddMonths(-monthsBack)
                 .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-            (transactions, _) = await _repository.GetTransactionsPagedAsync(
-                userId,
-                new TransactionQueryOptions(
-                    StartDate: startDate,
-                    EndDate: inclusiveEndDate),
-                1,
-                10000);
             timeframe = FormatTipsTimeframe(monthsBack);
         }
 
-        if (!transactions.Any())
+        var summary = await _repository.GetSavingsTipsSummaryAsync(
+            userId, startDate, inclusiveEndDate, HttpContext.RequestAborted);
+
+        if (summary.TransactionCount == 0)
         {
             return this.ApiProblem(
                 StatusCodes.Status404NotFound,
@@ -1161,7 +1156,8 @@ public class TransactionsController : ControllerBase
         }
 
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
-        var tips = await _aiService.GetSavingTipsAsync(transactions, aiLocationContext);
+        var tips = await _aiService.GetSavingTipsAsync(
+            summary, aiLocationContext, HttpContext.RequestAborted);
 
         return Ok(new { Timeframe = timeframe, Tips = tips });
     }

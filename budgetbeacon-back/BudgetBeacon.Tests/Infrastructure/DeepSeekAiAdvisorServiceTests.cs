@@ -5,6 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using BudgetBeacon.Core.Entities;
+using BudgetBeacon.Core.Models;
+using BudgetBeacon.Core.Services;
+using BudgetBeacon.Infrastructure.Data;
 using BudgetBeacon.Core.Exceptions;
 using BudgetBeacon.Infrastructure.External;
 
@@ -401,7 +404,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var handler = new StubHttpMessageHandler();
         var sut = CreateService(handler);
 
-        var tips = await sut.GetSavingTipsAsync([]);
+        var tips = await sut.GetSavingTipsAsync(new SavingsTipsSummary(0, []));
 
         Assert.Empty(tips);
         Assert.Empty(handler.Requests);
@@ -453,14 +456,10 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var handler = new StubHttpMessageHandler();
         handler.Enqueue(DeepSeekResponse($"```json\n{providerTips}\n```"));
         var sut = CreateService(handler);
-        var transactions = new[]
-        {
-            new Transaction { Amount = -30m, Category = "Transport" },
-            new Transaction { Amount = -15m, Category = "Subscriptions & Services" },
-            new Transaction { Amount = 2500m, Category = "Income" }
-        };
+        var summary = new SavingsTipsSummary(3,
+            [new("Transport", 30m), new("Subscriptions & Services", 15m)]);
 
-        var tips = await sut.GetSavingTipsAsync(transactions);
+        var tips = await sut.GetSavingTipsAsync(summary);
 
         Assert.Collection(
             tips,
@@ -519,7 +518,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var sut = CreateService(handler);
 
         await sut.GetSavingTipsAsync(
-            [new Transaction { Amount = -20m, Category = "Transport" }],
+            new SavingsTipsSummary(1, [new("Transport", 20m)]),
             "Merano, South Tyrol, Italy");
 
         var request = Assert.Single(handler.Requests);
@@ -536,7 +535,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var sut = CreateService(handler);
 
         await Assert.ThrowsAsync<ExternalServiceException>(() =>
-            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
+            sut.GetSavingTipsAsync(new SavingsTipsSummary(1, [new("Food & Groceries", 20m)])));
     }
 
     [Theory]
@@ -556,7 +555,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
 
         await Assert.ThrowsAsync<ExternalServiceException>(() =>
             sut.GetSavingTipsAsync(
-                [new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
+                new SavingsTipsSummary(1, [new("Food & Groceries", 20m)])));
     }
 
     [Fact]
@@ -570,7 +569,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var sut = CreateService(handler);
 
         var exception = await Assert.ThrowsAsync<ExternalServiceException>(() =>
-            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
+            sut.GetSavingTipsAsync(new SavingsTipsSummary(1, [new("Food & Groceries", 20m)])));
 
         Assert.Contains("unavailable", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -588,10 +587,110 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var sut = CreateService(handler, logger);
 
         await Assert.ThrowsAsync<ExternalServiceException>(() =>
-            sut.GetSavingTipsAsync([new Transaction { Amount = -20m, Category = "Food & Groceries" }]));
+            sut.GetSavingTipsAsync(new SavingsTipsSummary(1, [new("Food & Groceries", 20m)])));
 
         Assert.DoesNotContain(logger.Messages, message => message.Contains(sensitiveErrorBody, StringComparison.Ordinal));
         Assert.Contains(logger.Messages, message => message.Contains("DeepSeek savings tips request failed", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(10000, false)]
+    [InlineData(10001, false)]
+    [InlineData(10000, true)]
+    [InlineData(10001, true)]
+    public async Task GetSavingTipsAsync_SendsCompleteAggregateWithoutTransactionDetails(
+        int transactionCount,
+        bool allTime)
+    {
+        var start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+        var transactions = Enumerable.Range(1, transactionCount - 1)
+            .Select(_ => new Transaction
+            {
+                UserId = "private-user", Date = end, Amount = -1m, Category = "Recent",
+                Notes = "private notes",
+                Metadata = new TransactionMetadata { RawDescription = "private merchant" }
+            })
+            .Append(new Transaction
+            {
+                UserId = "private-user", Date = start, Amount = -123.45m, Category = "Oldest"
+            });
+        var groups = TransactionRepository.BuildSavingsTipsAggregateQuery(
+            transactions.AsQueryable(), "private-user", allTime ? null : start, end);
+        var summary = SavingsTipsAggregationService.BuildSummary(groups);
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse("[]"));
+        var sut = CreateService(handler);
+
+        await sut.GetSavingTipsAsync(summary);
+
+        Assert.Equal(transactionCount, summary.TransactionCount);
+        var prompt = GetPrompt(Assert.Single(handler.Requests).Body);
+        var payload = prompt.Split("Expense Summary (Absolute Values):", 2)[1].Trim();
+        using var json = JsonDocument.Parse(payload);
+        var categories = json.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(2, categories.Length);
+        Assert.Equal("Recent", categories[0].GetProperty("Category").GetString());
+        Assert.Equal(transactionCount - 1, categories[0].GetProperty("TotalSpent").GetDecimal());
+        Assert.Equal("Oldest", categories[1].GetProperty("Category").GetString());
+        Assert.Equal(123.45m, categories[1].GetProperty("TotalSpent").GetDecimal());
+        Assert.All(categories, category => Assert.Equal(
+            ["Category", "TotalSpent"], category.EnumerateObject().Select(property => property.Name).ToArray()));
+        Assert.DoesNotContain("private-user", prompt);
+        Assert.DoesNotContain("private notes", prompt);
+        Assert.DoesNotContain("private merchant", prompt);
+    }
+
+    [Fact]
+    public async Task GetSavingTipsAsync_StillCallsProviderForIncomeOnlySummary()
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse("[]"));
+        var sut = CreateService(handler);
+
+        await sut.GetSavingTipsAsync(new SavingsTipsSummary(1, []));
+
+        var prompt = GetPrompt(Assert.Single(handler.Requests).Body);
+        Assert.Equal("[]", prompt.Split("Expense Summary (Absolute Values):", 2)[1].Trim());
+    }
+
+    [Fact]
+    public async Task GetSavingTipsAsync_DoesNotCallProviderWhenAlreadyCancelled()
+    {
+        var handler = new StubHttpMessageHandler();
+        var sut = CreateService(handler);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sut.GetSavingTipsAsync(
+            new SavingsTipsSummary(1, [new("Transport", 20m)]), cancellationToken: cancellation.Token));
+
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task GetSavingTipsAsync_CancelsInFlightProviderRequest()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new StubHttpMessageHandler
+        {
+            SendAction = async token =>
+            {
+                entered.SetResult();
+                await Task.Delay(Timeout.Infinite, token);
+                return DeepSeekResponse("[]");
+            }
+        };
+        var sut = CreateService(handler);
+        using var cancellation = new CancellationTokenSource();
+        var request = sut.GetSavingTipsAsync(
+            new SavingsTipsSummary(1, [new("Transport", 20m)]), cancellationToken: cancellation.Token);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Single(handler.Requests);
     }
 
     private static DeepSeekAiAdvisorService CreateService(
@@ -655,6 +754,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         private readonly Queue<Func<HttpResponseMessage>> _responses = new();
 
         public List<CapturedRequest> Requests { get; } = [];
+        public Func<CancellationToken, Task<HttpResponseMessage>>? SendAction { get; init; }
 
         public void Enqueue(HttpResponseMessage response)
         {
@@ -670,7 +770,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            if (_responses.Count == 0)
+            if (_responses.Count == 0 && SendAction is null)
             {
                 throw new InvalidOperationException("No HTTP response was queued for the test.");
             }
@@ -686,7 +786,9 @@ public sealed class DeepSeekAiAdvisorServiceTests
                 request.Headers.Authorization?.Parameter,
                 body));
 
-            return _responses.Dequeue()();
+            return SendAction is null
+                ? _responses.Dequeue()()
+                : await SendAction(cancellationToken);
         }
     }
 

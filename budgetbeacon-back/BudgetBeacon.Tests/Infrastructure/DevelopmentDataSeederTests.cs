@@ -397,6 +397,13 @@ public sealed class DevelopmentDataSeederTests
         public Task<IEnumerable<Transaction>> GetAllAsync(string userId, DateTime? endDate = null) =>
             throw new NotSupportedException();
 
+        public Task<SavingsTipsSummary> GetSavingsTipsSummaryAsync(
+            string userId,
+            DateTime? startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<List<Guid>> GetUncategorizedIdsAsync(
             string userId,
             CancellationToken cancellationToken = default) =>
