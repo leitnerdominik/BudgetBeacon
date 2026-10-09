@@ -2,14 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement, type ComponentType } from "react";
 import { renderToString } from "react-dom/server";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { createMemoryRouter, RouterProvider, useOutletContext } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createServer } from "vite";
 import { createTheme, ThemeProvider, type Theme } from "@mui/material/styles";
 
 import type { StatisticsOverview } from "../src/types/api.ts";
 import { STATISTICS_VIEWS, type StatisticsView } from "../src/features/statistics/statisticsViews.ts";
-import { formatCurrency } from "../src/utils/formatDate.ts";
+import { formatCurrency, formatDate } from "../src/utils/formatDate.ts";
+import type { StatisticsContext } from "../src/features/statistics/statisticsContext.ts";
 import type { StatisticsTimeframeValue } from "../src/features/statistics/statisticsPeriod.ts";
 
 const section = (html: string, label: string) => {
@@ -23,6 +24,11 @@ const definitionText = (html: string, tag: "dt" | "dd") =>
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/g, "")
     .replace(/<svg\b[\s\S]*?<\/svg>/g, "")
     .replace(/<[^>]*>/g, ""));
+
+const visibleText = (html: string) => html
+  .replace(/<style\b[^>]*>[\s\S]*?<\/style>/g, "")
+  .replace(/<svg\b[\s\S]*?<\/svg>/g, "")
+  .replace(/<[^>]*>/g, "");
 
 const summary = {
   totalIncome: 1000, totalExpense: -100, netBalance: 900,
@@ -43,7 +49,8 @@ const data: StatisticsOverview = {
   categories: [], topExpenses: [], recurringExpenses: [],
 };
 
-test("server-renders production Statistics shell, navigation, content and request states", async () => {
+test("server-renders production Statistics shell, navigation, content and request states", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 1, 15, 12) });
   // Use the installed Vite transpiler for TSX without adding a DOM/test dependency.
   // No HTTP/WebSocket listener, file watcher or dependency scan is started.
   const serverOptions = {
@@ -118,11 +125,14 @@ test("server-renders production Statistics shell, navigation, content and reques
       online?: boolean;
       mobile?: boolean;
       timeframe?: StatisticsTimeframeValue;
+      month?: string;
     } = {}) => {
       const client = new QueryClient({ defaultOptions: { queries: { retryOnMount: false } } });
       const timeframe = options.timeframe ?? "1";
+      const month = options.month ?? "2026-01";
+      const [endYear, endMonth] = month.split("-").map(Number);
       const queryKey = ["transactions", "statistics", timeframe === "all" ? { allTime: true } : {
-        allTime: false, endYear: 2026, endMonth: 1, monthsBack: Number(timeframe),
+        allTime: false, endYear, endMonth, monthsBack: Number(timeframe),
       }];
       client.setQueryData(queryKey, options.response ?? data);
       const query = client.getQueryCache().find({ queryKey });
@@ -138,7 +148,7 @@ test("server-renders production Statistics shell, navigation, content and reques
           { path: "spending", element: createElement(MonthlyOverview, { view: "spending" }) },
           { path: "trends", element: createElement(MonthlyOverview, { view: "trends" }) },
         ],
-      }], { initialEntries: [`${path}?timeframe=${timeframe}&month=2026-01&tag=a&tag=b`] });
+      }], { initialEntries: [`${path}?timeframe=${timeframe}&month=${month}&tag=a&tag=b`] });
       const theme = options.mobile ? createTheme(appTheme, {
         components: { MuiUseMediaQuery: { defaultProps: {
           ssrMatchMedia: (query: string) => ({ matches: query.includes("max-width") }),
@@ -157,6 +167,218 @@ test("server-renders production Statistics shell, navigation, content and reques
         client.clear();
       }
     };
+
+    await t.test("Spending and Trends retain populated and empty sections across every range and layout", () => {
+      for (const mobile of [false, true]) {
+        for (const timeframe of ["1", "3", "6", "12", "all"] as const) {
+          const isAllTime = timeframe === "all";
+          const count = isAllTime ? 2 : Number(timeframe);
+          const points = Array.from({ length: count }, (_, index) => {
+            const date = new Date(Date.UTC(2026, 1 - count + index, 1));
+            const income = (isAllTime ? 12000 : 1000) + index * 100.25;
+            const expense = (isAllTime ? 1200 : 100) + index * 10.5;
+            return {
+              ...summary, totalIncome: income, totalExpense: -expense, netBalance: income - expense,
+              year: isAllTime ? 2025 + index : date.getUTCFullYear(),
+              month: isAllTime ? null : date.getUTCMonth() + 1,
+            };
+          });
+          const expenseTotal = points.reduce((sum, point) => sum + Math.abs(point.totalExpense), 0);
+          const incomeTotal = points.reduce((sum, point) => sum + point.totalIncome, 0);
+          const response: StatisticsOverview = {
+            ...data, allTime: isAllTime, monthsBack: isAllTime ? null : count,
+            startDate: isAllTime ? "2025-01-01" : `${points[0].year}-${String(points[0].month).padStart(2, "0")}-01`,
+            trendGranularity: isAllTime ? "year" : "month", trend: [...points].reverse(),
+            summary: { ...summary, totalIncome: incomeTotal, totalExpense: -expenseTotal,
+              netBalance: incomeTotal - expenseTotal, transactionCount: count },
+            // Distinct server-supplied monthly statistics must not become yearly statistics.
+            monthlyTotals: { monthCount: isAllTime ? 24 : count,
+              averageIncome: 1004.25, medianIncome: 1000.75, averageExpense: 102.5, medianExpense: 100.25 },
+            categories: [
+              { category: "Food", totalExpense: expenseTotal * 0.75, percentage: 75, transactionCount: 3 },
+              { category: "Rent", totalExpense: expenseTotal * 0.25, percentage: 25, transactionCount: 1 },
+            ],
+            topExpenses: [
+              { id: "expense-one", description: "Synthetic groceries", category: "Food", amount: -74.25, date: "2026-01-15" },
+              { id: "expense-two", description: "Synthetic rent", category: "Rent", amount: -25.75, date: "2026-01-10" },
+            ],
+            // Deliberately retained for one month to prove unsupported candidates remain hidden.
+            recurringExpenses: [{ description: "Synthetic subscription", category: "Subscriptions & Services",
+              averageAmount: 12.5, minAmount: 12, maxAmount: 13, occurrenceCount: 3, monthCount: 2, lastDate: "2026-01-20" }],
+          };
+          const before = structuredClone(response);
+          const spending = render("spending", { timeframe, mobile, response });
+          const text = visibleText(spending);
+          assert.ok(spending.indexOf("Expenses by Category") < spending.indexOf("Top expense transactions"));
+          assert.ok(spending.indexOf("Top expense transactions") < spending.indexOf(timeframe === "1" ? "Daily Average" : "Repeated expenses"));
+          assert.ok(text.includes(`Food3 transactions${formatCurrency(expenseTotal * 0.75)}75 %`));
+          assert.ok(text.includes(`Rent1 transactions${formatCurrency(expenseTotal * 0.25)}25 %`));
+          assert.match(spending, /<button\b[^>]*aria-label="View Food transactions for /);
+          for (const expense of response.topExpenses) {
+            assert.ok(text.includes(`${expense.description}${expense.category} - ${formatDate(expense.date)}${formatCurrency(expense.amount)}`));
+          }
+          assert.equal(text.includes("Synthetic subscription"), timeframe !== "1");
+          assert.equal(text.includes("Spending Pace"), timeframe === "1");
+          assert.equal(text.includes("Detection requires repeated expenses across at least two months."), timeframe === "1");
+          if (timeframe === "1") {
+            // A completed historical month uses all 31 days and the actual totals.
+            assert.ok(text.includes(`Daily Average${formatCurrency(expenseTotal / 31)}`));
+            assert.ok(text.includes(`Projected Expenses${formatCurrency(expenseTotal)}`));
+            assert.ok(text.includes(`Projected Balance${formatCurrency(incomeTotal - expenseTotal)}`));
+            assert.ok(text.includes("Days Remaining0"));
+          } else {
+            assert.ok(text.includes(`Subscriptions &amp; Services - 3 occurrences across 2 months - Last ${formatDate("2026-01-20")}`));
+            assert.ok(text.includes(`${formatCurrency(12.5)}avg`));
+          }
+          assert.doesNotMatch(spending, /Income versus expenses|Average Monthly Income|Month Comparison|No expense transactions/);
+          assert.equal((spending.match(/Internal transfers and adjustments are excluded/g) ?? []).length, 1);
+
+          const trends = render("trends", { timeframe, mobile, response });
+          const trendText = visibleText(trends);
+          const chart = section(trends, "Income versus expenses");
+          const chartText = visibleText(chart);
+          const details = [...chart.matchAll(/<dl\b[^>]*>([\s\S]*?)<\/dl>/g)].map((match) => match[1]);
+          assert.equal(details.length, count);
+          points.forEach((point, index) => {
+            assert.deepEqual(definitionText(details[index], "dt"), ["Income", "Expenses", "Net Balance"]);
+            assert.deepEqual(definitionText(details[index], "dd"), [formatCurrency(point.totalIncome), formatCurrency(Math.abs(point.totalExpense)), formatCurrency(point.netBalance)]);
+          });
+          const bestLabel = isAllTime ? "2026" : "Jan. 2026";
+          assert.ok(chartText.includes(`Income${formatCurrency(incomeTotal)}Expenses${formatCurrency(expenseTotal)}Net Balance${formatCurrency(incomeTotal - expenseTotal)}Best ${isAllTime ? "Year" : "Month"}${bestLabel}`));
+          for (const [label, value] of [
+            ["Average Monthly Income", 1004.25], ["Median Monthly Income", 1000.75],
+            ["Average Monthly Expenses", 102.5], ["Median Monthly Expenses", 100.25],
+          ] as const) assert.ok(trendText.includes(`${label}${formatCurrency(value)}`));
+          const ratio = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(expenseTotal / incomeTotal * 100);
+          assert.ok(trendText.includes(`Expense Ratio${ratio} %`));
+          assert.ok(trends.indexOf("Income versus expenses") < trends.indexOf("Average Monthly Income"));
+          assert.equal(trendText.includes("This selection shows one month."), timeframe === "1");
+          assert.equal(trendText.includes("The chart shows yearly totals. Averages and medians below describe monthly totals for the selected period."), isAllTime);
+          assert.equal(chartText.includes("Yearly totals"), isAllTime);
+          assert.equal(chartText.includes("Monthly totals"), !isAllTime);
+          const activeLink = (trends.match(/<a\b[^>]*>/g) ?? []).find((link) => link.includes('aria-current="page"'));
+          assert.ok(activeLink?.includes(`timeframe=${timeframe}`));
+          if (!isAllTime) assert.ok(activeLink?.includes("month=2026-01"));
+          assert.doesNotMatch(trends, /Expenses by Category|Recurring Expense Candidates|Spending Pace|Month Comparison/);
+          assert.equal((trends.match(/Internal transfers and adjustments are excluded/g) ?? []).length, 1);
+          assert.doesNotMatch(spending + trends, /Infinity|NaN/);
+          assert.deepEqual(response, before, "Detail views must not mutate server data");
+
+          const emptyResponse = { ...response, summary: zeroSummary, monthlyTotals: undefined,
+            categories: [], topExpenses: [], recurringExpenses: [], trend: [] };
+          const emptySpending = render("spending", { timeframe, mobile, response: emptyResponse });
+          assert.match(emptySpending, /No expenses for this period/);
+          assert.match(emptySpending, /No expense transactions/);
+          assert.equal(emptySpending.includes("No recurring candidates"), timeframe !== "1");
+          const emptyTrends = visibleText(render("trends", { timeframe, mobile, response: emptyResponse }));
+          assert.ok(emptyTrends.includes("No transactions found in this trend range."));
+          for (const label of ["Average Monthly Income", "Median Monthly Income", "Average Monthly Expenses", "Median Monthly Expenses", "Expense Ratio"]) {
+            assert.ok(emptyTrends.includes(`${label}N/A`));
+          }
+        }
+        for (const income of [0, -10]) {
+          const html = visibleText(render("trends", { mobile, response: { ...data, summary: { ...summary, totalIncome: income } } }));
+          assert.ok(html.includes("Expense RatioN/A"));
+          assert.ok(html.includes(`Average Monthly Income${formatCurrency(1000)}`));
+        }
+        for (const fixture of [
+          { summary: { ...summary, totalIncome: 100, totalExpense: -300, netBalance: -200 },
+            dailyAverage: 20, projectedExpenses: 560, projectedBalance: -460 },
+          { summary: zeroSummary, dailyAverage: 0, projectedExpenses: 0, projectedBalance: 0 },
+        ]) {
+          const response = { ...data, summary: fixture.summary, startDate: "2026-02-01", endDate: "2026-02-28",
+            trend: [{ ...fixture.summary, year: 2026, month: 2 }] };
+          const before = structuredClone(response);
+          const currentSpending = visibleText(render("spending", { mobile, month: "2026-02", response }));
+          assert.ok(currentSpending.includes("15 of 28 days accounted for"));
+          assert.ok(currentSpending.includes("Month Progress54 %"));
+          assert.ok(currentSpending.includes(`Daily Average${formatCurrency(fixture.dailyAverage)}`));
+          assert.ok(currentSpending.includes(`Projected Expenses${formatCurrency(fixture.projectedExpenses)}`));
+          assert.ok(currentSpending.includes(`Projected Balance${formatCurrency(fixture.projectedBalance)}`));
+          assert.ok(currentSpending.includes("Days Remaining13"));
+          assert.doesNotMatch(currentSpending, /No spending pace yet|Infinity|NaN/);
+          assert.deepEqual(response, before);
+        }
+        const futureSpending = render("spending", { mobile, month: "2026-03" });
+        assert.match(futureSpending, /No spending pace yet/);
+        assert.match(futureSpending, /Spending pace is available once the selected month has started/);
+        assert.doesNotMatch(futureSpending, /Daily Average|Projected Expenses|Projected Balance/);
+      }
+    });
+
+    await t.test("production category callback preserves expense filters and response calendar boundaries", async () => {
+      // SSR does not run the effect that activates useNavigate. Only for this harness,
+      // bind that hook directly to the memory router; the shell callback and URL builder
+      // remain production code. This does not establish mounted routing or button clicks.
+      const callbackServer = await createServer({
+        ...serverOptions,
+        plugins: [{
+          name: "statistics-callback-router",
+          enforce: "pre" as const,
+          transform(source: string, id: string) {
+            if (!id.endsWith("/StatisticsShell.tsx")) return;
+            assert.ok(source.includes("const navigate = useNavigate();"));
+            return { code: source
+              .replace("import { useMemo }", "import { useMemo, useContext }")
+              .replace("Outlet, useNavigate, useSearchParams", "Outlet, UNSAFE_DataRouterContext, useSearchParams")
+              .replace("const navigate = useNavigate();", "const navigate = useContext(UNSAFE_DataRouterContext).router.navigate;"),
+              map: null };
+          },
+        }],
+      });
+      try {
+        const { StatisticsShell: CallbackShell } = await callbackServer.ssrLoadModule("/src/features/statistics/StatisticsShell.tsx") as { StatisticsShell: ComponentType };
+        for (const timeframe of ["1", "3", "6", "12", "all"] as const) {
+          for (const dates of [
+            { startDate: "2025-12-01T00:30:00+14:00", endDate: "2026-01-31T23:30:00-10:00" },
+            { startDate: null, endDate: null },
+          ]) {
+            const client = new QueryClient();
+            const queryKey = ["transactions", "statistics", timeframe === "all" ? { allTime: true } : {
+              allTime: false, endYear: 2026, endMonth: 1, monthsBack: Number(timeframe),
+            }];
+            const response = { ...data, ...dates };
+            const before = structuredClone(response);
+            client.setQueryData(queryKey, response);
+            const captureContext = t.mock.fn((context: StatisticsContext) => context);
+            const ContextProbe = () => {
+              captureContext(useOutletContext<StatisticsContext>());
+              return null;
+            };
+            const router = createMemoryRouter([
+              { path: "/statistics", element: createElement(CallbackShell), children: [
+                { path: "spending", element: createElement(ContextProbe) },
+              ] },
+              { path: "/transactions", element: null },
+            ], { initialEntries: [`/statistics/spending?timeframe=${timeframe}&month=2026-01`] });
+            try {
+              renderToString(createElement(QueryClientProvider, { client }, createElement(ThemeProvider, { theme: appTheme }, createElement(RouterProvider, { router }))));
+              const capturedContext = captureContext.mock.calls[0]?.arguments[0];
+              assert.ok(capturedContext);
+              assert.equal(capturedContext.timeframe, timeframe);
+              const category = "Food & Groceries / Café + 50%";
+              capturedContext.onCategorySelect(category);
+              assert.equal(router.state.location.pathname, "/transactions");
+              const params = new URLSearchParams(router.state.location.search);
+              assert.equal(params.get("category"), category);
+              assert.equal(params.get("type"), "expense");
+              assert.equal(params.get("startDate"), dates.startDate?.slice(0, 10) ?? null);
+              assert.equal(params.get("endDate"), dates.endDate?.slice(0, 10) ?? null);
+              assert.deepEqual([...params.keys()].sort(), dates.startDate ? ["category", "endDate", "startDate", "type"] : ["category", "type"]);
+              assert.deepEqual(response, before, "Category navigation must not mutate the response");
+              await router.navigate(-1);
+              assert.equal(router.state.location.pathname, "/statistics/spending");
+              assert.equal(new URLSearchParams(router.state.location.search).get("timeframe"), timeframe);
+            } finally {
+              router.dispose();
+              client.clear();
+            }
+          }
+        }
+      } finally {
+        await callbackServer.close();
+      }
+    });
 
     for (const { id, path } of STATISTICS_VIEWS) {
       const html = render(id);
