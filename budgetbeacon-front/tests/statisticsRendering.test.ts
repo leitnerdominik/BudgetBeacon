@@ -170,6 +170,78 @@ test("server-renders production Statistics shell, navigation, content and reques
       }
     };
 
+    await t.test("API-shaped financial edge cases retain supplied values across all three views", () => {
+      const cases = [
+        { name: "empty", current: zeroSummary, rate: "N/A", ratio: "N/A", categoryExpense: 0, originalExpense: 0 },
+        { name: "income only", current: { ...zeroSummary, totalIncome: 100, netBalance: 100, transactionCount: 1, analyticsTransactionCount: 1 },
+          rate: "100 %", ratio: "0 %", categoryExpense: 0, originalExpense: 0 },
+        { name: "expense only", current: { ...zeroSummary, totalExpense: -125, netBalance: -125, averageExpense: 125, medianExpense: 125, transactionCount: 1, analyticsTransactionCount: 1 },
+          rate: "N/A", ratio: "N/A", categoryExpense: 125, originalExpense: 125 },
+        { name: "negative balance", current: { ...zeroSummary, totalIncome: 100, totalExpense: -125, netBalance: -25, averageExpense: 125, medianExpense: 125, transactionCount: 2, analyticsTransactionCount: 2 },
+          rate: "-25 %", ratio: "125 %", categoryExpense: 125, originalExpense: 125 },
+        // Mirrors BuildFixedPeriod_UsesTreatmentForAnalyticsTotals in the backend tests:
+        // salary 2500, expense -100, refund 20, investment -500, transfer -700, adjustment -15.
+        // These are supplied response values, not a frontend reimplementation of aggregation.
+        { name: "refund with savings and exclusions", current: { ...zeroSummary, totalIncome: 2500, totalExpense: -80, netBalance: 2420,
+          totalSavedOrInvested: 500, internalTransferTotal: 700, adjustmentTotal: 15,
+          averageExpense: 100, medianExpense: 100, transactionCount: 6, analyticsTransactionCount: 3 },
+          rate: "96,8 %", ratio: "3,2 %", categoryExpense: 80, originalExpense: 100 },
+        { name: "excluded activity only", current: { ...zeroSummary, internalTransferTotal: 700, adjustmentTotal: 15, transactionCount: 2 },
+          rate: "N/A", ratio: "N/A", categoryExpense: 0, originalExpense: 0 },
+      ];
+      for (const mobile of [false, true]) {
+        for (const { name, current, rate, ratio, categoryExpense, originalExpense } of cases) {
+          const response: StatisticsOverview = {
+            ...data, summary: current, previousMonthSummary: zeroSummary,
+            trend: [{ year: 2026, month: 1, ...current }],
+            monthlyTotals: { monthCount: 1, averageIncome: current.totalIncome, medianIncome: current.totalIncome,
+              averageExpense: Math.abs(current.totalExpense), medianExpense: Math.abs(current.totalExpense) },
+            categories: categoryExpense ? [{ category: "Food & Groceries", totalExpense: categoryExpense, percentage: 100, transactionCount: 1 }] : [],
+            topExpenses: originalExpense ? [{ id: "synthetic-expense", description: "Synthetic original expense", category: "Food & Groceries", amount: originalExpense, date: "2026-01-02" }] : [],
+          };
+          const before = structuredClone(response);
+          for (const { id } of STATISTICS_VIEWS) {
+            const html = render(id, { response, mobile });
+            const text = visibleText(html);
+            const excluded = current.internalTransferTotal + current.adjustmentTotal;
+            assert.equal(text.includes("Internal transfers and adjustments are excluded"), excluded > 0, name);
+            if (excluded > 0) assert.ok(text.includes(`Excluded ${formatCurrency(excluded)}`), name);
+            assert.doesNotMatch(html, /Infinity|NaN/, name);
+            if (id === "overview") {
+              assert.deepEqual(definitionText(section(html, "Headline metrics"), "dd"), [
+                formatCurrency(current.totalIncome), formatCurrency(Math.abs(current.totalExpense)), formatCurrency(current.netBalance), rate,
+              ], name);
+              const secondary = definitionText(section(html, "Additional period information"), "dd");
+              assert.equal(secondary[0], formatCurrency(current.totalSavedOrInvested), name);
+              assert.ok(secondary[1].startsWith(`${current.transactionCount}Januar 2026 vs Dezember 2025:`), name);
+              assert.ok(visibleText(section(html, "Month comparison")).includes("Januar 2026 vs Dezember 2025"), name);
+            }
+            if (id === "spending") {
+              const categories = visibleText(section(html, "Expenses by Category"));
+              assert.ok(categories.includes(`${formatCurrency(categoryExpense)} across ${categoryExpense ? 1 : 0} categories`), name);
+              if (originalExpense) assert.ok(text.includes(`Synthetic original expenseFood &amp; Groceries - ${formatDate("2026-01-02")}${formatCurrency(originalExpense)}`), name);
+              else assert.match(html, /No expense transactions/, name);
+            } else {
+              const chart = section(html, "Income versus expenses");
+              const details = chart.match(/<dl\b[^>]*>([\s\S]*?)<\/dl>/);
+              assert.ok(details, name);
+              assert.deepEqual(definitionText(details[1], "dd"), [formatCurrency(current.totalIncome), formatCurrency(Math.abs(current.totalExpense)),
+                ...(id === "trends" ? [formatCurrency(current.netBalance)] : [])], name);
+            }
+            if (id === "trends") {
+              const period = visibleText(section(html, "Period Overview"));
+              assert.ok(period.includes(`Average Monthly Income${formatCurrency(current.totalIncome)}`), name);
+              assert.ok(period.includes(`Median Monthly Income${formatCurrency(current.totalIncome)}`), name);
+              assert.ok(period.includes(`Average Monthly Expenses${formatCurrency(Math.abs(current.totalExpense))}`), name);
+              assert.ok(period.includes(`Median Monthly Expenses${formatCurrency(Math.abs(current.totalExpense))}`), name);
+              assert.ok(period.includes(`Expense Ratio${ratio}`), name);
+            }
+          }
+          assert.deepEqual(response, before, name);
+        }
+      }
+    });
+
     await t.test("Spending and Trends retain populated and empty sections across every range and layout", () => {
       for (const mobile of [false, true]) {
         for (const timeframe of ["1", "3", "6", "12", "all"] as const) {
