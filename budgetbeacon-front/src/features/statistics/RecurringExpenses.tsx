@@ -14,7 +14,7 @@ import RepeatIcon from "@mui/icons-material/Repeat";
 
 import { StatusMessage } from "../../components/AsyncState";
 import type { RecurringExpenseCandidate } from "../../types/api";
-import { formatCurrency, formatDate } from "../../utils/formatDate";
+import { formatCurrency, formatCalendarDate } from "../../utils/formatDate";
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 
@@ -101,7 +101,7 @@ export const RecurringExpenses = ({
                 </Box>
                 <ListItemText
                   primary={candidate.description}
-                  secondary={`${candidate.category} - ${candidate.occurrenceCount} occurrences across ${candidate.monthCount} months - Last ${formatDate(candidate.lastDate)}`}
+                  secondary={`${candidate.category} - ${candidate.occurrenceCount} occurrences across ${candidate.monthCount} months - Last ${formatCalendarDate(candidate.lastDate)}`}
                   sx={{ minWidth: 0, width: "100%", m: 0 }}
                   primaryTypographyProps={{
                     fontWeight: 700,

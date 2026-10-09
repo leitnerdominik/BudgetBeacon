@@ -32,7 +32,7 @@ import { isTipsSourceDataNotFound } from "../features/tips/tipErrors";
 import { useTips } from "../features/tips/useTips";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useSlowLoading } from "../hooks/useSlowLoading";
-import { formatCurrency, formatDate } from "../utils/formatDate";
+import { formatCurrency, formatCalendarDate } from "../utils/formatDate";
 import type { RegionalTipCategory } from "../types/api";
 
 type SupportingTransactionsProps = {
@@ -160,7 +160,7 @@ const SupportingTransactions = ({
                   {transaction.description}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {formatDate(transaction.date)}
+                  {formatCalendarDate(transaction.date)}
                 </Typography>
               </Box>
               <Typography

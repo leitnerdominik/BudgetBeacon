@@ -23,7 +23,7 @@ import type {
   TransactionImportDuplicateReason,
   TransactionImportPreviewResponse,
 } from "../../../api/transactionsApi";
-import { formatCurrency, formatDate } from "../../../utils/formatDate";
+import { formatCurrency, formatCalendarDate } from "../../../utils/formatDate";
 
 type TransactionImportPreviewProps = {
   preview: TransactionImportPreviewResponse;
@@ -148,7 +148,7 @@ export const TransactionImportPreview = ({
                         : undefined
                     }
                   >
-                    <TableCell>{formatDate(transaction.date)}</TableCell>
+                    <TableCell>{formatCalendarDate(transaction.date)}</TableCell>
                     <TableCell>
                       <Stack
                         direction="row"

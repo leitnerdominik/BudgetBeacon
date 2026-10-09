@@ -9,7 +9,7 @@ import { createTheme, ThemeProvider, type Theme } from "@mui/material/styles";
 
 import type { StatisticsOverview } from "../src/types/api.ts";
 import { STATISTICS_VIEWS, type StatisticsView } from "../src/features/statistics/statisticsViews.ts";
-import { formatCurrency, formatDate } from "../src/utils/formatDate.ts";
+import { formatCurrency } from "../src/utils/formatDate.ts";
 import type { StatisticsContext } from "../src/features/statistics/statisticsContext.ts";
 import type { StatisticsTimeframeValue } from "../src/features/statistics/statisticsPeriod.ts";
 
@@ -50,7 +50,7 @@ const data: StatisticsOverview = {
 };
 
 test("server-renders production Statistics shell, navigation, content and request states", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 1, 15, 12) });
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 1, 15, 12).getTime() });
   // Use the installed Vite transpiler for TSX without adding a DOM/test dependency.
   // No HTTP/WebSocket listener, file watcher or dependency scan is started.
   const serverOptions = {
@@ -219,7 +219,7 @@ test("server-renders production Statistics shell, navigation, content and reques
             if (id === "spending") {
               const categories = visibleText(section(html, "Expenses by Category"));
               assert.ok(categories.includes(`${formatCurrency(categoryExpense)} across ${categoryExpense ? 1 : 0} categories`), name);
-              if (originalExpense) assert.ok(text.includes(`Synthetic original expenseFood &amp; Groceries - ${formatDate("2026-01-02")}${formatCurrency(originalExpense)}`), name);
+              if (originalExpense) assert.ok(text.includes(`Synthetic original expenseFood &amp; Groceries - 02. Jan. 2026${formatCurrency(originalExpense)}`), name);
               else assert.match(html, /No expense transactions/, name);
             } else {
               const chart = section(html, "Income versus expenses");
@@ -273,12 +273,12 @@ test("server-renders production Statistics shell, navigation, content and reques
               { category: "Rent", totalExpense: expenseTotal * 0.25, percentage: 25, transactionCount: 1 },
             ],
             topExpenses: [
-              { id: "expense-one", description: "Synthetic groceries", category: "Food", amount: -74.25, date: "2026-01-15" },
-              { id: "expense-two", description: "Synthetic rent", category: "Rent", amount: -25.75, date: "2026-01-10" },
+              { id: "expense-one", description: "Synthetic groceries", category: "Food", amount: -74.25, date: "2026-01-15T00:00:00Z" },
+              { id: "expense-two", description: "Synthetic rent", category: "Rent", amount: -25.75, date: "2026-01-10T23:30:00Z" },
             ],
             // Deliberately retained for one month to prove unsupported candidates remain hidden.
             recurringExpenses: [{ description: "Synthetic subscription", category: "Subscriptions & Services",
-              averageAmount: 12.5, minAmount: 12, maxAmount: 13, occurrenceCount: 3, monthCount: 2, lastDate: "2026-01-20" }],
+              averageAmount: 12.5, minAmount: 12, maxAmount: 13, occurrenceCount: 3, monthCount: 2, lastDate: "2026-01-20T00:30:00+14:00" }],
           };
           const before = structuredClone(response);
           const spending = render("spending", { timeframe, mobile, response });
@@ -288,8 +288,9 @@ test("server-renders production Statistics shell, navigation, content and reques
           assert.ok(text.includes(`Food3 transactions${formatCurrency(expenseTotal * 0.75)}75 %`));
           assert.ok(text.includes(`Rent1 transactions${formatCurrency(expenseTotal * 0.25)}25 %`));
           assert.match(spending, /<button\b[^>]*aria-label="View Food transactions for /);
-          for (const expense of response.topExpenses) {
-            assert.ok(text.includes(`${expense.description}${expense.category} - ${formatDate(expense.date)}${formatCurrency(expense.amount)}`));
+          for (const [index, expense] of response.topExpenses.entries()) {
+            const expectedDate = ["15. Jan. 2026", "10. Jan. 2026"][index];
+            assert.ok(text.includes(`${expense.description}${expense.category} - ${expectedDate}${formatCurrency(expense.amount)}`));
           }
           assert.equal(text.includes("Synthetic subscription"), timeframe !== "1");
           assert.equal(text.includes("Spending Pace"), timeframe === "1");
@@ -301,7 +302,7 @@ test("server-renders production Statistics shell, navigation, content and reques
             assert.ok(text.includes(`Projected Balance${formatCurrency(incomeTotal - expenseTotal)}`));
             assert.ok(text.includes("Days Remaining0"));
           } else {
-            assert.ok(text.includes(`Subscriptions &amp; Services - 3 occurrences across 2 months - Last ${formatDate("2026-01-20")}`));
+            assert.ok(text.includes("Subscriptions &amp; Services - 3 occurrences across 2 months - Last 20. Jan. 2026"));
             assert.ok(text.includes(`${formatCurrency(12.5)}avg`));
           }
           assert.doesNotMatch(spending, /Income versus expenses|Average Monthly Income|Month Comparison|No expense transactions/);

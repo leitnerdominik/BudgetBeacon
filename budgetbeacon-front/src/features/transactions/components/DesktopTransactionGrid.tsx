@@ -9,7 +9,7 @@ import {
   type GridSortModel,
 } from "@mui/x-data-grid";
 
-import { formatCurrency, formatDate } from "../../../utils/formatDate";
+import { formatCurrency, formatCalendarDate } from "../../../utils/formatDate";
 import type {
   TransactionSortDirection,
   TransactionSortField,
@@ -80,7 +80,7 @@ export const DesktopTransactionGrid = ({
       field: "date",
       headerName: "Date",
       width: 150,
-      valueFormatter: (value) => formatDate(value),
+      valueFormatter: (value) => formatCalendarDate(value),
     },
     { field: "description", headerName: "Description", flex: 1, minWidth: 170 },
     {
