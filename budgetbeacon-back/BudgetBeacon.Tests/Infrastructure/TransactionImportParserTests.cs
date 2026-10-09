@@ -89,15 +89,61 @@ public sealed class TransactionImportParserTests
         Assert.Equal("Coffee", transaction.Metadata.RawDescription);
     }
 
+    public static TheoryData<string, decimal> ValidAmountFormats => new()
+    {
+        { "13.56", 13.56m },
+        { "13,56", 13.56m },
+        { "1.234,56", 1234.56m },
+        { "1,234.56", 1234.56m },
+        { "€ 13.56", 13.56m },
+        { "13,56 €", 13.56m },
+        { "(13.56)", -13.56m },
+        { "0", 0m },
+        { "1234", 1234m },
+        { "+13,5", 13.5m },
+        { "-13.56", -13.56m },
+        { "0.01", 0.01m },
+        { "1.234.567", 1234567m },
+        { "1,234,567", 1234567m },
+        { "12.345.678,9", 12345678.9m },
+        { "123,456,789.01", 123456789.01m },
+        { "1 234", 1234m },
+        { "1 234 567,89", 1234567.89m },
+        { "1\u00a0234\u00a0567.89", 1234567.89m },
+        { "1 234\u00a0567,89", 1234567.89m },
+        { "1'234", 1234m },
+        { "1'234'567.89", 1234567.89m },
+        { "  eur 1.234,56  ", 1234.56m },
+        { "-1,234.56 EUR", -1234.56m },
+        { "€ -1.234,56", -1234.56m },
+        { "-€ 1.234,56", -1234.56m },
+        { "(1 234,56) EUR", -1234.56m },
+        { "€ (1'234.56)", -1234.56m },
+        { "(EUR 13,56)", -13.56m },
+        { "9.999.999.999.999,99", 9999999999999.99m }
+    };
+
+    public static TheoryData<string> InvalidAmountFormats => new()
+    {
+        "12.3456", "1,2,3.45", "12,3456", "1.2.3,45",
+        "1.234", "12,345", "1234.567", "13.560", "13,000",
+        "1.234,567", "1,234.560", "1,234,56", "1.234.56",
+        "1.23,45", "1234,567.89", "12.34.567", "1,23,456",
+        "1..234,56", "1,,234.56", ",13", "13.", ".", ",",
+        "1.,23", "1,234.5.6", "1.234,5,6",
+        "12 34", "1234 567", "1  234", "1\u00a0\u00a0234", "1'23", "1''234",
+        "1 234'567", "1.234 567,89", "1,234'567.89",
+        "1.2 3", "1,2'3", "1.23\u00a04",
+        "--13.56", "++13.56", "+-13.56", "13-56", "13.56-",
+        "(-13.56)", "(+13.56)", "-(13.56)", "((13.56))",
+        "13EUR56", "13€56", "EUR 13.56 EUR", "€13.56€", "EUR €13.56",
+        "EUR", "€", "+", "()", "", "   ", "not-a-number",
+        "1e2", "١٢.٣٤", "79228162514264337593543950336"
+    };
+
     [Theory]
-    [InlineData("13.56", "13.56")]
-    [InlineData("13,56", "13.56")]
-    [InlineData("1.234,56", "1234.56")]
-    [InlineData("1,234.56", "1234.56")]
-    [InlineData("€ 13.56", "13.56")]
-    [InlineData("13,56 €", "13.56")]
-    [InlineData("(13.56)", "-13.56")]
-    public void ParseCsvTransactions_ParsesFlexibleAmountFormats(string amount, string expected)
+    [MemberData(nameof(ValidAmountFormats))]
+    public void ParseCsvTransactions_ParsesFlexibleAmountFormats(string amount, decimal expected)
     {
         var csv = $"""
             Date;Amount;Description
@@ -106,7 +152,79 @@ public sealed class TransactionImportParserTests
 
         var transaction = Assert.Single(_sut.ParseCsvTransactions(CreateStream(csv)));
 
-        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), transaction.Amount);
+        Assert.Equal(expected, transaction.Amount);
+    }
+
+    [Theory]
+    [MemberData(nameof(ValidAmountFormats))]
+    public void ParseXlsxTransactions_ParsesFlexibleTextAmountFormats(string amount, decimal expected)
+    {
+        using var stream = CreateXlsxStream(
+            ["Date", "Amount"],
+            ["2026-05-01", amount]);
+
+        var transaction = Assert.Single(_sut.ParseXlsxTransactions(
+            stream, new TransactionImportMapping(true, 0, 1, null)));
+
+        Assert.Equal(expected, transaction.Amount);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidAmountFormats))]
+    public void ParseCsvTransactions_RejectsInvalidAmountFormats(string amount)
+    {
+        var csv = $"Date;Amount;Description\n2026-05-01;{amount};Invalid amount";
+
+        Assert.Throws<InvalidInputException>(() => _sut.ParseCsvTransactions(CreateStream(csv)));
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidAmountFormats))]
+    public void ParseXlsxTransactions_RejectsInvalidTextAmountFormats(string amount)
+    {
+        using var stream = CreateXlsxStream(
+            ["Date", "Amount"],
+            ["2026-05-01", amount]);
+
+        Assert.Throws<InvalidInputException>(() => _sut.ParseXlsxTransactions(
+            stream, new TransactionImportMapping(true, 0, 1, null)));
+    }
+
+    [Theory]
+    [InlineData("12.3456")]
+    [InlineData("1,2,3.45")]
+    public void ParseCsvTransactions_RejectsEntireFileWhenLaterAmountIsInvalid(string amount)
+    {
+        var csv = $"Date;Amount;Description\n2026-05-01;12.34;Valid row\n2026-05-02;{amount};Invalid row";
+
+        Assert.Throws<InvalidInputException>(() => _sut.ParseCsvTransactions(CreateStream(csv)));
+    }
+
+    [Theory]
+    [InlineData("12.3456")]
+    [InlineData("1,2,3.45")]
+    public void ParseXlsxTransactions_RejectsEntireFileWhenLaterAmountIsInvalid(string amount)
+    {
+        using var stream = CreateXlsxStream(
+            ["Date", "Amount"],
+            ["2026-05-01", "12.34"],
+            ["2026-05-02", amount]);
+
+        Assert.Throws<InvalidInputException>(() => _sut.ParseXlsxTransactions(
+            stream, new TransactionImportMapping(true, 0, 1, null)));
+    }
+
+    [Fact]
+    public void ParseXlsxTransactions_PreservesNumericAmountForLaterFinancialValidation()
+    {
+        using var stream = CreateXlsxStream(
+            ["Date", "Amount"],
+            ["2026-05-01", 12.3456m]);
+
+        var transaction = Assert.Single(_sut.ParseXlsxTransactions(
+            stream, new TransactionImportMapping(true, 0, 1, null)));
+
+        Assert.Equal(12.3456m, transaction.Amount);
     }
 
     [Fact]
