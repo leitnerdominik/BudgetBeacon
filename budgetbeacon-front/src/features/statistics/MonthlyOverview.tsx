@@ -102,11 +102,6 @@ export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
           This selection shows one month. Choose a longer range to explore income and expense history.
         </Typography>
       ) : null}
-      {view === "overview" && isMonthlyView && !hasMonthComparison ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Previous-month comparison is unavailable for this selection.
-        </Typography>
-      ) : null}
       {isMobileView ? (
         <MobileStatisticsView
           view={view}
@@ -129,11 +124,14 @@ export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
           periodLabel={periodLabel}
           isAllTime={isAllTime}
           isMonthlyView={isMonthlyView}
+          timeframe={timeframe}
           isSmallScreen={isSmallScreen}
           onCategorySelect={onCategorySelect}
         />
       )}
-      {view === "overview" ? <StatisticsSecondaryInfo summary={summary} /> : null}
+      {view === "overview" ? (
+        <StatisticsSecondaryInfo summary={summary} previous={isMonthlyView ? data?.previousMonthSummary : undefined} month={selectedMonth} />
+      ) : null}
     </Box>
   );
 };

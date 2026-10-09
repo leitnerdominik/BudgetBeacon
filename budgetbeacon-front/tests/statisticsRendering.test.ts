@@ -207,11 +207,67 @@ test("server-renders production Statistics shell, navigation, content and reques
     }
     const unavailable = render("overview", { response: { ...data, previousMonthSummary: null } });
     assert.match(unavailable, /Previous-month comparison is unavailable/);
-    assert.doesNotMatch(unavailable, /Month Comparison/);
+    assert.deepEqual(definitionText(section(unavailable, "Month comparison"), "dt"), []);
     const empty = render("overview", { response: { ...data, summary: zeroSummary, trend: [], previousMonthSummary: zeroSummary } });
     assert.match(empty, /Month Comparison/);
     assert.match(empty, /No transactions found in this trend range/);
     assert.match(empty, /N\/A/);
+
+    const comparisonCases = [
+      { name: "zero previous activity", current: summary, previous: zeroSummary,
+        changes: ["New (increased from zero)", "New (increased from zero)", "New (increased from zero)"], countChange: "New (increased from zero)" },
+      { name: "unchanged zero activity", current: zeroSummary, previous: zeroSummary,
+        changes: ["Unchanged (0 %)", "Unchanged (0 %)", "Unchanged (0 %)"], countChange: "Unchanged (0 %)" },
+      { name: "falling expenses and improving negative balance", current: { ...summary, totalIncome: 120, totalExpense: -150, netBalance: -30, transactionCount: 6 },
+        previous: { ...summary, totalIncome: 100, totalExpense: -200, netBalance: -100, transactionCount: 4 },
+        changes: ["Increased (+20 %)", "Decreased (-25 %)", "Increased (+70 %)"], countChange: "Increased (+50 %)" },
+      { name: "positive expense magnitude and worsening negative balance", current: { ...summary, totalIncome: 75, totalExpense: 125, netBalance: -150, transactionCount: 2 },
+        previous: { ...summary, totalIncome: 100, totalExpense: -100, netBalance: -100, transactionCount: 4 },
+        changes: ["Decreased (-25 %)", "Increased (+25 %)", "Decreased (-50 %)"], countChange: "Decreased (-50 %)" },
+      { name: "unchanged nonzero values", current: summary, previous: summary,
+        changes: ["Unchanged (0 %)", "Unchanged (0 %)", "Unchanged (0 %)"], countChange: "Unchanged (0 %)" },
+      { name: "new negative balance", current: { ...zeroSummary, totalExpense: -10, netBalance: -10 }, previous: zeroSummary,
+        changes: ["Unchanged (0 %)", "New (increased from zero)", "New (decreased from zero)"], countChange: "Unchanged (0 %)" },
+      { name: "balance crosses zero", current: { ...summary, totalIncome: 200, totalExpense: -100, netBalance: 100 },
+        previous: { ...summary, totalIncome: 100, totalExpense: -200, netBalance: -100 },
+        changes: ["Increased (+100 %)", "Decreased (-50 %)", "Increased (+200 %)"], countChange: "Unchanged (0 %)" },
+    ];
+    for (const mobile of [false, true]) {
+      for (const fixture of comparisonCases) {
+        const response = { ...data, summary: fixture.current, previousMonthSummary: fixture.previous };
+        const before = structuredClone(response);
+        const html = render("overview", { response, mobile });
+        const panel = section(html, "Month comparison");
+        assert.deepEqual(definitionText(panel, "dt"), ["Income", "Expenses", "Net Balance"], fixture.name);
+        assert.match(panel, /Januar 2026 vs Dezember 2025/);
+        const currentValues = [fixture.current.totalIncome, Math.abs(fixture.current.totalExpense), fixture.current.netBalance];
+        const previousValues = [fixture.previous.totalIncome, Math.abs(fixture.previous.totalExpense), fixture.previous.netBalance];
+        assert.deepEqual(definitionText(panel, "dd"), currentValues.map((value, i) =>
+          `Current ${formatCurrency(value)}Previous ${formatCurrency(previousValues[i])}${fixture.changes[i]}`), fixture.name);
+        assert.doesNotMatch(panel, /Transactions|Infinity|NaN|unavailable/);
+        const secondary = section(html, "Additional period information");
+        assert.ok(secondary.includes(`Previous ${fixture.previous.transactionCount}; ${fixture.countChange}`), fixture.name);
+        assert.deepEqual(response, before, "Comparison must not mutate summaries");
+      }
+      const unavailableHtml = render("overview", { response: { ...data, previousMonthSummary: null }, mobile });
+      assert.match(section(unavailableHtml, "Month comparison"), /Previous-month comparison is unavailable/);
+      assert.deepEqual(definitionText(section(unavailableHtml, "Month comparison"), "dt"), []);
+      assert.deepEqual(definitionText(section(unavailableHtml, "Headline metrics"), "dd"), [formatCurrency(1000), formatCurrency(100), formatCurrency(900), "90 %"]);
+      assert.doesNotMatch(section(unavailableHtml, "Additional period information"), /Previous|Unchanged|New \(/);
+      for (const timeframe of ["3", "6", "12", "all"] as const) {
+        // Deliberately retain a previous summary: a longer-range total must never be compared with it.
+        const html = render("overview", { timeframe, mobile });
+        const panel = section(html, "Explore this period");
+        assert.doesNotMatch(html, /aria-label="Month comparison"/);
+        assert.deepEqual(definitionText(panel, "dt"), []);
+        assert.match(panel, /one-month selection/);
+        const periodSearch = timeframe === "all" ? "timeframe=all" : `timeframe=${timeframe}&amp;month=2026-01`;
+        for (const view of ["spending", "trends"]) {
+          assert.ok(panel.includes(`href="/statistics/${view}?${periodSearch}&amp;tag=a&amp;tag=b"`));
+        }
+        assert.doesNotMatch(section(html, "Additional period information"), /Previous|Unchanged|New \(/);
+      }
+    }
 
     const metricCases = [
       { name: "normal", summary, rate: "90 %" },
@@ -239,7 +295,8 @@ test("server-renders production Statistics shell, navigation, content and reques
         assert.match(headline, /Savings Rate is net balance as a share of income\. It is distinct from Saved \/ Invested\./);
         const secondary = section(html, "Additional period information");
         assert.deepEqual(definitionText(secondary, "dt"), ["Saved / Invested", "Transactions"], name);
-        assert.deepEqual(definitionText(secondary, "dd"), [formatCurrency(current.totalSavedOrInvested), String(current.transactionCount)], name);
+        const transactionChange = current.transactionCount === 0 ? "Unchanged (0 %)" : "New (increased from zero)";
+        assert.deepEqual(definitionText(secondary, "dd"), [formatCurrency(current.totalSavedOrInvested), `${current.transactionCount}Januar 2026 vs Dezember 2025: Previous 0; ${transactionChange}`], name);
         // The secondary information follows the entire desktop/mobile view, not a headline card or slide.
         assert.ok(html.indexOf('aria-label="Additional period information"') > html.lastIndexOf('aria-label="Headline metrics"'));
         assert.match(html, /Income versus expenses/);

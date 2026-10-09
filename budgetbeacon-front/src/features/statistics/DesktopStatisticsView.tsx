@@ -10,7 +10,7 @@ import {
   type StatisticsMetric,
 } from "./StatisticsMetricGrid";
 import { TopExpenses } from "./TopExpenses";
-import type { MonthReference } from "./statisticsPeriod";
+import type { MonthReference, StatisticsTimeframeValue } from "./statisticsPeriod";
 import type { StatisticsView } from "./statisticsViews";
 
 type DesktopStatisticsViewProps = {
@@ -21,6 +21,7 @@ type DesktopStatisticsViewProps = {
   periodLabel: string;
   isAllTime: boolean;
   isMonthlyView: boolean;
+  timeframe: StatisticsTimeframeValue;
   isSmallScreen: boolean;
   onCategorySelect: (category: string) => void;
 };
@@ -33,6 +34,7 @@ export const DesktopStatisticsView = ({
   periodLabel,
   isAllTime,
   isMonthlyView,
+  timeframe,
   isSmallScreen,
   onCategorySelect,
 }: DesktopStatisticsViewProps) => {
@@ -63,9 +65,7 @@ export const DesktopStatisticsView = ({
       {view === "overview" ? (
         <>
           <StatisticsMetricGrid metrics={metrics} isSmallScreen={isSmallScreen} />
-          {isMonthlyView && summary && data?.previousMonthSummary ? (
-            <MonthComparison month={selectedMonth} current={summary} previous={data.previousMonthSummary} />
-          ) : null}
+          <MonthComparison month={selectedMonth} timeframe={timeframe} current={summary} previous={data?.previousMonthSummary} />
         </>
       ) : null}
       <MonthlyTrend
