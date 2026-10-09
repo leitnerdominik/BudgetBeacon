@@ -14,9 +14,9 @@ import { StatusMessage } from "../../components/AsyncState";
 import type { MonthlySummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
 import type { MonthReference } from "./statisticsPeriod";
-import type { StatisticsCardLayoutProps } from "./statisticsLayout";
+import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 
-type SpendingPaceProps = StatisticsCardLayoutProps & {
+type SpendingPaceProps = {
   month: MonthReference;
   summary: MonthlySummary | undefined;
 };
@@ -52,7 +52,6 @@ const getElapsedDays = (month: MonthReference, today: Date) => {
 export const SpendingPace = ({
   month,
   summary,
-  layout = "page",
 }: SpendingPaceProps) => {
   const today = new Date();
   const daysInMonth = getDaysInMonth(month);
@@ -77,12 +76,12 @@ export const SpendingPace = ({
     {
       label: "Projected Expenses",
       value: formatCurrency(projectedExpenses),
-      color: "error.main",
+      color: "text.primary",
     },
     {
       label: "Projected Balance",
       value: formatCurrency(projectedNetBalance),
-      color: projectedNetBalance < 0 ? "error.main" : "success.main",
+      color: projectedNetBalance < 0 ? "error.main" : "text.primary",
     },
     {
       label: "Days Remaining",
@@ -93,31 +92,16 @@ export const SpendingPace = ({
 
   return (
     <Card
-      elevation={1}
-      tabIndex={layout === "slide" ? 0 : undefined}
-      role={layout === "slide" ? "region" : undefined}
-      aria-label={layout === "slide" ? "Spending Pace" : undefined}
-      sx={{
-        mt: layout === "slide" ? 0 : 2,
-        height: layout === "slide" ? "100%" : undefined,
-        minHeight: layout === "slide" ? 0 : undefined,
-        overflowY: layout === "slide" ? "auto" : undefined,
-        borderRadius: 1,
-        border: "1px solid",
-        borderColor: "divider",
-        ...(layout === "slide" && {
-          "&:focus-visible": {
-            outline: "none",
-            boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
-          },
-        }),
-      }}
+      elevation={0}
+      component="section"
+      aria-label="Spending Pace"
+      sx={statisticsSurfaceSx}
     >
-      <CardContent sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 } }}>
+      <CardContent sx={statisticsContentSx}>
         <Stack direction="row" spacing={1} alignItems="center">
           <SpeedIcon color="primary" />
           <Box>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography component="h2" variant="h6" fontWeight={700}>
               Spending Pace
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -126,17 +110,17 @@ export const SpendingPace = ({
           </Box>
         </Stack>
 
-        <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
+        <Divider sx={{ my: 2 }} />
 
         {isFutureMonth ? (
           <StatusMessage
             title="No spending pace yet"
             description="Spending pace is available once the selected month has started."
-            minHeight={layout === "slide" ? 0 : 220}
+            minHeight={160}
           />
         ) : (
           <>
-            <Box sx={{ mb: layout === "slide" ? 1.5 : 2 }}>
+            <Box sx={{ mb: 2 }}>
               <Stack
                 direction="row"
                 justifyContent="space-between"
@@ -157,19 +141,19 @@ export const SpendingPace = ({
               />
             </Box>
 
-            <Grid container spacing={layout === "slide" ? 1 : 1.5}>
+            <Grid container spacing={1.5}>
               {metrics.map((metric) => (
-                <Grid size={{ xs: 6, sm: 6, lg: layout === "slide" ? 6 : 3 }} key={metric.label}>
+                <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={metric.label} sx={{ minWidth: 0 }}>
                   <Box
                     sx={{
                       height: "100%",
                       border: "1px solid",
                       borderColor: "divider",
                       borderRadius: 1,
-                      p: layout === "slide" ? 1.25 : 2,
+                      p: 2,
                     }}
                   >
-                    <Typography variant="overline" color="text.secondary">
+                    <Typography variant="overline" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                       {metric.label}
                     </Typography>
                     <Typography

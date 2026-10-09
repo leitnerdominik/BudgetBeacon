@@ -40,8 +40,8 @@ export const StatisticsShell = () => {
     endMonth: selectedMonth.month,
     monthsBack: Number(timeframe) as 1 | 3 | 6 | 12,
   }, [isAllTime, selectedMonth.month, selectedMonth.year, timeframe]);
-  const { data, isError, isFetching, isLoading, refetch } = useStatistics(request);
-  const isSlow = useSlowLoading(isLoading);
+  const { data, isError, isFetching, isPending, refetch } = useStatistics(request);
+  const isSlow = useSlowLoading(isPending);
 
   const updatePeriod = (nextTimeframe: StatisticsTimeframeValue, nextMonth: MonthReference) => {
     const next = buildStatisticsSearchParams(searchParams, nextTimeframe, nextMonth);
@@ -64,7 +64,7 @@ export const StatisticsShell = () => {
   const context: StatisticsContext = { data, timeframe, selectedMonth, periodLabel, isSmallScreen, isMobileView, onCategorySelect };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%", minHeight: { xs: "calc(100dvh - 88px)", sm: "calc(100dvh - 112px)", md: 0 } }}>
+    <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%", containerType: "inline-size", overflowWrap: "anywhere", "& .MuiButton-root": { minHeight: 44 }, "& .MuiButtonBase-root:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 } }}>
       <Box sx={{ flexShrink: 0, minWidth: 0 }}>
         <StatisticsPeriodControls
           timeframe={timeframe}
@@ -84,20 +84,25 @@ export const StatisticsShell = () => {
         />
         <StatisticsViewNavigation searchParams={searchParams} timeframe={timeframe} selectedMonth={selectedMonth} />
       </Box>
-      <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1, minWidth: 0, minHeight: { xs: 360, md: 0 } }}>
-        {isLoading ? (
-          <LoadingState label="Loading statistics..." isOffline={!isOnline} isSlow={isSlow} minHeight={340} />
+      <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {isPending ? (
+          <Box role="status">
+            <LoadingState label="Loading statistics..." isOffline={!isOnline} isSlow={isSlow} minHeight={240} />
+          </Box>
         ) : isError ? (
-          <StatusMessage
-            title={isOnline ? "Statistics are unavailable" : "You're offline"}
-            description={isOnline ? "We couldn't load the statistics right now. Retry to refresh this view." : "Reconnect to the internet and retry to load your statistics."}
-            actionLabel="Retry"
-            onAction={() => { void refetch(); }}
-            minHeight={340}
-          />
+          <Box role="alert">
+            <StatusMessage
+              title={isOnline ? "Statistics are unavailable" : "You're offline"}
+              description={isOnline ? "We couldn't load the statistics right now. Retry to refresh this view." : "Reconnect to the internet and retry to load your statistics."}
+              actionLabel="Retry"
+              onAction={() => { void refetch(); }}
+              minHeight={240}
+            />
+          </Box>
         ) : (
           <>
-            {isFetching ? <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5 }}>Refreshing statistics...</Typography> : null}
+            {!isOnline && data ? <Typography role="status" variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>You're offline. Showing the last available statistics for this period.</Typography> : null}
+            {isFetching ? <Typography role="status" variant="caption" color="text.secondary" sx={{ mb: 1.5 }}>Refreshing statistics...</Typography> : null}
             <StatisticsExclusionNotice summary={data?.summary} />
             <Outlet context={context} />
           </>

@@ -16,9 +16,9 @@ import { StatusMessage } from "../../components/AsyncState";
 import type { RecurringExpenseCandidate } from "../../types/api";
 import { formatCurrency, formatDate } from "../../utils/formatDate";
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
-import type { StatisticsCardLayoutProps } from "./statisticsLayout";
+import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 
-type RecurringExpensesProps = StatisticsCardLayoutProps & {
+type RecurringExpensesProps = {
   candidates: RecurringExpenseCandidate[];
   periodLabel: string;
 };
@@ -26,37 +26,17 @@ type RecurringExpensesProps = StatisticsCardLayoutProps & {
 export const RecurringExpenses = ({
   candidates,
   periodLabel,
-  layout = "page",
 }: RecurringExpensesProps) => (
   <Card
-    elevation={1}
-    tabIndex={layout === "slide" ? 0 : undefined}
-    role={layout === "slide" ? "region" : undefined}
-    aria-label={layout === "slide" ? "Recurring Expense Candidates" : undefined}
-    sx={{
-      mt: layout === "slide" ? 0 : 2,
-      height: layout === "slide" ? "100%" : undefined,
-      minHeight: layout === "slide" ? 0 : undefined,
-      overflowY: layout === "slide" ? "auto" : undefined,
-      minWidth: 0,
-      maxWidth: "100%",
-      borderRadius: 1,
-      border: "1px solid",
-      borderColor: "divider",
-      ...(layout === "slide" && {
-        "&:focus-visible": {
-          outline: "none",
-          boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
-        },
-      }),
-    }}
+    elevation={0}
+    component="section"
+    aria-label="Recurring Expense Candidates"
+    sx={statisticsSurfaceSx}
   >
-    <CardContent
-      sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 }, minWidth: 0 }}
-    >
+    <CardContent sx={statisticsContentSx}>
       <Stack
         direction={{ xs: "column", sm: "row" }}
-        spacing={layout === "slide" ? 1 : 1.5}
+        spacing={1.5}
         alignItems={{ xs: "flex-start", sm: "center" }}
         justifyContent="space-between"
         sx={{ minWidth: 0 }}
@@ -69,7 +49,7 @@ export const RecurringExpenses = ({
         >
           <RepeatIcon color="primary" sx={{ flexShrink: 0 }} />
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography component="h2" variant="h6" fontWeight={700}>
               Recurring Expense Candidates
             </Typography>
             <Typography
@@ -89,13 +69,13 @@ export const RecurringExpenses = ({
         />
       </Stack>
 
-      <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
+      <Divider sx={{ my: 2 }} />
 
       {candidates.length === 0 ? (
         <StatusMessage
           title="No recurring candidates"
           description="No expense pattern appeared in at least two months of the selected period."
-          minHeight={layout === "slide" ? 0 : 220}
+          minHeight={160}
         />
       ) : (
         <List disablePadding>
@@ -105,7 +85,7 @@ export const RecurringExpenses = ({
               disableGutters
               divider
               sx={{
-                py: layout === "slide" ? 1 : { xs: 1.25, sm: 1.5 },
+                py: { xs: 1.25, sm: 1.5 },
                 alignItems: { xs: "flex-start", sm: "center" },
                 flexDirection: { xs: "column", sm: "row" },
                 gap: { xs: 0.75, sm: 0 },
@@ -131,6 +111,7 @@ export const RecurringExpenses = ({
                   }}
                   secondaryTypographyProps={{
                     fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    sx: { overflowWrap: "anywhere" },
                   }}
                 />
               </Stack>
@@ -139,7 +120,9 @@ export const RecurringExpenses = ({
                 sx={{
                   alignSelf: { xs: "flex-end", sm: "center" },
                   ml: { xs: 0, sm: 2 },
-                  flexShrink: 0,
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  overflowWrap: "anywhere",
                 }}
               >
                 <Typography variant="subtitle1" fontWeight={700}>

@@ -12,7 +12,7 @@ type StatisticsSecondaryInfoProps = {
 };
 
 export const StatisticsSecondaryInfo = ({ summary, previous, month }: StatisticsSecondaryInfoProps) => (
-  <Box component="section" aria-label="Additional period information" sx={{ mt: 2, minWidth: 0 }}>
+  <Box component="section" aria-label="Additional period information" sx={{ minWidth: 0 }}>
     <Box component="dl" sx={{ display: "flex", flexWrap: "wrap", columnGap: 3, rowGap: 1, m: 0 }}>
       {[
         { label: "Saved / Invested", value: formatCurrency(summary?.totalSavedOrInvested ?? 0) },

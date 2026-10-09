@@ -13,9 +13,9 @@ import { StatusMessage } from "../../components/AsyncState";
 import type { CategoryExpenseSummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
-import type { StatisticsCardLayoutProps } from "./statisticsLayout";
+import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 
-type CategoryBreakdownProps = StatisticsCardLayoutProps & {
+type CategoryBreakdownProps = {
   categories: CategoryExpenseSummary[];
   onCategorySelect: (category: string) => void;
   periodLabel: string;
@@ -32,7 +32,6 @@ export const CategoryBreakdown = ({
   categories,
   onCategorySelect,
   periodLabel,
-  layout = "page",
 }: CategoryBreakdownProps) => {
   const maxExpense = Math.max(
     1,
@@ -45,35 +44,16 @@ export const CategoryBreakdown = ({
 
   return (
     <Card
-      elevation={1}
-      tabIndex={layout === "slide" ? 0 : undefined}
-      role={layout === "slide" ? "region" : undefined}
-      aria-label={layout === "slide" ? "Expenses by Category" : undefined}
-      sx={{
-        mt: layout === "slide" ? 0 : 2,
-        height: layout === "slide" ? "100%" : undefined,
-        minHeight: layout === "slide" ? 0 : undefined,
-        overflowY: layout === "slide" ? "auto" : undefined,
-        minWidth: 0,
-        maxWidth: "100%",
-        borderRadius: 1,
-        border: "1px solid",
-        borderColor: "divider",
-        ...(layout === "slide" && {
-          "&:focus-visible": {
-            outline: "none",
-            boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
-          },
-        }),
-      }}
+      elevation={0}
+      component="section"
+      aria-label="Expenses by Category"
+      sx={statisticsSurfaceSx}
     >
-      <CardContent
-        sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 }, minWidth: 0 }}
-      >
+      <CardContent sx={statisticsContentSx}>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
           <CategoryIcon color="primary" sx={{ flexShrink: 0 }} />
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography component="h2" variant="h6" fontWeight={700}>
               Expenses by Category
             </Typography>
             <Typography
@@ -86,16 +66,16 @@ export const CategoryBreakdown = ({
           </Box>
         </Stack>
 
-        <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
+        <Divider sx={{ my: 2 }} />
 
         {categories.length === 0 ? (
           <StatusMessage
             title="No expenses for this period"
             description={`No expense categories were found for ${periodLabel}.`}
-            minHeight={layout === "slide" ? 0 : 220}
+            minHeight={160}
           />
         ) : (
-          <Stack spacing={layout === "slide" ? 1.25 : 1.75}>
+          <Stack spacing={1.75}>
             {categories.map((category) => (
               <ButtonBase
                 key={category.category}
@@ -103,6 +83,7 @@ export const CategoryBreakdown = ({
                 onClick={() => onCategorySelect(category.category)}
                 sx={{
                   width: "100%",
+                  minHeight: 44,
                   display: "block",
                   p: 1,
                   borderRadius: 1,
@@ -120,9 +101,9 @@ export const CategoryBreakdown = ({
               >
                 <Box>
                   <Stack
-                    direction="row"
+                    direction={{ xs: "column", sm: "row" }}
                     spacing={1.5}
-                    alignItems="baseline"
+                    alignItems={{ xs: "stretch", sm: "baseline" }}
                     justifyContent="space-between"
                     sx={{ mb: 0.75 }}
                   >
@@ -150,7 +131,7 @@ export const CategoryBreakdown = ({
                         {category.transactionCount} transactions
                       </Typography>
                     </Box>
-                    <Stack alignItems="flex-end" sx={{ flexShrink: 0 }}>
+                    <Stack alignItems="flex-end" sx={{ minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere" }}>
                       <Typography variant="subtitle2" fontWeight={700}>
                         {formatCurrency(category.totalExpense)}
                       </Typography>

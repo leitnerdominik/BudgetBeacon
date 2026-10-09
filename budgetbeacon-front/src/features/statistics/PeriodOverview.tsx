@@ -11,9 +11,9 @@ import Grid from "@mui/material/Grid";
 
 import type { MonthlySummary, MonthlyTotalsStatistics } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
-import type { StatisticsCardLayoutProps } from "./statisticsLayout";
+import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 
-type PeriodOverviewProps = StatisticsCardLayoutProps & {
+type PeriodOverviewProps = {
   summary: MonthlySummary | undefined;
   monthlyTotals: MonthlyTotalsStatistics | undefined;
   periodLabel: string;
@@ -34,41 +34,25 @@ export const PeriodOverview = ({
   summary,
   monthlyTotals,
   periodLabel,
-  layout = "page",
 }: PeriodOverviewProps) => {
   const hasTransactions = (summary?.transactionCount ?? 0) > 0;
 
   return (
     <Card
-      elevation={1}
-      tabIndex={layout === "slide" ? 0 : undefined}
-      role={layout === "slide" ? "region" : undefined}
-      aria-label={layout === "slide" ? "Period Overview" : undefined}
-      sx={{
-        mt: layout === "slide" ? 0 : 2,
-        height: layout === "slide" ? "100%" : undefined,
-        minHeight: layout === "slide" ? 0 : undefined,
-        overflowY: layout === "slide" ? "auto" : undefined,
-        borderRadius: 1,
-        border: "1px solid",
-        borderColor: "divider",
-        ...(layout === "slide" && {
-          "&:focus-visible": {
-            outline: "none",
-            boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
-          },
-        }),
-      }}
+      elevation={0}
+      component="section"
+      aria-label="Period Overview"
+      sx={statisticsSurfaceSx}
     >
-      <CardContent sx={{ p: layout === "slide" ? 1.5 : { xs: 2, sm: 2.5 } }}>
+      <CardContent sx={statisticsContentSx}>
         <Stack
           direction={{ xs: "column", sm: "row" }}
-          spacing={layout === "slide" ? 1 : 1.5}
+          spacing={1.5}
           alignItems={{ xs: "flex-start", sm: "center" }}
           justifyContent="space-between"
         >
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography component="h2" variant="h6" fontWeight={700}>
               Period Overview
             </Typography>
             <Typography
@@ -88,11 +72,12 @@ export const PeriodOverview = ({
           />
         </Stack>
 
-        <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
+        <Divider sx={{ my: 2 }} />
 
-        <Grid container spacing={layout === "slide" ? 1 : { xs: 1.5, sm: 2 }}>
+        <Grid container spacing={{ xs: 1.5, sm: 2 }}>
           <Grid
-            size={{ xs: layout === "slide" ? 6 : 12, sm: 6, md: layout === "slide" ? 6 : 3 }}
+            sx={{ minWidth: 0, overflowWrap: "anywhere" }}
+            size={{ xs: 12, sm: 6, md: 3 }}
           >
             <Typography variant="body2" color="text.secondary">
               Average Monthly Income
@@ -102,7 +87,8 @@ export const PeriodOverview = ({
             </Typography>
           </Grid>
           <Grid
-            size={{ xs: layout === "slide" ? 6 : 12, sm: 6, md: layout === "slide" ? 6 : 3 }}
+            sx={{ minWidth: 0, overflowWrap: "anywhere" }}
+            size={{ xs: 12, sm: 6, md: 3 }}
           >
             <Typography variant="body2" color="text.secondary">
               Median Monthly Income
@@ -112,7 +98,8 @@ export const PeriodOverview = ({
             </Typography>
           </Grid>
           <Grid
-            size={{ xs: layout === "slide" ? 6 : 12, sm: 6, md: layout === "slide" ? 6 : 3 }}
+            sx={{ minWidth: 0, overflowWrap: "anywhere" }}
+            size={{ xs: 12, sm: 6, md: 3 }}
           >
             <Typography variant="body2" color="text.secondary">
               Average Monthly Expenses
@@ -122,7 +109,8 @@ export const PeriodOverview = ({
             </Typography>
           </Grid>
           <Grid
-            size={{ xs: layout === "slide" ? 6 : 12, sm: 6, md: layout === "slide" ? 6 : 3 }}
+            sx={{ minWidth: 0, overflowWrap: "anywhere" }}
+            size={{ xs: 12, sm: 6, md: 3 }}
           >
             <Typography variant="body2" color="text.secondary">
               Median Monthly Expenses
@@ -133,11 +121,12 @@ export const PeriodOverview = ({
           </Grid>
         </Grid>
 
-        <Divider sx={{ my: layout === "slide" ? 1.5 : 2 }} />
+        <Divider sx={{ my: 2 }} />
 
-        <Grid container spacing={layout === "slide" ? 1 : { xs: 1.5, sm: 2 }}>
+        <Grid container spacing={{ xs: 1.5, sm: 2 }}>
           <Grid
-            size={{ xs: layout === "slide" ? 6 : 12, sm: 6, md: layout === "slide" ? 6 : 3 }}
+            sx={{ minWidth: 0, overflowWrap: "anywhere" }}
+            size={{ xs: 12, sm: 6, md: 3 }}
           >
             <Typography variant="body2" color="text.secondary">
               Expense Ratio

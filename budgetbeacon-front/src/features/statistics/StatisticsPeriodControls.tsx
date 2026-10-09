@@ -94,7 +94,7 @@ export const StatisticsPeriodControls = ({
             >
               <BarChartIcon fontSize={isSmallScreen ? "small" : "medium"} />
             </Box>
-            <Typography variant={isSmallScreen ? "h5" : "h4"} fontWeight={700}>
+            <Typography component="h1" variant={isSmallScreen ? "h5" : "h4"} fontWeight={700}>
               Statistics
             </Typography>
           </Stack>
@@ -115,7 +115,7 @@ export const StatisticsPeriodControls = ({
               isExpanded ? "Hide period controls" : "Show period controls"
             }
             onClick={() => setIsExpanded((current) => !current)}
-            sx={{ flexShrink: 0 }}
+            sx={{ flexShrink: 0, minWidth: 44, minHeight: 44 }}
           >
             <ExpandMoreIcon
               sx={{
@@ -163,7 +163,8 @@ export const StatisticsPeriodControls = ({
                 flex: { xs: "1 1 calc(50% - 1px)", sm: "initial" },
                 minWidth: { xs: 0, sm: "auto" },
                 px: { xs: 1, sm: 1.5 },
-                whiteSpace: "nowrap",
+                minHeight: 44,
+                whiteSpace: "normal",
               },
             }}
           >
@@ -198,7 +199,7 @@ export const StatisticsPeriodControls = ({
                   <IconButton
                     aria-label="Previous month"
                     onClick={() => onMonthShift(-1)}
-                    sx={{ flex: { xs: 1, sm: "initial" } }}
+                    sx={{ flex: { xs: 1, sm: "initial" }, minWidth: 44, minHeight: 44 }}
                   >
                     <ChevronLeftIcon />
                   </IconButton>
@@ -207,7 +208,7 @@ export const StatisticsPeriodControls = ({
                   <IconButton
                     aria-label="Next month"
                     onClick={() => onMonthShift(1)}
-                    sx={{ flex: { xs: 1, sm: "initial" } }}
+                    sx={{ flex: { xs: 1, sm: "initial" }, minWidth: 44, minHeight: 44 }}
                   >
                     <ChevronRightIcon />
                   </IconButton>
@@ -224,14 +225,15 @@ export const StatisticsPeriodControls = ({
                   max: "2100-12",
                 }}
                 InputLabelProps={{ shrink: true }}
-                sx={{ minWidth: 0, width: { xs: "100%", sm: 170 } }}
+                sx={{ minWidth: 0, width: { xs: "100%", sm: 170 }, "& input": { minHeight: 44, boxSizing: "border-box" } }}
               />
               <Button
                 variant="outlined"
                 startIcon={<CalendarMonthIcon />}
                 onClick={onCurrentMonthSelect}
                 sx={{
-                  whiteSpace: "nowrap",
+                  minHeight: 44,
+                  whiteSpace: "normal",
                   width: { xs: "100%", sm: "auto" },
                 }}
               >

@@ -2,10 +2,10 @@ import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import type { StatisticsTrendPoint } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
-import type { StatisticsCardLayoutProps } from "./statisticsLayout";
+import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 import { formatTrendPointLabel, prepareStatisticsChart } from "./statisticsTrend";
 
-type MonthlyTrendProps = StatisticsCardLayoutProps & {
+type MonthlyTrendProps = {
   granularity: "month" | "year";
   periodLabel: string;
   points: StatisticsTrendPoint[];
@@ -13,7 +13,7 @@ type MonthlyTrendProps = StatisticsCardLayoutProps & {
 };
 
 export const MonthlyTrend = ({
-  granularity, periodLabel, points, layout = "page", showSummary = false,
+  granularity, periodLabel, points, showSummary = false,
 }: MonthlyTrendProps) => {
   const chart = prepareStatisticsChart(points);
   const hasTrendData = points.some((point) => point.transactionCount > 0);
@@ -32,17 +32,10 @@ export const MonthlyTrend = ({
     <Card
       component="section"
       aria-label="Income versus expenses"
-      tabIndex={layout === "slide" ? 0 : undefined}
-      sx={{
-        mt: layout === "slide" ? 0 : 2,
-        height: layout === "slide" ? "100%" : undefined,
-        minHeight: 0, minWidth: 0, maxWidth: "100%",
-        overflow: layout === "slide" ? "auto" : "hidden",
-        border: "1px solid", borderColor: "divider", boxShadow: "none",
-        "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
-      }}
+      elevation={0}
+      sx={statisticsSurfaceSx}
     >
-      <CardContent sx={{ p: { xs: 2, sm: 2.5 }, minWidth: 0, overflowWrap: "anywhere" }}>
+      <CardContent sx={statisticsContentSx}>
         <Typography variant="h6" component="h2">Income versus expenses</Typography>
         <Typography variant="body2" color="text.secondary">
           {granularity === "year" ? "Yearly" : "Monthly"} totals for {periodLabel}

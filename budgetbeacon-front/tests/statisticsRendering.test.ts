@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement, type ComponentType } from "react";
 import { renderToString } from "react-dom/server";
 import { createMemoryRouter, RouterProvider, useOutletContext } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createServer } from "vite";
 import { createTheme, ThemeProvider, type Theme } from "@mui/material/styles";
 
@@ -67,7 +67,7 @@ test("server-renders production Statistics shell, navigation, content and reques
     const { appTheme } = await server.ssrLoadModule("/src/theme/index.ts") as { appTheme: Theme };
     const { MonthlyTrend } = await server.ssrLoadModule("/src/features/statistics/MonthlyTrend.tsx") as { MonthlyTrend: ComponentType<{
       points: StatisticsOverview["trend"]; granularity: "month" | "year"; periodLabel: string;
-      layout: "page" | "slide"; showSummary: boolean;
+      showSummary: boolean;
     }> };
     const chartCases = [
       { name: "empty", points: [], granularity: "month" as const },
@@ -81,46 +81,45 @@ test("server-renders production Statistics shell, navigation, content and reques
       { name: "long yearly history", granularity: "year" as const,
         points: Array.from({ length: 50 }, (_, i) => ({ ...summary, year: 1977 + i, month: null, totalIncome: 9876543210.12, totalExpense: -12345678901.23 })).reverse() },
     ];
-    for (const layout of ["page", "slide"] as const) {
-      for (const showSummary of [false, true]) {
-        for (const fixture of chartCases) {
-          const before = structuredClone(fixture.points);
-          const html = renderToString(createElement(ThemeProvider, { theme: appTheme }, createElement(MonthlyTrend, {
-            ...fixture, layout, showSummary, periodLabel: "Synthetic period",
-          }))).replace(/<!--.*?-->/g, "");
-          const chart = section(html, "Income versus expenses");
-          const ordered = [...fixture.points].sort((a, b) => a.year - b.year || (a.month ?? 0) - (b.month ?? 0));
-          assert.equal((chart.match(/role="group"/g) ?? []).length, ordered.length, fixture.name);
-          const details = [...chart.matchAll(/<dl\b[^>]*>([\s\S]*?)<\/dl>/g)].map((match) => match[1]);
-          assert.equal(details.length, ordered.length, fixture.name);
-          for (const [index, point] of ordered.entries()) {
-            assert.deepEqual(definitionText(details[index], "dt"), showSummary ? ["Income", "Expenses", "Net Balance"] : ["Income", "Expenses"]);
-            assert.deepEqual(definitionText(details[index], "dd"), [formatCurrency(point.totalIncome), formatCurrency(Math.abs(point.totalExpense)), ...(showSummary ? [formatCurrency(point.netBalance)] : [])]);
-          }
-          assert.equal(chart.includes('aria-label="Trend summary"'), showSummary);
-          assert.equal(chart.includes('role="region" aria-label="Income and expense chart with exact values" tabindex="0"'), ordered.length > 0);
-          assert.match(chart, /Income \(left\)/);
-          assert.match(chart, /Expenses \(right\)/);
-          assert.equal(chart.includes("Yearly totals"), fixture.granularity === "year");
-          assert.doesNotMatch(chart, /Showing the latest|Infinity|NaN/);
-          if (fixture.name === "zero") {
-            assert.equal((chart.match(/data-height-percent="0"/g) ?? []).length, 2);
-            assert.match(chart, /No transactions found/);
-          }
-          if (fixture.name === "3 months") assert.match(chart, /data-height-percent="0.001"/);
-          if (fixture.name.startsWith("one cent")) {
-            const axis = chart.slice(chart.indexOf('aria-label="Income and expense chart with exact values"'), chart.indexOf('role="group"'));
-            assert.equal((axis.match(/0,01/g) ?? []).length, 1);
-            assert.equal((axis.match(/0,00/g) ?? []).length, 1);
-          }
-          assert.deepEqual(fixture.points, before, "Chart rendering must not mutate server data");
+    for (const showSummary of [false, true]) {
+      for (const fixture of chartCases) {
+        const before = structuredClone(fixture.points);
+        const html = renderToString(createElement(ThemeProvider, { theme: appTheme }, createElement(MonthlyTrend, {
+          ...fixture, showSummary, periodLabel: "Synthetic period",
+        }))).replace(/<!--.*?-->/g, "");
+        const chart = section(html, "Income versus expenses");
+        const ordered = [...fixture.points].sort((a, b) => a.year - b.year || (a.month ?? 0) - (b.month ?? 0));
+        assert.equal((chart.match(/role="group"/g) ?? []).length, ordered.length, fixture.name);
+        const details = [...chart.matchAll(/<dl\b[^>]*>([\s\S]*?)<\/dl>/g)].map((match) => match[1]);
+        assert.equal(details.length, ordered.length, fixture.name);
+        for (const [index, point] of ordered.entries()) {
+          assert.deepEqual(definitionText(details[index], "dt"), showSummary ? ["Income", "Expenses", "Net Balance"] : ["Income", "Expenses"]);
+          assert.deepEqual(definitionText(details[index], "dd"), [formatCurrency(point.totalIncome), formatCurrency(Math.abs(point.totalExpense)), ...(showSummary ? [formatCurrency(point.netBalance)] : [])]);
         }
+        assert.equal(chart.includes('aria-label="Trend summary"'), showSummary);
+        assert.equal(chart.includes('role="region" aria-label="Income and expense chart with exact values" tabindex="0"'), ordered.length > 0);
+        assert.match(chart, /Income \(left\)/);
+        assert.match(chart, /Expenses \(right\)/);
+        assert.equal(chart.includes("Yearly totals"), fixture.granularity === "year");
+        assert.doesNotMatch(chart, /Showing the latest|Infinity|NaN/);
+        if (fixture.name === "zero") {
+          assert.equal((chart.match(/data-height-percent="0"/g) ?? []).length, 2);
+          assert.match(chart, /No transactions found/);
+        }
+        if (fixture.name === "3 months") assert.match(chart, /data-height-percent="0.001"/);
+        if (fixture.name.startsWith("one cent")) {
+          const axis = chart.slice(chart.indexOf('aria-label="Income and expense chart with exact values"'), chart.indexOf('role="group"'));
+          assert.equal((axis.match(/0,01/g) ?? []).length, 1);
+          assert.equal((axis.match(/0,00/g) ?? []).length, 1);
+        }
+        assert.deepEqual(fixture.points, before, "Chart rendering must not mutate server data");
       }
     }
     const render = (view: StatisticsView, options: {
       response?: StatisticsOverview;
       error?: boolean;
       loading?: boolean;
+      uncached?: boolean;
       refreshing?: boolean;
       online?: boolean;
       mobile?: boolean;
@@ -134,8 +133,8 @@ test("server-renders production Statistics shell, navigation, content and reques
       const queryKey = ["transactions", "statistics", timeframe === "all" ? { allTime: true } : {
         allTime: false, endYear, endMonth, monthsBack: Number(timeframe),
       }];
-      client.setQueryData(queryKey, options.response ?? data);
-      const query = client.getQueryCache().find({ queryKey });
+      if (!options.uncached) client.setQueryData(queryKey, options.response ?? data);
+      const query = client.getQueryCache().find({ queryKey }) ?? client.getQueryCache().build(client, { queryKey });
       assert.ok(query);
       if (options.error) query.setState({ status: "error", error: new Error("Synthetic unavailable state"), fetchStatus: "idle" });
       if (options.loading) query.setState({ status: "pending", data: undefined, fetchStatus: "fetching" });
@@ -155,12 +154,15 @@ test("server-renders production Statistics shell, navigation, content and reques
         } } },
       }) : appTheme;
       const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+      const originalOnline = onlineManager.isOnline();
       Object.defineProperty(globalThis, "navigator", { value: { onLine: options.online ?? true }, configurable: true });
+      onlineManager.setOnline(options.online ?? true);
       try {
         return renderToString(createElement(QueryClientProvider, { client },
           createElement(ThemeProvider, { theme }, createElement(RouterProvider, { router })),
         )).replace(/<!--.*?-->/g, "");
       } finally {
+        onlineManager.setOnline(originalOnline);
         if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
         else Reflect.deleteProperty(globalThis, "navigator");
         router.dispose();
@@ -414,18 +416,40 @@ test("server-renders production Statistics shell, navigation, content and reques
       }
       const noExclusions = render(id, { response: { ...data, summary: { ...summary, internalTransferTotal: 0, adjustmentTotal: 0 } } });
       assert.doesNotMatch(noExclusions, /Internal transfers and adjustments are excluded/);
-      const loading = render(id, { loading: true });
-      assert.match(loading, /Loading statistics/);
-      assert.match(loading, /aria-label="Statistics views"/);
-      const offlineLoading = render(id, { loading: true, online: false });
-      assert.match(offlineLoading, /You appear to be offline/);
-      const failure = render(id, { error: true });
-      assert.match(failure, /Statistics are unavailable/);
-      assert.match(failure, /Retry/);
-      assert.match(render(id, { error: true, online: false }), /You're offline|You&#x27;re offline/);
-      const refreshing = render(id, { refreshing: true });
-      assert.match(refreshing, /Refreshing statistics/);
-      assert.match(refreshing, /Internal transfers and adjustments are excluded/);
+      for (const mobile of [false, true]) {
+        const loading = render(id, { loading: true, mobile });
+        assert.match(loading, /Loading statistics/);
+        assert.match(loading, /role="status"/);
+        assert.match(loading, /aria-label="Statistics views"/);
+        assert.doesNotMatch(loading, /aria-label="Headline metrics"|aria-label="Income versus expenses"/);
+        const offlineLoading = render(id, { loading: true, online: false, mobile });
+        assert.match(offlineLoading, /You appear to be offline/);
+        // A genuinely uncached offline query is pending/paused, not isLoading.
+        // It must wait for reconnection rather than invent zero-valued financial data.
+        const offlineUncached = render(id, { uncached: true, online: false, mobile });
+        assert.match(offlineUncached, /Loading statistics/);
+        assert.match(offlineUncached, /You appear to be offline/);
+        assert.match(offlineUncached, /continue once the connection is back/);
+        assert.match(offlineUncached, /role="status"/);
+        assert.doesNotMatch(offlineUncached, /Showing the last available statistics|aria-label="Headline metrics"|aria-label="Income versus expenses"|No expense transactions/);
+        const onlineUncached = render(id, { uncached: true, mobile });
+        assert.match(onlineUncached, /Loading statistics/);
+        assert.doesNotMatch(onlineUncached, /aria-label="Headline metrics"|aria-label="Income versus expenses"/);
+        const failure = render(id, { error: true, mobile });
+        assert.match(failure, /Statistics are unavailable/);
+        assert.match(failure, /role="alert"/);
+        assert.match(failure, /<button[^>]*>Retry<\/button>/);
+        assert.match(render(id, { error: true, online: false, mobile }), /You're offline|You&#x27;re offline/);
+        const refreshing = render(id, { refreshing: true, mobile });
+        assert.match(refreshing, /Refreshing statistics/);
+        assert.match(refreshing, /Internal transfers and adjustments are excluded/);
+        const cachedOffline = render(id, { online: false, mobile });
+        assert.match(cachedOffline, /Showing the last available statistics for this period/);
+        assert.match(cachedOffline, /aria-label="Statistics views"/);
+        assert.equal(visibleText(cachedOffline).includes("Income versus expenses"), id !== "spending");
+        assert.doesNotMatch(loading + failure + refreshing + cachedOffline, /aria-roledescription="carousel"|Next slide/);
+      }
+
     }
     const unavailable = render("overview", { response: { ...data, previousMonthSummary: null } });
     assert.match(unavailable, /Previous-month comparison is unavailable/);
@@ -434,6 +458,50 @@ test("server-renders production Statistics shell, navigation, content and reques
     assert.match(empty, /Month Comparison/);
     assert.match(empty, /No transactions found in this trend range/);
     assert.match(empty, /N\/A/);
+
+    await t.test("final document flow exposes controls, headings and every detail without carousel navigation", () => {
+      for (const mobile of [false, true]) {
+        for (const timeframe of ["1", "3", "6", "12", "all"] as const) {
+          for (const { id } of STATISTICS_VIEWS) {
+            const html = render(id, { timeframe, mobile });
+            assert.equal((html.match(/<h1\b/g) ?? []).length, 1);
+            assert.match(html, /<h1[^>]*>Statistics<\/h1>/);
+            assert.doesNotMatch(html, /aria-roledescription="carousel"|aria-roledescription="slide"|Next slide|Previous slide/);
+            assert.doesNotMatch(html, /<section[^>]*tabindex=/);
+            if (mobile) {
+              assert.match(html, /aria-controls="statistics-period-options" aria-expanded="false" aria-label="Show period controls"/);
+            }
+            assert.match(html, /aria-label="Statistics timeframe"/);
+            for (const label of ["1 month", "3 months", "6 months", "1 year", "All time"]) {
+              assert.ok(html.includes(`aria-label="${label}"`));
+            }
+            if (timeframe !== "all") {
+              assert.match(html, /aria-label="Previous month"/);
+              assert.match(html, /aria-label="Next month"/);
+              assert.match(html, /type="month"/);
+            } else assert.doesNotMatch(html, /type="month"/);
+            if (id !== "spending") {
+              const chart = section(html, "Income versus expenses");
+              assert.match(chart, /role="region" aria-label="Income and expense chart with exact values" tabindex="0"/);
+              assert.deepEqual(definitionText(chart, "dt").slice(0, 2), ["Income", "Expenses"]);
+            }
+          }
+        }
+      }
+    });
+
+    await t.test("slow-loading feedback uses the final status surface with offline precedence", async () => {
+      const { LoadingState } = await server.ssrLoadModule("/src/components/AsyncState.tsx") as { LoadingState: ComponentType<{
+        label: string; isSlow: boolean; isOffline: boolean; minHeight: number;
+      }> };
+      for (const isOffline of [false, true]) {
+        const html = renderToString(createElement(ThemeProvider, { theme: appTheme },
+          createElement(LoadingState, { label: "Loading statistics...", isSlow: true, isOffline, minHeight: 240 })));
+        assert.match(html, /Loading statistics/);
+        assert.equal(html.includes("This is taking longer than usual"), !isOffline);
+        assert.equal(html.includes("You appear to be offline"), isOffline);
+      }
+    });
 
     const comparisonCases = [
       { name: "zero previous activity", current: summary, previous: zeroSummary,
@@ -508,7 +576,7 @@ test("server-renders production Statistics shell, navigation, content and reques
         const response = { ...data, summary: current };
         const before = structuredClone(response);
         const html = render("overview", { response, mobile });
-        assert.equal(html.includes('aria-roledescription="carousel"'), mobile, name);
+        assert.doesNotMatch(html, /aria-roledescription="carousel"|Next slide|Previous slide/, name);
         const headline = section(html, "Headline metrics");
         assert.deepEqual(definitionText(headline, "dt"), ["Income", "Expenses", "Net Balance", "Savings Rate"], name);
         assert.deepEqual(definitionText(headline, "dd"), [
@@ -519,14 +587,13 @@ test("server-renders production Statistics shell, navigation, content and reques
         assert.deepEqual(definitionText(secondary, "dt"), ["Saved / Invested", "Transactions"], name);
         const transactionChange = current.transactionCount === 0 ? "Unchanged (0 %)" : "New (increased from zero)";
         assert.deepEqual(definitionText(secondary, "dd"), [formatCurrency(current.totalSavedOrInvested), `${current.transactionCount}Januar 2026 vs Dezember 2025: Previous 0; ${transactionChange}`], name);
-        // The secondary information follows the entire desktop/mobile view, not a headline card or slide.
+        // Secondary information follows the chart and comparison in normal document order.
         assert.ok(html.indexOf('aria-label="Additional period information"') > html.lastIndexOf('aria-label="Headline metrics"'));
         assert.match(html, /Income versus expenses/);
         assert.ok(html.indexOf('aria-label="Additional period information"') > html.indexOf("Income versus expenses"));
-        if (mobile) {
-          assert.match(html, /aria-label="Next slide"/);
-          assert.ok(html.indexOf('aria-label="Additional period information"') > html.indexOf('aria-label="Next slide"'));
-        }
+        assert.ok(html.indexOf('aria-label="Headline metrics"') < html.indexOf('aria-label="Income versus expenses"'));
+        assert.ok(html.indexOf('aria-label="Income versus expenses"') < html.indexOf('aria-label="Month comparison"'));
+        assert.ok(html.indexOf('aria-label="Month comparison"') < html.indexOf('aria-label="Additional period information"'));
         assert.equal(html.includes("Internal transfers and adjustments are excluded"), current.internalTransferTotal + current.adjustmentTotal > 0);
         assert.doesNotMatch(html, /Infinity|NaN/);
         assert.deepEqual(response, before, "Rendering must not mutate server data");
