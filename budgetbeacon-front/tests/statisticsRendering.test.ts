@@ -58,6 +58,58 @@ test("server-renders production Statistics shell, navigation, content and reques
     const { StatisticsShell } = await server.ssrLoadModule("/src/features/statistics/StatisticsShell.tsx") as { StatisticsShell: ComponentType };
     const { MonthlyOverview } = await server.ssrLoadModule("/src/features/statistics/MonthlyOverview.tsx") as { MonthlyOverview: ComponentType<{ view: StatisticsView }> };
     const { appTheme } = await server.ssrLoadModule("/src/theme/index.ts") as { appTheme: Theme };
+    const { MonthlyTrend } = await server.ssrLoadModule("/src/features/statistics/MonthlyTrend.tsx") as { MonthlyTrend: ComponentType<{
+      points: StatisticsOverview["trend"]; granularity: "month" | "year"; periodLabel: string;
+      layout: "page" | "slide"; showSummary: boolean;
+    }> };
+    const chartCases = [
+      { name: "empty", points: [], granularity: "month" as const },
+      { name: "zero", points: [{ ...zeroSummary, year: 2026, month: 1 }], granularity: "month" as const },
+      { name: "one cent", points: [{ ...zeroSummary, year: 2026, month: 1, totalIncome: 0.01, netBalance: 0.01, transactionCount: 1 }], granularity: "month" as const },
+      { name: "one cent expenses", points: [{ ...zeroSummary, year: 2026, month: 1, totalExpense: -0.01, netBalance: -0.01, transactionCount: 1 }], granularity: "month" as const },
+      { name: "income only", points: [{ ...zeroSummary, year: 2026, month: 1, totalIncome: 0.25, netBalance: 0.25, transactionCount: 1 }], granularity: "month" as const },
+      { name: "expenses only", points: [{ ...zeroSummary, year: 2026, month: 1, totalExpense: -0.25, netBalance: -0.25, transactionCount: 1 }], granularity: "month" as const },
+      ...[3, 6, 12].map((count) => ({ name: `${count} months`, granularity: "month" as const,
+        points: Array.from({ length: count }, (_, i) => ({ ...summary, year: i === 0 ? 2025 : 2026, month: i === 0 ? 12 : i, totalIncome: i === 1 ? 0.01 : 1000 })).reverse() })),
+      { name: "long yearly history", granularity: "year" as const,
+        points: Array.from({ length: 50 }, (_, i) => ({ ...summary, year: 1977 + i, month: null, totalIncome: 9876543210.12, totalExpense: -12345678901.23 })).reverse() },
+    ];
+    for (const layout of ["page", "slide"] as const) {
+      for (const showSummary of [false, true]) {
+        for (const fixture of chartCases) {
+          const before = structuredClone(fixture.points);
+          const html = renderToString(createElement(ThemeProvider, { theme: appTheme }, createElement(MonthlyTrend, {
+            ...fixture, layout, showSummary, periodLabel: "Synthetic period",
+          }))).replace(/<!--.*?-->/g, "");
+          const chart = section(html, "Income versus expenses");
+          const ordered = [...fixture.points].sort((a, b) => a.year - b.year || (a.month ?? 0) - (b.month ?? 0));
+          assert.equal((chart.match(/role="group"/g) ?? []).length, ordered.length, fixture.name);
+          const details = [...chart.matchAll(/<dl\b[^>]*>([\s\S]*?)<\/dl>/g)].map((match) => match[1]);
+          assert.equal(details.length, ordered.length, fixture.name);
+          for (const [index, point] of ordered.entries()) {
+            assert.deepEqual(definitionText(details[index], "dt"), showSummary ? ["Income", "Expenses", "Net Balance"] : ["Income", "Expenses"]);
+            assert.deepEqual(definitionText(details[index], "dd"), [formatCurrency(point.totalIncome), formatCurrency(Math.abs(point.totalExpense)), ...(showSummary ? [formatCurrency(point.netBalance)] : [])]);
+          }
+          assert.equal(chart.includes('aria-label="Trend summary"'), showSummary);
+          assert.equal(chart.includes('role="region" aria-label="Income and expense chart with exact values" tabindex="0"'), ordered.length > 0);
+          assert.match(chart, /Income \(left\)/);
+          assert.match(chart, /Expenses \(right\)/);
+          assert.equal(chart.includes("Yearly totals"), fixture.granularity === "year");
+          assert.doesNotMatch(chart, /Showing the latest|Infinity|NaN/);
+          if (fixture.name === "zero") {
+            assert.equal((chart.match(/data-height-percent="0"/g) ?? []).length, 2);
+            assert.match(chart, /No transactions found/);
+          }
+          if (fixture.name === "3 months") assert.match(chart, /data-height-percent="0.001"/);
+          if (fixture.name.startsWith("one cent")) {
+            const axis = chart.slice(chart.indexOf('aria-label="Income and expense chart with exact values"'), chart.indexOf('role="group"'));
+            assert.equal((axis.match(/0,01/g) ?? []).length, 1);
+            assert.equal((axis.match(/0,00/g) ?? []).length, 1);
+          }
+          assert.deepEqual(fixture.points, before, "Chart rendering must not mutate server data");
+        }
+      }
+    }
     const render = (view: StatisticsView, options: {
       response?: StatisticsOverview;
       error?: boolean;
@@ -190,8 +242,8 @@ test("server-renders production Statistics shell, navigation, content and reques
         assert.deepEqual(definitionText(secondary, "dd"), [formatCurrency(current.totalSavedOrInvested), String(current.transactionCount)], name);
         // The secondary information follows the entire desktop/mobile view, not a headline card or slide.
         assert.ok(html.indexOf('aria-label="Additional period information"') > html.lastIndexOf('aria-label="Headline metrics"'));
-        assert.match(html, /Trend Over Time/);
-        assert.ok(html.indexOf('aria-label="Additional period information"') > html.indexOf("Trend Over Time"));
+        assert.match(html, /Income versus expenses/);
+        assert.ok(html.indexOf('aria-label="Additional period information"') > html.indexOf("Income versus expenses"));
         if (mobile) {
           assert.match(html, /aria-label="Next slide"/);
           assert.ok(html.indexOf('aria-label="Additional period information"') > html.indexOf('aria-label="Next slide"'));
@@ -204,6 +256,8 @@ test("server-renders production Statistics shell, navigation, content and reques
         const html = render("overview", { timeframe, mobile });
         assert.equal(definitionText(section(html, "Headline metrics"), "dt").length, 4);
         assert.match(section(html, "Additional period information"), /Saved \/ Invested/);
+        assert.doesNotMatch(section(html, "Income versus expenses"), /aria-label="Trend summary"|Best Month|Best Year/);
+        assert.match(section(render("trends", { timeframe, mobile }), "Income versus expenses"), /aria-label="Trend summary"/);
       }
       for (const view of ["spending", "trends"] as const) {
         const html = render(view, { mobile });
