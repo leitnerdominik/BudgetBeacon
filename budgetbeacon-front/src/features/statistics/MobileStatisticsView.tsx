@@ -17,8 +17,10 @@ import {
 import type { StatisticsMetric } from "./StatisticsMetricGrid";
 import type { MonthReference, StatisticsTimeframeValue } from "./statisticsPeriod";
 import { TopExpenses } from "./TopExpenses";
+import type { StatisticsView } from "./statisticsViews";
 
 export type MobileStatisticsViewProps = {
+  view: StatisticsView;
   data: StatisticsOverview | undefined;
   metrics: readonly StatisticsMetric[];
   selectedMonth: MonthReference;
@@ -37,6 +39,7 @@ const isVisibleStatisticsSlideId = (
   definitions.some((definition) => definition.id === slideId);
 
 export const MobileStatisticsView = ({
+  view,
   data,
   metrics,
   selectedMonth,
@@ -98,6 +101,7 @@ export const MobileStatisticsView = ({
     ),
     trend: (
       <MonthlyTrend
+        showSummary={view === "trends"}
         granularity={trendGranularity}
         layout="slide"
         periodLabel={periodLabel}

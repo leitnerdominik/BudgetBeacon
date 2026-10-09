@@ -69,6 +69,7 @@ export const DesktopStatisticsView = ({
         </>
       ) : null}
       <MonthlyTrend
+        showSummary={view === "trends"}
         points={data?.trend ?? []}
         granularity={data?.trendGranularity ?? (isAllTime ? "year" : "month")}
         periodLabel={periodLabel}

@@ -109,6 +109,7 @@ export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
       ) : null}
       {isMobileView ? (
         <MobileStatisticsView
+          view={view}
           data={data}
           metrics={metrics}
           selectedMonth={selectedMonth}
