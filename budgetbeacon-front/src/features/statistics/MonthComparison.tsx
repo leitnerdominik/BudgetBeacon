@@ -5,10 +5,10 @@ import type { MonthlySummary } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
 import { describeStatisticsChange } from "./statisticsComparison";
 import { formatMonthLabel, shiftMonth, type MonthReference, type StatisticsTimeframeValue } from "./statisticsPeriod";
-import type { StatisticsCardLayoutProps } from "./statisticsLayout";
+import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 import { buildStatisticsViewLocation } from "./statisticsViews";
 
-type MonthComparisonProps = StatisticsCardLayoutProps & {
+type MonthComparisonProps = {
   current: MonthlySummary | undefined;
   month: MonthReference;
   previous: MonthlySummary | null | undefined;
@@ -20,7 +20,6 @@ export const MonthComparison = ({
   month,
   previous,
   timeframe,
-  layout = "page",
 }: MonthComparisonProps) => {
   const [searchParams] = useSearchParams();
   const isMonthly = timeframe === "1";
@@ -35,25 +34,9 @@ export const MonthComparison = ({
       component="section"
       aria-label={isMonthly ? "Month comparison" : "Explore this period"}
       elevation={0}
-      tabIndex={layout === "slide" ? 0 : undefined}
-      sx={{
-        mt: layout === "slide" ? 0 : 2,
-        minWidth: 0,
-        height: layout === "slide" ? "100%" : undefined,
-        minHeight: layout === "slide" ? 0 : undefined,
-        overflowY: layout === "slide" ? "auto" : undefined,
-        borderRadius: 1,
-        border: "1px solid",
-        borderColor: "divider",
-        ...(layout === "slide" && {
-          "&:focus-visible": {
-            outline: "none",
-            boxShadow: (theme) => `inset 0 0 0 2px ${theme.palette.primary.main}`,
-          },
-        }),
-      }}
+      sx={statisticsSurfaceSx}
     >
-      <CardContent sx={{ p: layout === "slide" ? 1.5 : 2, overflowWrap: "anywhere" }}>
+      <CardContent sx={statisticsContentSx}>
         <Typography component="h2" variant="subtitle1" fontWeight={700}>
           {isMonthly ? "Month Comparison" : "Explore this period"}
         </Typography>
