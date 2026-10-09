@@ -94,12 +94,17 @@ export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1, minHeight: 0, minWidth: 0 }}>
       {view === "spending" && isMonthlyView ? (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Choose 3 months or longer to see recurring expense candidates.
+          Choose 3 months or longer to see recurring expense candidates. Detection requires repeated expenses across at least two months.
         </Typography>
       ) : null}
       {view === "trends" && isMonthlyView ? (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           This selection shows one month. Choose a longer range to explore income and expense history.
+        </Typography>
+      ) : null}
+      {view === "trends" && isAllTime ? (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          The chart shows yearly totals. Averages and medians below describe monthly totals for the selected period.
         </Typography>
       ) : null}
       {isMobileView ? (
