@@ -393,38 +393,41 @@ internal static class FlexibleAmountParser
             throw new FormatException("Amount is required.");
         }
 
-        var value = text.Trim()
-            .Replace("EUR", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("€", string.Empty, StringComparison.Ordinal)
-            .Replace("\u00a0", string.Empty, StringComparison.Ordinal)
-            .Replace(" ", string.Empty, StringComparison.Ordinal)
-            .Replace("'", string.Empty, StringComparison.Ordinal);
+        var currencyRemoved = false;
+        var value = StripOuterCurrency(text.Trim(), ref currencyRemoved);
 
         var isParenthesizedNegative = value.StartsWith('(') && value.EndsWith(')');
+        var sign = string.Empty;
         if (isParenthesizedNegative)
         {
-            value = value[1..^1];
-            value = value.TrimStart('+', '-');
+            sign = "-";
+            value = StripOuterCurrency(value[1..^1].Trim(), ref currencyRemoved);
         }
-
-        if (value.Any(character => !char.IsDigit(character) && character is not ('.' or ',' or '+' or '-')))
+        else if (value.StartsWith('+') || value.StartsWith('-'))
         {
-            throw new FormatException($"Invalid amount value '{text}'.");
+            sign = value[..1];
+            value = StripOuterCurrency(value[1..].Trim(), ref currencyRemoved);
         }
 
+        // Regular and non-breaking spaces are the same grouping family, not removable whitespace.
+        value = value.Replace('\u00a0', ' ');
         var decimalSeparatorIndex = FindDecimalSeparatorIndex(value);
-        var normalized = new string(value
-            .Select((character, index) => (character, index))
-            .Where(item =>
-                char.IsDigit(item.character) ||
-                item.character is '+' or '-' ||
-                item.index == decimalSeparatorIndex)
-            .Select(item => item.index == decimalSeparatorIndex ? '.' : item.character)
-            .ToArray());
+        var integerPart = decimalSeparatorIndex < 0 ? value : value[..decimalSeparatorIndex];
+        var fractionalPart = decimalSeparatorIndex < 0 ? string.Empty : value[(decimalSeparatorIndex + 1)..];
 
-        if (isParenthesizedNegative)
+        if (decimalSeparatorIndex >= 0 &&
+            (fractionalPart.Length is < 1 or > 2 || !fractionalPart.All(char.IsAsciiDigit)))
         {
-            normalized = "-" + normalized;
+            throw new FormatException("Invalid amount decimal precision or format.");
+        }
+
+        ValidateIntegerGrouping(integerPart);
+
+        // Only discard separators after validating every group and the complete fractional part.
+        var normalized = sign + new string(integerPart.Where(char.IsAsciiDigit).ToArray());
+        if (decimalSeparatorIndex >= 0)
+        {
+            normalized += "." + fractionalPart;
         }
 
         if (!decimal.TryParse(
@@ -433,10 +436,35 @@ internal static class FlexibleAmountParser
                 CultureInfo.InvariantCulture,
                 out var amount))
         {
-            throw new FormatException($"Invalid amount value '{text}'.");
+            throw new FormatException("Invalid amount value.");
         }
 
         return amount;
+    }
+
+    private static string StripOuterCurrency(string value, ref bool currencyRemoved)
+    {
+        var markerLength = value.StartsWith("EUR", StringComparison.OrdinalIgnoreCase) ||
+                           value.EndsWith("EUR", StringComparison.OrdinalIgnoreCase)
+            ? 3
+            : value.StartsWith('€') || value.EndsWith('€') ? 1 : 0;
+
+        if (markerLength == 0)
+        {
+            return value;
+        }
+
+        if (currencyRemoved)
+        {
+            throw new FormatException("Only one outer currency marker is allowed.");
+        }
+
+        currencyRemoved = true;
+        var isPrefix = markerLength == 3
+            ? value.StartsWith("EUR", StringComparison.OrdinalIgnoreCase)
+            : value.StartsWith('€');
+
+        return (isPrefix ? value[markerLength..] : value[..^markerLength]).Trim();
     }
 
     private static int FindDecimalSeparatorIndex(string value)
@@ -455,7 +483,35 @@ internal static class FlexibleAmountParser
             return -1;
         }
 
-        var digitsAfterSeparator = value[(separatorIndex + 1)..].Count(char.IsDigit);
-        return digitsAfterSeparator is > 0 and <= 2 ? separatorIndex : -1;
+        // A single dot/comma must be a decimal separator. Three trailing digits are ambiguous.
+        // Repeated identical separators can only represent complete thousands groups.
+        return value.Count(character => character == value[separatorIndex]) == 1 ? separatorIndex : -1;
+    }
+
+    private static void ValidateIntegerGrouping(string value)
+    {
+        if (value.Length == 0)
+        {
+            throw new FormatException("Amount must contain an integer part.");
+        }
+
+        var separators = value.Where(character => !char.IsAsciiDigit(character)).Distinct().ToArray();
+        if (separators.Length == 0)
+        {
+            return;
+        }
+
+        if (separators.Length != 1 || separators[0] is not ('.' or ',' or ' ' or '\''))
+        {
+            throw new FormatException("Invalid amount grouping separator.");
+        }
+
+        var groups = value.Split(separators[0]);
+        if (groups[0].Length is < 1 or > 3 ||
+            groups.Skip(1).Any(group => group.Length != 3) ||
+            groups.Any(group => !group.All(char.IsAsciiDigit)))
+        {
+            throw new FormatException("Invalid amount grouping.");
+        }
     }
 }

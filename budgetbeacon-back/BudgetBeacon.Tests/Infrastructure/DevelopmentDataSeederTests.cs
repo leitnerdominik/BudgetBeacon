@@ -348,6 +348,13 @@ public sealed class DevelopmentDataSeederTests
 
     private sealed class RecordingTransactionRepository : ITransactionRepository
     {
+        public async IAsyncEnumerable<Transaction> StreamForExportAsync(
+            string userId, DateTime? startDate, DateTime? endDate,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
         private readonly HashSet<(string? UserId, string Fingerprint)> _keys = [];
 
         public List<Transaction> Transactions { get; } = [];
@@ -395,6 +402,13 @@ public sealed class DevelopmentDataSeederTests
             throw new NotSupportedException();
 
         public Task<IEnumerable<Transaction>> GetAllAsync(string userId, DateTime? endDate = null) =>
+            throw new NotSupportedException();
+
+        public Task<SavingsTipsSummary> GetSavingsTipsSummaryAsync(
+            string userId,
+            DateTime? startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<List<Guid>> GetUncategorizedIdsAsync(

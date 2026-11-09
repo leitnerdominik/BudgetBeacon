@@ -14,6 +14,38 @@ namespace BudgetBeacon.Tests.Api;
 
 public sealed class TransactionsControllerTests
 {
+    [Fact]
+    public async Task Export_RequiresAuthenticatedUser()
+    {
+        var controller = CreateController(userId: null);
+        var result = await controller.Export();
+        Assert.Equal(StatusCodes.Status401Unauthorized, Assert.IsType<ObjectResult>(result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Export_RejectsInvalidFormatAndDateRange()
+    {
+        var controller = CreateController();
+        var result = await controller.Export("xml", new DateOnly(2026, 2, 2), new DateOnly(2026, 2, 1));
+        var problem = Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(result).Value);
+        Assert.Contains("format", problem.Errors.Keys);
+        Assert.Contains("endDate", problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task Export_PassesInclusiveDatesAndCurrentUserToRepository()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+        controller.HttpContext.Response.Body = new MemoryStream();
+        await controller.Export("json", new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        Assert.Equal("user-1", repository.LastExportUserId);
+        Assert.Equal(new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc), repository.LastExportStartDate);
+        Assert.Equal(new DateOnly(2026, 2, 28).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc), repository.LastExportEndDate);
+        Assert.Equal("application/json; charset=utf-8", controller.Response.ContentType);
+        Assert.Equal("[]", Encoding.UTF8.GetString(((MemoryStream)controller.Response.Body).ToArray()));
+    }
+
     public static TheoryData<bool, decimal, DateTime, string> InvalidImportedFinancialValues =>
         new()
         {
@@ -2005,7 +2037,7 @@ public sealed class TransactionsControllerTests
     {
         var repository = new FakeTransactionRepository
         {
-            AllTransactions = [new Transaction { Amount = -45m, Category = "Eating Out" }]
+            SavingsTipsSummary = new(1, [new("Eating Out", 45m)])
         };
         var aiService = new FakeAiAdvisorService
         {
@@ -2031,21 +2063,23 @@ public sealed class TransactionsControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal("All time", GetValue<string>(ok.Value, "Timeframe"));
-        Assert.Equal(1, repository.GetAllCalls);
+        Assert.Equal(1, repository.SavingsTipsSummaryCalls);
+        Assert.Equal(0, repository.GetAllCalls);
+        Assert.Equal("user-1", repository.LastSummaryUserId);
+        Assert.Null(repository.LastSummaryStartDate);
         Assert.Equal(
             asOfDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
-            repository.LastGetAllEndDate);
+            repository.LastSummaryEndDate);
         Assert.Equal(0, repository.PagedCalls);
         Assert.Equal(1, aiService.GetSavingTipsCalls);
     }
 
     [Fact]
-    public async Task GetAiSavingsTips_ReturnsTipsForPagedTransactions()
+    public async Task GetAiSavingsTips_ReturnsTipsForCompleteSummary()
     {
         var repository = new FakeTransactionRepository
         {
-            PagedTransactions = [new Transaction { Amount = -25m, Category = "Food & Groceries" }],
-            PagedTotalCount = 1
+            SavingsTipsSummary = new(1, [new("Food & Groceries", 25m)])
         };
         var preferencesRepository = new FakeUserPreferencesRepository
         {
@@ -2083,8 +2117,7 @@ public sealed class TransactionsControllerTests
     {
         var repository = new FakeTransactionRepository
         {
-            PagedTransactions = [new Transaction { Amount = -25m, Category = "Food & Groceries" }],
-            PagedTotalCount = 1
+            SavingsTipsSummary = new(1, [new("Food & Groceries", 25m)])
         };
         var controller = CreateController(repository);
         var earliestExpectedStartDate = DateOnly.FromDateTime(DateTime.UtcNow)
@@ -2101,17 +2134,17 @@ public sealed class TransactionsControllerTests
         var latestExpectedEndDate = DateOnly.FromDateTime(DateTime.UtcNow)
             .ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
 
-        Assert.Equal("user-1", repository.LastPagedUserId);
-        Assert.NotNull(repository.LastPagedOptions?.StartDate);
-        Assert.NotNull(repository.LastPagedOptions.EndDate);
-        Assert.Equal(DateTimeKind.Utc, repository.LastPagedOptions.StartDate.Value.Kind);
-        Assert.Equal(DateTimeKind.Utc, repository.LastPagedOptions.EndDate.Value.Kind);
-        Assert.Equal(TimeSpan.Zero, repository.LastPagedOptions.StartDate.Value.TimeOfDay);
-        Assert.Equal(TimeOnly.MaxValue.ToTimeSpan(), repository.LastPagedOptions.EndDate.Value.TimeOfDay);
-        Assert.InRange(repository.LastPagedOptions.StartDate.Value, earliestExpectedStartDate, latestExpectedStartDate);
-        Assert.InRange(repository.LastPagedOptions.EndDate.Value, earliestExpectedEndDate, latestExpectedEndDate);
-        Assert.Equal(1, repository.LastPagedPageNumber);
-        Assert.Equal(10000, repository.LastPagedPageSize);
+        Assert.Equal("user-1", repository.LastSummaryUserId);
+        Assert.NotNull(repository.LastSummaryStartDate);
+        Assert.NotNull(repository.LastSummaryEndDate);
+        Assert.Equal(DateTimeKind.Utc, repository.LastSummaryStartDate.Value.Kind);
+        Assert.Equal(DateTimeKind.Utc, repository.LastSummaryEndDate.Value.Kind);
+        Assert.Equal(TimeSpan.Zero, repository.LastSummaryStartDate.Value.TimeOfDay);
+        Assert.Equal(TimeOnly.MaxValue.ToTimeSpan(), repository.LastSummaryEndDate.Value.TimeOfDay);
+        Assert.InRange(repository.LastSummaryStartDate.Value, earliestExpectedStartDate, latestExpectedStartDate);
+        Assert.InRange(repository.LastSummaryEndDate.Value, earliestExpectedEndDate, latestExpectedEndDate);
+        Assert.Equal(0, repository.PagedCalls);
+        Assert.Equal(0, repository.GetAllCalls);
     }
 
     [Fact]
@@ -2119,8 +2152,7 @@ public sealed class TransactionsControllerTests
     {
         var repository = new FakeTransactionRepository
         {
-            PagedTransactions = [new Transaction { Amount = -25m, Category = "Food & Groceries" }],
-            PagedTotalCount = 1
+            SavingsTipsSummary = new(1, [new("Food & Groceries", 25m)])
         };
         var controller = CreateController(repository);
 
@@ -2128,13 +2160,77 @@ public sealed class TransactionsControllerTests
             monthsBack: 1,
             asOfDate: new DateOnly(2026, 3, 31));
 
-        Assert.NotNull(repository.LastPagedOptions);
+        Assert.Equal(1, repository.SavingsTipsSummaryCalls);
         Assert.Equal(
             new DateTime(2026, 2, 28, 0, 0, 0, DateTimeKind.Utc),
-            repository.LastPagedOptions.StartDate);
+            repository.LastSummaryStartDate);
         Assert.Equal(
             new DateOnly(2026, 3, 31).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
-            repository.LastPagedOptions.EndDate);
+            repository.LastSummaryEndDate);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetAiSavingsTips_ForwardsCompleteSummaryAndRequestCancellation(bool allTime)
+    {
+        var summary = new SavingsTipsSummary(10001,
+            [new("Recent", 10000m), new("Oldest", 123.45m)]);
+        var repository = new FakeTransactionRepository { SavingsTipsSummary = summary };
+        var aiService = new FakeAiAdvisorService();
+        var controller = CreateController(repository, aiService: aiService);
+        using var cancellation = new CancellationTokenSource();
+        controller.HttpContext.RequestAborted = cancellation.Token;
+
+        var result = await controller.GetAiSavingsTips(allTime: allTime);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(allTime ? "All time" : "Last 3 months", GetValue<string>(ok.Value, "Timeframe"));
+        Assert.Same(summary, aiService.LastSavingsTipsSummary);
+        Assert.Equal(cancellation.Token, repository.LastSummaryCancellationToken);
+        Assert.Equal(cancellation.Token, aiService.LastSavingsTipsCancellationToken);
+        Assert.Equal(0, repository.PagedCalls);
+        Assert.Equal(0, repository.GetAllCalls);
+    }
+
+    [Fact]
+    public async Task GetAiSavingsTips_StopsBeforeProviderWhenRequestIsAborted()
+    {
+        var repository = new FakeTransactionRepository { SavingsTipsSummary = new(1, []) };
+        var aiService = new FakeAiAdvisorService();
+        var controller = CreateController(repository, aiService: aiService);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        controller.HttpContext.RequestAborted = cancellation.Token;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => controller.GetAiSavingsTips());
+
+        Assert.Equal(0, aiService.GetSavingTipsCalls);
+    }
+
+    [Fact]
+    public async Task GetAiSavingsTips_RejectsMissingIdentityBeforeReadingSummary()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository, userId: null);
+
+        var result = Assert.IsType<ObjectResult>(await controller.GetAiSavingsTips());
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, result.StatusCode);
+        Assert.Equal(0, repository.SavingsTipsSummaryCalls);
+    }
+
+    [Fact]
+    public async Task GetAiSavingsTips_StillCallsProviderForIncomeOnlySummary()
+    {
+        var repository = new FakeTransactionRepository { SavingsTipsSummary = new(1, []) };
+        var aiService = new FakeAiAdvisorService();
+        var controller = CreateController(repository, aiService: aiService);
+
+        Assert.IsType<OkObjectResult>(await controller.GetAiSavingsTips());
+
+        Assert.Equal(1, aiService.GetSavingTipsCalls);
+        Assert.Empty(aiService.LastSavingsTipsSummary!.ExpensesByCategory);
     }
 
     private static TransactionsController CreateController(
@@ -2205,6 +2301,47 @@ public sealed class TransactionsControllerTests
 
     private sealed class FakeTransactionRepository : ITransactionRepository
     {
+        public string? LastExportUserId { get; private set; }
+        public DateTime? LastExportStartDate { get; private set; }
+        public DateTime? LastExportEndDate { get; private set; }
+        public IEnumerable<Transaction> ExportTransactions { get; init; } = [];
+
+        public async IAsyncEnumerable<Transaction> StreamForExportAsync(
+            string userId, DateTime? startDate, DateTime? endDate,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            LastExportUserId = userId;
+            LastExportStartDate = startDate;
+            LastExportEndDate = endDate;
+            foreach (var transaction in ExportTransactions)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return transaction;
+            }
+            await Task.CompletedTask;
+        }
+        public SavingsTipsSummary SavingsTipsSummary { get; init; } = new(0, []);
+        public int SavingsTipsSummaryCalls { get; private set; }
+        public string? LastSummaryUserId { get; private set; }
+        public DateTime? LastSummaryStartDate { get; private set; }
+        public DateTime? LastSummaryEndDate { get; private set; }
+        public CancellationToken LastSummaryCancellationToken { get; private set; }
+
+        public Task<SavingsTipsSummary> GetSavingsTipsSummaryAsync(
+            string userId,
+            DateTime? startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default)
+        {
+            SavingsTipsSummaryCalls++;
+            LastSummaryUserId = userId;
+            LastSummaryStartDate = startDate;
+            LastSummaryEndDate = endDate;
+            LastSummaryCancellationToken = cancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(SavingsTipsSummary);
+        }
+
         public List<Transaction> AddedTransactions { get; } = [];
         public List<Transaction> ImportAttemptedTransactions { get; } = [];
         public IEnumerable<Transaction> AllTransactions { get; init; } = [];
@@ -2451,6 +2588,8 @@ public sealed class TransactionsControllerTests
     {
         public int CategorizeCalls { get; private set; }
         public int GetSavingTipsCalls { get; private set; }
+        public SavingsTipsSummary? LastSavingsTipsSummary { get; private set; }
+        public CancellationToken LastSavingsTipsCancellationToken { get; private set; }
         public string? LastCategorizationLocationContext { get; private set; }
         public string? LastSavingsTipsLocationContext { get; private set; }
         public Func<List<Transaction>, TransactionCategorizationResult>? CategorizeAction { get; init; }
@@ -2485,11 +2624,15 @@ public sealed class TransactionsControllerTests
         }
 
         public Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(
-            IEnumerable<Transaction> transactions,
-            string? aiLocationContext = null)
+            SavingsTipsSummary summary,
+            string? aiLocationContext = null,
+            CancellationToken cancellationToken = default)
         {
             GetSavingTipsCalls++;
             LastSavingsTipsLocationContext = aiLocationContext;
+            LastSavingsTipsSummary = summary;
+            LastSavingsTipsCancellationToken = cancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(SavingTips);
         }
     }

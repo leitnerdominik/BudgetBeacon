@@ -42,7 +42,7 @@ import {
 } from "../../../api/transactionsApi";
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../../hooks/useSlowLoading";
-import { formatCurrency, formatDate } from "../../../utils/formatDate";
+import { formatCurrency, formatCalendarDate } from "../../../utils/formatDate";
 import { transactionCategories } from "../transactionCategories";
 import { useCategorizeUncategorizedTransactions } from "../hooks/useCategorizeUncategorizedTransactions";
 import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
@@ -863,7 +863,7 @@ export const TransactionList = () => {
                             {transaction.description}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            {formatDate(transaction.date)}
+                            {formatCalendarDate(transaction.date)}
                           </Typography>
                           {transaction.notes ? (
                             <Typography

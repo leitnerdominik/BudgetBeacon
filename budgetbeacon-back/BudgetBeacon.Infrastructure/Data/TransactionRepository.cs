@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
+using BudgetBeacon.Core.Services;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
@@ -201,6 +202,71 @@ public class TransactionRepository : ITransactionRepository
         return await query
             .OrderByDescending(t => t.Date)
             .ToListAsync();
+    }
+
+    public IAsyncEnumerable<Transaction> StreamForExportAsync(
+        string userId, DateTime? startDate, DateTime? endDate,
+        CancellationToken cancellationToken = default)
+    {
+        return BuildExportQuery(_context.Transactions.AsNoTracking(), userId, startDate, endDate)
+            .AsAsyncEnumerable();
+    }
+
+    internal static IQueryable<Transaction> BuildExportQuery(
+        IQueryable<Transaction> transactions, string userId, DateTime? startDate, DateTime? endDate)
+    {
+        var query = transactions.Where(transaction => transaction.UserId == userId);
+        if (startDate.HasValue)
+            query = query.Where(transaction => transaction.Date >= startDate.Value);
+        if (endDate.HasValue)
+            query = query.Where(transaction => transaction.Date <= endDate.Value);
+
+        return query.OrderByDescending(transaction => transaction.Date)
+            .ThenByDescending(transaction => transaction.Id);
+    }
+
+    public async Task<SavingsTipsSummary> GetSavingsTipsSummaryAsync(
+        string userId,
+        DateTime? startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        var groups = await BuildSavingsTipsAggregateQuery(
+                _context.Transactions.AsNoTracking(), userId, startDate, endDate)
+            .ToListAsync(cancellationToken);
+
+        return SavingsTipsAggregationService.BuildSummary(groups);
+    }
+
+    internal static IQueryable<SavingsTipsAggregateGroup> BuildSavingsTipsAggregateQuery(
+        IQueryable<Transaction> transactions,
+        string userId,
+        DateTime? startDate,
+        DateTime endDate)
+    {
+        var endUtc = endDate.ToUniversalTime();
+        var query = transactions.Where(transaction =>
+            transaction.UserId == userId && transaction.Date <= endUtc);
+
+        if (startDate.HasValue)
+        {
+            var startUtc = startDate.Value.ToUniversalTime();
+            query = query.Where(transaction => transaction.Date >= startUtc);
+        }
+
+        return query
+            .GroupBy(transaction => new
+            {
+                transaction.Category,
+                transaction.Treatment,
+                IsPositive = transaction.Amount > 0
+            })
+            .Select(group => new SavingsTipsAggregateGroup(
+                group.Key.Category,
+                group.Key.Treatment,
+                group.Key.IsPositive,
+                group.LongCount(),
+                group.Sum(transaction => transaction.Amount)));
     }
 
     public async Task<List<Guid>> GetUncategorizedIdsAsync(

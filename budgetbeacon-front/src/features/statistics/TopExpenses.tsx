@@ -14,7 +14,7 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 
 import { StatusMessage } from "../../components/AsyncState";
 import type { TopExpense } from "../../types/api";
-import { formatCurrency, formatDate } from "../../utils/formatDate";
+import { formatCurrency, formatCalendarDate } from "../../utils/formatDate";
 import { TransactionCategoryIcon } from "../transactions/components/TransactionCategoryIcon";
 import { statisticsContentSx, statisticsSurfaceSx } from "./statisticsLayout";
 
@@ -101,7 +101,7 @@ export const TopExpenses = ({
                 </Box>
                 <ListItemText
                   primary={expense.description}
-                  secondary={`${expense.category} - ${formatDate(expense.date)}`}
+                  secondary={`${expense.category} - ${formatCalendarDate(expense.date)}`}
                   sx={{ minWidth: 0, width: "100%", m: 0 }}
                   primaryTypographyProps={{
                     fontWeight: 700,

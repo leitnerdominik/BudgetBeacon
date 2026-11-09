@@ -17,7 +17,7 @@ import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { defaultTransactionQuery } from "../../api/transactionsApi";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
-import { formatCurrency, formatDate } from "../../utils/formatDate";
+import { formatCurrency, formatCalendarDate } from "../../utils/formatDate";
 import { isTipsSourceDataNotFound } from "../tips/tipErrors";
 import { useTips } from "../tips/useTips";
 import { useTransactions } from "../transactions/hooks/useTransactions";
@@ -239,7 +239,7 @@ export const Dashboard = () => {
                       >
                         <ListItemText
                           primary={tx.description}
-                          secondary={formatDate(tx.date)}
+                          secondary={formatCalendarDate(tx.date)}
                           primaryTypographyProps={{
                             fontSize: { xs: "0.95rem", sm: "1rem" },
                             fontWeight: 600,

@@ -5,6 +5,7 @@ using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
 using BudgetBeacon.Core.Services;
+using BudgetBeacon.Api.Infrastructure;
 
 namespace BudgetBeacon.Api.Controllers;
 
@@ -55,6 +56,49 @@ public class TransactionsController : ControllerBase
         _transactionImportParser = transactionImportParser;
         _transactionImportService = transactionImportService;
         _logger = logger;
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string format = "csv",
+        [FromQuery] DateOnly? startDate = null,
+        [FromQuery] DateOnly? endDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+            return UnauthorizedProblem("A valid authenticated user is required to export transactions.");
+
+        var normalizedFormat = format.Trim().ToLowerInvariant();
+        if ((normalizedFormat != "csv" && normalizedFormat != "json") ||
+            (startDate.HasValue && endDate.HasValue && startDate > endDate))
+        {
+            return this.ApiValidationProblem(
+                "Invalid transaction export",
+                "Check the format and date range and try again.",
+                errors =>
+                {
+                    if (normalizedFormat != "csv" && normalizedFormat != "json")
+                        errors.AddModelError(nameof(format), "Format must be csv or json.");
+                    if (startDate.HasValue && endDate.HasValue && startDate > endDate)
+                        errors.AddModelError(nameof(endDate), "End date must not be before start date.");
+                });
+        }
+
+        Response.ContentType = normalizedFormat == "csv"
+            ? "text/csv; charset=utf-8"
+            : "application/json; charset=utf-8";
+        var range = startDate.HasValue || endDate.HasValue
+            ? $"{startDate?.ToString("yyyy-MM-dd") ?? "start"}_to_{endDate?.ToString("yyyy-MM-dd") ?? "end"}"
+            : "all";
+        Response.Headers.ContentDisposition = $"attachment; filename=budgetbeacon-transactions-{range}.{normalizedFormat}";
+        var transactions = _repository.StreamForExportAsync(
+            userId,
+            startDate?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            endDate?.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
+            cancellationToken);
+        await TransactionExportWriter.WriteAsync(Response.Body, transactions, normalizedFormat, cancellationToken);
+        return new EmptyResult();
     }
 
     [HttpGet]
@@ -1126,32 +1170,27 @@ public class TransactionsController : ControllerBase
         var inclusiveEndDate = effectiveAsOfDate.ToDateTime(
             TimeOnly.MaxValue,
             DateTimeKind.Utc);
-        IEnumerable<Transaction> transactions;
+        DateTime? startDate = null;
         string timeframe;
 
         if (allTime)
         {
             _logger.LogInformation("API requested AI savings tips for all available transactions.");
-            transactions = await _repository.GetAllAsync(userId, inclusiveEndDate);
             timeframe = "All time";
         }
         else
         {
             _logger.LogInformation("API requested AI savings tips for the last {Months} months.", monthsBack);
-            var startDate = effectiveAsOfDate
+            startDate = effectiveAsOfDate
                 .AddMonths(-monthsBack)
                 .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-            (transactions, _) = await _repository.GetTransactionsPagedAsync(
-                userId,
-                new TransactionQueryOptions(
-                    StartDate: startDate,
-                    EndDate: inclusiveEndDate),
-                1,
-                10000);
             timeframe = FormatTipsTimeframe(monthsBack);
         }
 
-        if (!transactions.Any())
+        var summary = await _repository.GetSavingsTipsSummaryAsync(
+            userId, startDate, inclusiveEndDate, HttpContext.RequestAborted);
+
+        if (summary.TransactionCount == 0)
         {
             return this.ApiProblem(
                 StatusCodes.Status404NotFound,
@@ -1161,7 +1200,8 @@ public class TransactionsController : ControllerBase
         }
 
         var aiLocationContext = await _userPreferencesRepository.GetAiLocationContextAsync(userId);
-        var tips = await _aiService.GetSavingTipsAsync(transactions, aiLocationContext);
+        var tips = await _aiService.GetSavingTipsAsync(
+            summary, aiLocationContext, HttpContext.RequestAborted);
 
         return Ok(new { Timeframe = timeframe, Tips = tips });
     }
