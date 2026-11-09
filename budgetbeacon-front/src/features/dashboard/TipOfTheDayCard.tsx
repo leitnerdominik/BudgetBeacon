@@ -47,8 +47,8 @@ export const TipOfTheDayCard = ({
     <Card
       sx={{
         height: "100%",
-        backgroundColor: "primary.dark",
-        color: "primary.contrastText",
+        backgroundColor: (theme) => theme.palette.mode === "dark" ? "background.paper" : "primary.dark",
+        color: (theme) => theme.palette.mode === "dark" ? "text.primary" : "primary.contrastText",
       }}
     >
       <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>

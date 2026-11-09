@@ -3,7 +3,7 @@ import {
   Avatar,
   Box,
   ButtonBase,
-  CssBaseline,
+  Tooltip,
   Divider,
   Drawer,
   IconButton,
@@ -29,6 +29,9 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import MenuIcon from "@mui/icons-material/Menu";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import { useColorMode } from "../theme/colorModeContext";
 import CloseIcon from "@mui/icons-material/Close";
 
 import { ApiError } from "../api/httpClient";
@@ -84,6 +87,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export const RootLayout = () => {
+  const { mode, toggleMode } = useColorMode();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -185,7 +189,7 @@ export const RootLayout = () => {
             <Avatar
               sx={{
                 bgcolor: "primary.light",
-                color: "primary.dark",
+                color: (theme) => theme.palette.mode === "dark" ? "primary.contrastText" : "primary.dark",
                 fontWeight: 700,
                 width: 42,
                 height: 42,
@@ -236,9 +240,9 @@ export const RootLayout = () => {
                       "background-color 0.2s ease, color 0.2s ease",
                     "&.Mui-selected": {
                       backgroundColor: "primary.light",
-                      color: "primary.dark",
+                      color: (theme) => theme.palette.mode === "dark" ? "primary.contrastText" : "primary.dark",
                       "& .MuiListItemIcon-root": {
-                        color: "primary.dark",
+                        color: (theme) => theme.palette.mode === "dark" ? "primary.contrastText" : "primary.dark",
                       },
                     },
                     "&.Mui-selected:hover": {
@@ -275,7 +279,7 @@ export const RootLayout = () => {
 
   return (
     <Box sx={{ display: "flex" }}>
-      <CssBaseline />
+
 
       <AppBar
         position="fixed"
@@ -328,7 +332,7 @@ export const RootLayout = () => {
                 placeItems: "center",
                 flexShrink: 0,
                 borderRadius: 1,
-                color: "primary.dark",
+                color: (theme) => theme.palette.mode === "dark" ? "primary.contrastText" : "primary.dark",
                 bgcolor: "primary.light",
                 border: "1px solid",
                 borderColor: "divider",
@@ -358,6 +362,16 @@ export const RootLayout = () => {
 
           <Box sx={{ flexGrow: 1 }} />
 
+          <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+            <IconButton
+              aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={toggleMode}
+              sx={{ flexShrink: 0, "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
+            >
+              {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
+            </IconButton>
+          </Tooltip>
+
           <IconButton
             onClick={handleOpenMenu}
             aria-label="Open account menu"
@@ -371,7 +385,7 @@ export const RootLayout = () => {
                 width: 34,
                 height: 34,
                 bgcolor: "primary.light",
-                color: "primary.dark",
+                color: (theme) => theme.palette.mode === "dark" ? "primary.contrastText" : "primary.dark",
                 fontSize: 14,
                 fontWeight: 700,
               }}
