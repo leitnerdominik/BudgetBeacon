@@ -5,6 +5,7 @@ using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
 using BudgetBeacon.Core.Services;
+using BudgetBeacon.Api.Infrastructure;
 
 namespace BudgetBeacon.Api.Controllers;
 
@@ -55,6 +56,49 @@ public class TransactionsController : ControllerBase
         _transactionImportParser = transactionImportParser;
         _transactionImportService = transactionImportService;
         _logger = logger;
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string format = "csv",
+        [FromQuery] DateOnly? startDate = null,
+        [FromQuery] DateOnly? endDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+            return UnauthorizedProblem("A valid authenticated user is required to export transactions.");
+
+        var normalizedFormat = format.Trim().ToLowerInvariant();
+        if ((normalizedFormat != "csv" && normalizedFormat != "json") ||
+            (startDate.HasValue && endDate.HasValue && startDate > endDate))
+        {
+            return this.ApiValidationProblem(
+                "Invalid transaction export",
+                "Check the format and date range and try again.",
+                errors =>
+                {
+                    if (normalizedFormat != "csv" && normalizedFormat != "json")
+                        errors.AddModelError(nameof(format), "Format must be csv or json.");
+                    if (startDate.HasValue && endDate.HasValue && startDate > endDate)
+                        errors.AddModelError(nameof(endDate), "End date must not be before start date.");
+                });
+        }
+
+        Response.ContentType = normalizedFormat == "csv"
+            ? "text/csv; charset=utf-8"
+            : "application/json; charset=utf-8";
+        var range = startDate.HasValue || endDate.HasValue
+            ? $"{startDate?.ToString("yyyy-MM-dd") ?? "start"}_to_{endDate?.ToString("yyyy-MM-dd") ?? "end"}"
+            : "all";
+        Response.Headers.ContentDisposition = $"attachment; filename=budgetbeacon-transactions-{range}.{normalizedFormat}";
+        var transactions = _repository.StreamForExportAsync(
+            userId,
+            startDate?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            endDate?.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc),
+            cancellationToken);
+        await TransactionExportWriter.WriteAsync(Response.Body, transactions, normalizedFormat, cancellationToken);
+        return new EmptyResult();
     }
 
     [HttpGet]

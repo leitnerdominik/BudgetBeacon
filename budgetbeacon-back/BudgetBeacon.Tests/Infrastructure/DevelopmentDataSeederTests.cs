@@ -348,6 +348,13 @@ public sealed class DevelopmentDataSeederTests
 
     private sealed class RecordingTransactionRepository : ITransactionRepository
     {
+        public async IAsyncEnumerable<Transaction> StreamForExportAsync(
+            string userId, DateTime? startDate, DateTime? endDate,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
         private readonly HashSet<(string? UserId, string Fingerprint)> _keys = [];
 
         public List<Transaction> Transactions { get; } = [];

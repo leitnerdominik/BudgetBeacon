@@ -136,6 +136,16 @@ export const defaultTransactionQuery: TransactionQueryRequest = {
   sortDirection: "desc",
 };
 
+export const exportTransactions = async (
+  format: "csv" | "json",
+  startDate?: string,
+  endDate?: string,
+): Promise<Blob> =>
+  apiClient.get<Blob, Blob>("/transactions/export", {
+    params: { format, startDate: startDate || undefined, endDate: endDate || undefined },
+    responseType: "blob",
+  });
+
 export const getTransactions = async (
   page: number,
   pageSize: number,

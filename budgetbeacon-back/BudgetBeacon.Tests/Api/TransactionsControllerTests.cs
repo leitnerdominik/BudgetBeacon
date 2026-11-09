@@ -14,6 +14,38 @@ namespace BudgetBeacon.Tests.Api;
 
 public sealed class TransactionsControllerTests
 {
+    [Fact]
+    public async Task Export_RequiresAuthenticatedUser()
+    {
+        var controller = CreateController(userId: null);
+        var result = await controller.Export();
+        Assert.Equal(StatusCodes.Status401Unauthorized, Assert.IsType<ObjectResult>(result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Export_RejectsInvalidFormatAndDateRange()
+    {
+        var controller = CreateController();
+        var result = await controller.Export("xml", new DateOnly(2026, 2, 2), new DateOnly(2026, 2, 1));
+        var problem = Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(result).Value);
+        Assert.Contains("format", problem.Errors.Keys);
+        Assert.Contains("endDate", problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task Export_PassesInclusiveDatesAndCurrentUserToRepository()
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+        controller.HttpContext.Response.Body = new MemoryStream();
+        await controller.Export("json", new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        Assert.Equal("user-1", repository.LastExportUserId);
+        Assert.Equal(new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc), repository.LastExportStartDate);
+        Assert.Equal(new DateOnly(2026, 2, 28).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc), repository.LastExportEndDate);
+        Assert.Equal("application/json; charset=utf-8", controller.Response.ContentType);
+        Assert.Equal("[]", Encoding.UTF8.GetString(((MemoryStream)controller.Response.Body).ToArray()));
+    }
+
     public static TheoryData<bool, decimal, DateTime, string> InvalidImportedFinancialValues =>
         new()
         {
@@ -2269,6 +2301,25 @@ public sealed class TransactionsControllerTests
 
     private sealed class FakeTransactionRepository : ITransactionRepository
     {
+        public string? LastExportUserId { get; private set; }
+        public DateTime? LastExportStartDate { get; private set; }
+        public DateTime? LastExportEndDate { get; private set; }
+        public IEnumerable<Transaction> ExportTransactions { get; init; } = [];
+
+        public async IAsyncEnumerable<Transaction> StreamForExportAsync(
+            string userId, DateTime? startDate, DateTime? endDate,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            LastExportUserId = userId;
+            LastExportStartDate = startDate;
+            LastExportEndDate = endDate;
+            foreach (var transaction in ExportTransactions)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return transaction;
+            }
+            await Task.CompletedTask;
+        }
         public SavingsTipsSummary SavingsTipsSummary { get; init; } = new(0, []);
         public int SavingsTipsSummaryCalls { get; private set; }
         public string? LastSummaryUserId { get; private set; }

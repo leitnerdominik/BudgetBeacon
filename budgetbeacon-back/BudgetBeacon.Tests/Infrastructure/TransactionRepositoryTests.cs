@@ -7,6 +7,22 @@ namespace BudgetBeacon.Tests.Infrastructure;
 
 public sealed class TransactionRepositoryTests
 {
+    [Fact]
+    public void ExportQuery_ContainsEveryMatchingRowInStableOrder()
+    {
+        var date = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = date.AddDays(1);
+        var first = new Transaction { Id = Guid.Parse("00000000-0000-0000-0000-000000000001"), UserId = "user-1", Date = date };
+        var second = new Transaction { Id = Guid.Parse("00000000-0000-0000-0000-000000000002"), UserId = "user-1", Date = date };
+        var last = new Transaction { UserId = "user-1", Date = end };
+        var rows = new[] { first, second,
+            new Transaction { UserId = "user-2", Date = date },
+            new Transaction { UserId = "user-1", Date = date.AddTicks(-1) },
+            last, new Transaction { UserId = "user-1", Date = end.AddTicks(1) } };
+        var result = TransactionRepository.BuildExportQuery(rows.AsQueryable(), "user-1", date, end).ToList();
+        Assert.Equal([last.Id, second.Id, first.Id], result.Select(row => row.Id));
+    }
+
     [Theory]
     [InlineData(10000, false)]
     [InlineData(10001, false)]

@@ -16,6 +16,9 @@ namespace BudgetBeacon.Core.Interfaces
         Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update);
         Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category);
         Task<IEnumerable<Transaction>> GetAllAsync(string userId, DateTime? endDate = null);
+        IAsyncEnumerable<Transaction> StreamForExportAsync(
+            string userId, DateTime? startDate, DateTime? endDate,
+            CancellationToken cancellationToken = default);
         Task<SavingsTipsSummary> GetSavingsTipsSummaryAsync(
             string userId,
             DateTime? startDate,
