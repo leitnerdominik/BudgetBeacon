@@ -18,6 +18,7 @@ namespace BudgetBeacon.Core.Entities
         public SpendingFlexibilityOverride? ManualSpendingFlexibility { get; set; }
         public SpendingFlexibilityOverride? AiSpendingFlexibility { get; set; }
         public double? FlexibilityConfidence { get; set; }
+        public bool AiFlexibilityAbstained { get; private set; }
         public string? Notes { get; set; }
         public string? ImportFingerprint { get; set; }
 
@@ -30,7 +31,10 @@ namespace BudgetBeacon.Core.Entities
             Metadata.RawDescription == original.Metadata.RawDescription &&
             Amount == original.Amount &&
             EffectiveTreatment == original.EffectiveTreatment &&
-            ManualSpendingFlexibility == original.ManualSpendingFlexibility;
+            ManualSpendingFlexibility == original.ManualSpendingFlexibility &&
+            AiSpendingFlexibility == original.AiSpendingFlexibility &&
+            Nullable.Equals(FlexibilityConfidence, original.FlexibilityConfidence) &&
+            AiFlexibilityAbstained == original.AiFlexibilityAbstained;
 
         public void ApplyUpdate(TransactionUpdate update)
         {
@@ -80,6 +84,8 @@ namespace BudgetBeacon.Core.Entities
 
         public void ApplyCategorization(TransactionCategorization suggestion)
         {
+            var originalCategory = Category;
+            var originalTreatment = EffectiveTreatment;
             Category = suggestion.Category;
             Treatment = TransactionTreatment.GetDefault(Amount, Category);
             Metadata.AiSuggestedCategory = Category;
@@ -88,12 +94,23 @@ namespace BudgetBeacon.Core.Entities
             var flexibility = Treatment == TransactionTreatment.Expense ? suggestion.Flexibility : null;
             AiSpendingFlexibility = flexibility?.Value;
             FlexibilityConfidence = flexibility?.Confidence;
+            AiFlexibilityAbstained = Treatment == TransactionTreatment.Expense && flexibility is null &&
+                (suggestion.FlexibilityAbstained ||
+                    (AiFlexibilityAbstained && originalCategory == Category && originalTreatment == EffectiveTreatment));
+        }
+
+        public void ApplySpendingFlexibilityReview(SpendingFlexibilityAssessment? assessment)
+        {
+            AiSpendingFlexibility = assessment?.Value;
+            FlexibilityConfidence = assessment?.Confidence;
+            AiFlexibilityAbstained = assessment is null;
         }
 
         private void ClearAiFlexibility()
         {
             AiSpendingFlexibility = null;
             FlexibilityConfidence = null;
+            AiFlexibilityAbstained = false;
         }
     }
 }

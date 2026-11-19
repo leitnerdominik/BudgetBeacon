@@ -2961,6 +2961,10 @@ public sealed class TransactionsControllerTests
 
     private sealed class FakeAiAdvisorService : IAiAdvisorService
     {
+        public Task<IReadOnlyList<SpendingFlexibilityReview>> ReviewSpendingFlexibilityAsync(
+            IReadOnlyList<Transaction> transactions, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public int CategorizeCalls { get; private set; }
         public int GetSavingTipsCalls { get; private set; }
         public SavingsTipsSummary? LastSavingsTipsSummary { get; private set; }

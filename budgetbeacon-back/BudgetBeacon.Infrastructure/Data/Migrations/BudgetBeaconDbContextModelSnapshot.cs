@@ -69,6 +69,11 @@ namespace BudgetBeacon.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AiFlexibilityAbstained")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("AiSpendingFlexibility")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");

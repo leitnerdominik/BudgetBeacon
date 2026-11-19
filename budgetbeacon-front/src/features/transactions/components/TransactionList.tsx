@@ -49,6 +49,7 @@ import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
 import { TransactionImportButton } from "./TransactionImportButton";
+import { SpendingFlexibilityReviewButton } from "./SpendingFlexibilityReviewButton";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import { getTransactionTreatmentLabel } from "../transactionTreatment";
 import {
@@ -363,6 +364,9 @@ export const TransactionList = () => {
         <Stack
           direction={{ xs: "column", sm: "row" }}
           spacing={1}
+          flexWrap="wrap"
+          useFlexGap
+          justifyContent={{ sm: "flex-end" }}
           alignItems={{ xs: "stretch", sm: "center" }}
         >
           <Button
@@ -384,6 +388,7 @@ export const TransactionList = () => {
           >
             Categorize uncategorized
           </Button>
+          <SpendingFlexibilityReviewButton isOnline={isOnline} />
           <TransactionImportButton />
           <Button
             variant="contained"

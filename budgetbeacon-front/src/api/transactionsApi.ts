@@ -52,6 +52,13 @@ export interface CategorizationCandidatesResponse {
   transactionIds: string[];
 }
 
+export interface SpendingFlexibilityReviewBatchResponse {
+  classifiedCount: number;
+  unclassifiedCount: number;
+  failedCount: number;
+  skippedCount: number;
+}
+
 export interface CategorizeTransactionsBatchResponse {
   message: string;
   requestedCount: number;
@@ -286,6 +293,24 @@ export const getCategorizationCandidates = async (
     CategorizationCandidatesResponse
   >("/transactions/ai/categorization-candidates", { signal });
 };
+
+export const getSpendingFlexibilityReviewCandidates = (
+  signal: AbortSignal,
+): Promise<CategorizationCandidatesResponse> =>
+  apiClient.get<CategorizationCandidatesResponse, CategorizationCandidatesResponse>(
+    "/transactions/ai/flexibility-review-candidates",
+    { signal },
+  );
+
+export const reviewSpendingFlexibilityBatch = (
+  transactionIds: string[],
+  signal: AbortSignal,
+): Promise<SpendingFlexibilityReviewBatchResponse> =>
+  apiClient.post<SpendingFlexibilityReviewBatchResponse, SpendingFlexibilityReviewBatchResponse>(
+    "/transactions/ai/review-flexibility",
+    { transactionIds },
+    { signal },
+  );
 
 const parseCategorizationBatchFailure = (
   data: unknown,

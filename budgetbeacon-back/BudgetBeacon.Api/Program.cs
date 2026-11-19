@@ -248,7 +248,10 @@ try
 
     builder.Services.AddAuthorization();
 
-    builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+    builder.Services.AddScoped<TransactionRepository>();
+    builder.Services.AddScoped<ITransactionRepository>(services => services.GetRequiredService<TransactionRepository>());
+    builder.Services.AddScoped<ISpendingFlexibilityReviewRepository>(services => services.GetRequiredService<TransactionRepository>());
+    builder.Services.AddScoped<SpendingFlexibilityReviewService>();
     builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
     builder.Services.AddScoped<ISpendingFlexibilityRuleRepository, SpendingFlexibilityRuleRepository>();
     builder.Services.AddScoped<DevelopmentDataSeeder>();

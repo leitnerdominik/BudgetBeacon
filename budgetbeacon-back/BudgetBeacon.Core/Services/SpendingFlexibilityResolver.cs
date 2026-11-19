@@ -26,13 +26,23 @@ public static class SpendingFlexibilityResolver
         if (rules is { Count: > 0 } && FindMatchingRule(transaction, rules) is { } rule)
             return (ToEffectiveValue(rule.SpendingFlexibility), "MerchantRule", null);
 
-        if (transaction.AiSpendingFlexibility is { } ai && transaction.FlexibilityConfidence is { } confidence)
-            return (ai.ToString(), "Ai", confidence);
+        if (transaction.AiSpendingFlexibility is { } ai &&
+            ai is SpendingFlexibilityOverride.Essential
+                or SpendingFlexibilityOverride.Optimizable or SpendingFlexibilityOverride.Optional &&
+            transaction.FlexibilityConfidence is >= 0 and <= 1)
+        {
+            return (ai.ToString(), "Ai", transaction.FlexibilityConfidence);
+        }
 
         return CategoryDefaults.TryGetValue(transaction.Category, out var categoryDefault)
             ? (categoryDefault, "CategoryDefault", null)
             : (null, "Unclassified", null);
     }
+
+    public static bool NeedsReview(Transaction transaction, IReadOnlyList<SpendingFlexibilityRule> rules) =>
+        !transaction.AiFlexibilityAbstained &&
+        !string.Equals(transaction.Category, "Uncategorized", StringComparison.OrdinalIgnoreCase) &&
+        Resolve(transaction, rules).Source == "Unclassified";
 
     private static string? ToEffectiveValue(SpendingFlexibilityOverride value) =>
         value == SpendingFlexibilityOverride.Unclassified ? null : value.ToString();

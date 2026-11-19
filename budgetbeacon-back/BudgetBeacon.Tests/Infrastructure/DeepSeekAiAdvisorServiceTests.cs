@@ -219,10 +219,13 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Equal(1, result.FailedCount);
         Assert.Equal(new(SpendingFlexibilityOverride.Essential, 0.97),
             result.Suggestions.Single(suggestion => suggestion.TransactionId == rent.Id).Flexibility);
-        Assert.Null(result.Suggestions.Single(suggestion => suggestion.TransactionId == pharmacy.Id).Flexibility);
+        var pharmacySuggestion = result.Suggestions.Single(suggestion => suggestion.TransactionId == pharmacy.Id);
+        Assert.Null(pharmacySuggestion.Flexibility);
+        Assert.True(pharmacySuggestion.FlexibilityAbstained);
         var dinnerSuggestion = result.Suggestions.Single(suggestion => suggestion.TransactionId == dinner.Id);
         Assert.Equal("Eating Out", dinnerSuggestion.Category);
         Assert.Null(dinnerSuggestion.Flexibility);
+        Assert.False(dinnerSuggestion.FlexibilityAbstained);
 
         var prompt = GetPrompt(Assert.Single(handler.Requests).Body);
         Assert.Contains("PHARMACY 18 EUR or AMAZON 89 EUR", prompt);
@@ -232,6 +235,65 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Equal(4, batch.RootElement.GetArrayLength());
         Assert.Equal(new[] { "Id", "Description", "Amount" },
             batch.RootElement[0].EnumerateObject().Select(property => property.Name));
+    }
+
+    [Fact]
+    public async Task ReviewSpendingFlexibilityAsync_DistinguishesAbstentionsFromInvalidOrMissingResults()
+    {
+        var classified = new Transaction
+        {
+            Category = "Housing & Utilities",
+            Metadata = new() { RawDescription = "RENT NOVEMBER" },
+            Notes = "Private notes"
+        };
+        var abstained = new Transaction();
+        var invalidConfidence = new Transaction();
+        var duplicate = new Transaction();
+        var conflictingFields = new Transaction();
+        var conflictingIds = new Transaction();
+        var omitted = new Transaction();
+        var missingField = new Transaction();
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse($$"""
+            [
+              {"Id":"{{classified.Id}}","Category":"Income","SpendingFlexibility":"Essential","FlexibilityConfidence":0.92},
+              {"Id":"{{abstained.Id}}","SpendingFlexibility":null,"FlexibilityConfidence":null},
+              {"Id":"{{invalidConfidence.Id}}","SpendingFlexibility":"Optional","FlexibilityConfidence":1e400},
+              {"Id":"{{missingField.Id}}","SpendingFlexibility":null},
+              {"Id":"{{duplicate.Id}}","SpendingFlexibility":"Optional","FlexibilityConfidence":0.8},
+              {"Id":"{{duplicate.Id}}","SpendingFlexibility":null,"FlexibilityConfidence":null},
+              {"Id":"{{conflictingFields.Id}}","SpendingFlexibility":null,"spendingFlexibility":"Optional","FlexibilityConfidence":null},
+              {"Id":"{{conflictingIds.Id}}","id":"{{Guid.NewGuid()}}","SpendingFlexibility":null,"FlexibilityConfidence":null},
+              {"Id":"{{Guid.NewGuid()}}","SpendingFlexibility":"Optional","FlexibilityConfidence":0.8}
+            ]
+            """));
+
+        var results = await CreateService(handler).ReviewSpendingFlexibilityAsync(
+            [classified, abstained, invalidConfidence, duplicate, conflictingFields, conflictingIds, omitted, missingField]);
+
+        Assert.Collection(results,
+            result => Assert.Equal(new SpendingFlexibilityReview(classified.Id,
+                new(SpendingFlexibilityOverride.Essential, 0.92)), result),
+            result => Assert.Equal(new SpendingFlexibilityReview(abstained.Id, null), result));
+        Assert.Equal("Housing & Utilities", classified.Category);
+        var prompt = GetPrompt(Assert.Single(handler.Requests).Body);
+        using var batch = JsonDocument.Parse(prompt[(prompt.LastIndexOf('\n') + 1)..].Trim());
+        Assert.Equal(new[] { "Id", "Description", "Amount", "Category" },
+            batch.RootElement[0].EnumerateObject().Select(property => property.Name));
+        Assert.Equal("Housing & Utilities", batch.RootElement[0].GetProperty("Category").GetString());
+    }
+
+    [Fact]
+    public async Task ReviewSpendingFlexibilityAsync_DoesNotTreatBadProviderResponseAsAbstention()
+    {
+        var transaction = new Transaction();
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse("""{"SpendingFlexibility":null,"FlexibilityConfidence":null}"""));
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        var service = CreateService(handler);
+
+        Assert.Empty(await service.ReviewSpendingFlexibilityAsync([transaction]));
+        Assert.Empty(await service.ReviewSpendingFlexibilityAsync([transaction]));
     }
 
     [Fact]

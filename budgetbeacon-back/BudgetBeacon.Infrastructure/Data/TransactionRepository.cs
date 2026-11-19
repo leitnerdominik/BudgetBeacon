@@ -3,13 +3,14 @@ using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Interfaces;
 using BudgetBeacon.Core.Models;
 using BudgetBeacon.Core.Services;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace BudgetBeacon.Infrastructure.Data;
 
-public class TransactionRepository : ITransactionRepository
+public class TransactionRepository : ITransactionRepository, ISpendingFlexibilityReviewRepository
 {
     private readonly BudgetBeaconDbContext _context;
 
@@ -24,9 +25,14 @@ public class TransactionRepository : ITransactionRepository
         if (string.IsNullOrWhiteSpace(transaction.Treatment))
             transaction.Treatment = TransactionTreatment.GetDefault(transaction.Amount, transaction.Category);
 
+        await using var operation = newRule is null
+            ? null
+            : await _context.Database.BeginTransactionAsync(cancellationToken);
         _context.Transactions.Add(transaction);
 
         await SaveTransactionAsync(transaction.UserId, newRule, cancellationToken);
+        if (operation is not null)
+            await operation.CommitAsync(cancellationToken);
     }
 
     public async Task<int> AddImportedTransactionsAsync(IEnumerable<Transaction> transactions)
@@ -68,7 +74,7 @@ public class TransactionRepository : ITransactionRepository
             Value = payload
         };
 
-        // Nullable flexibility columns start imported transactions without a manual override or AI suggestion.
+        // Database defaults start imported transactions without an override, AI suggestion or review.
         const string sql = """
             INSERT INTO "Transactions" ("Id", "UserId", "Date", "Amount", "Category", "Treatment", "Notes", "ImportFingerprint", "Metadata")
             SELECT
@@ -177,6 +183,88 @@ public class TransactionRepository : ITransactionRepository
         SpendingFlexibilityRule? newRule, CancellationToken cancellationToken) =>
         UpdateLockedAsync(userId, transactionId, transaction => transaction.ApplyUpdate(update), newRule, cancellationToken);
 
+    public async Task<IReadOnlyList<Guid>> GetReviewCandidateIdsAsync(
+        string userId, CancellationToken cancellationToken)
+    {
+        var ids = new List<Guid>();
+        await foreach (var candidate in StreamReviewCandidatesAsync(userId, null, cancellationToken))
+            ids.Add(candidate.Id);
+
+        return ids;
+    }
+
+    public async Task<IReadOnlyList<Transaction>> GetReviewCandidatesAsync(
+        string userId, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken)
+    {
+        var candidates = new List<Transaction>();
+        await foreach (var candidate in StreamReviewCandidatesAsync(userId, ids, cancellationToken))
+            candidates.Add(candidate);
+
+        return candidates;
+    }
+
+    private async IAsyncEnumerable<Transaction> StreamReviewCandidatesAsync(
+        string userId, IReadOnlyCollection<Guid>? ids, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var rules = await SpendingFlexibilityRuleRepository.GetForUserAsync(_context, userId, cancellationToken);
+        var query = _context.Transactions.AsNoTracking().Where(transaction =>
+            transaction.UserId == userId &&
+            transaction.Category != "Uncategorized" &&
+            transaction.ManualSpendingFlexibility == null &&
+            !transaction.AiFlexibilityAbstained);
+
+        if (ids is not null)
+            query = query.Where(transaction => ids.Contains(transaction.Id));
+
+        await foreach (var transaction in query.OrderByDescending(candidate => candidate.Date)
+            .ThenByDescending(candidate => candidate.Id).AsAsyncEnumerable().WithCancellation(cancellationToken))
+        {
+            if (SpendingFlexibilityResolver.NeedsReview(transaction, rules))
+                yield return transaction;
+        }
+    }
+
+    public async Task<SpendingFlexibilityReviewBatch> ApplySpendingFlexibilityReviewsAsync(
+        string userId, IReadOnlyList<Transaction> originals, IReadOnlyList<SpendingFlexibilityReview> reviews,
+        CancellationToken cancellationToken)
+    {
+        var originalById = originals.ToDictionary(transaction => transaction.Id);
+        var reviewById = reviews.ToDictionary(review => review.TransactionId);
+        var ids = originalById.Keys.ToArray();
+        await using var operation = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var currentRows = await LockTransactionsAsync(userId, ids, cancellationToken);
+        await SpendingFlexibilityRuleRepository.LockUserRulesAsync(_context, userId, cancellationToken);
+        var rules = await SpendingFlexibilityRuleRepository.GetForUserAsync(_context, userId, cancellationToken);
+        var classified = 0;
+        var unclassified = 0;
+        var failed = 0;
+        foreach (var current in currentRows)
+        {
+            if (!current.MatchesCategorizationBasis(originalById[current.Id]) ||
+                !SpendingFlexibilityResolver.NeedsReview(current, rules))
+            {
+                continue;
+            }
+
+            if (!reviewById.TryGetValue(current.Id, out var review))
+            {
+                failed++;
+                continue;
+            }
+
+            current.ApplySpendingFlexibilityReview(review.Assessment);
+            if (review.Assessment is null)
+                unclassified++;
+            else
+                classified++;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await operation.CommitAsync(cancellationToken);
+        return new SpendingFlexibilityReviewBatch(
+            classified, unclassified, failed, originals.Count - classified - unclassified - failed);
+    }
+
     public Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category) =>
         UpdateLockedAsync(userId, transactionId, transaction => transaction.ApplyCategoryUpdate(category));
 
@@ -208,6 +296,7 @@ public class TransactionRepository : ITransactionRepository
         if (newRule.UserId != userId)
             throw new InvalidOperationException("The rule and transaction must belong to the same user.");
 
+        await SpendingFlexibilityRuleRepository.LockUserRulesAsync(_context, newRule.UserId, cancellationToken);
         _context.SpendingFlexibilityRules.Add(newRule);
         await SpendingFlexibilityRuleRepository.SaveChangesAsync(_context, cancellationToken);
     }

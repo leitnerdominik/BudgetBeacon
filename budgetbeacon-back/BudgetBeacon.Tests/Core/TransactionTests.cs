@@ -155,6 +155,63 @@ public sealed class TransactionTests
         Assert.Equal((null, null, null), SpendingFlexibilityResolver.Resolve(transaction));
     }
 
+    [Theory]
+    [InlineData("A new merchant", "Shopping & Personal", TransactionTreatment.Expense, -10, false)]
+    [InlineData("Market", "Transport", TransactionTreatment.Expense, -10, false)]
+    [InlineData("Market", "Shopping & Personal", TransactionTreatment.Refund, -10, false)]
+    [InlineData("Market", "Shopping & Personal", TransactionTreatment.Expense, -20, false)]
+    [InlineData("Market", "Shopping & Personal", TransactionTreatment.Expense, -10, true)]
+    public void ApplyUpdate_OnlyRetainsAbstentionForUnchangedBasis(
+        string description, string category, string treatment, int amount, bool retained)
+    {
+        var transaction = CreateTransaction();
+        transaction.Category = "Shopping & Personal";
+        transaction.ApplySpendingFlexibilityReview(null);
+        Assert.False(SpendingFlexibilityResolver.NeedsReview(transaction, []));
+
+        transaction.ApplyUpdate(new TransactionUpdate
+        {
+            Date = transaction.Date.AddDays(1),
+            Amount = amount,
+            Description = description,
+            Category = category,
+            Treatment = treatment,
+            Notes = "Updated note"
+        });
+
+        Assert.Equal(retained, transaction.AiFlexibilityAbstained);
+        Assert.Equal(!retained && treatment == TransactionTreatment.Expense,
+            SpendingFlexibilityResolver.NeedsReview(transaction, []));
+    }
+
+    [Fact]
+    public void NeedsReview_UsesEffectiveTreatmentAndAllRatingSources()
+    {
+        var transaction = CreateTransaction();
+        transaction.UserId = "owner";
+        transaction.Category = "Shopping & Personal";
+        Assert.False(SpendingFlexibilityResolver.NeedsReview(transaction, []));
+
+        transaction.FlexibilityConfidence = double.NaN;
+        Assert.True(SpendingFlexibilityResolver.NeedsReview(transaction, []));
+        var rule = new SpendingFlexibilityRule("owner", SpendingFlexibilityRuleMatch.Prefix, "Mark",
+            SpendingFlexibilityOverride.Unclassified);
+        Assert.False(SpendingFlexibilityResolver.NeedsReview(transaction, [rule]));
+        Assert.True(SpendingFlexibilityResolver.NeedsReview(transaction, [new SpendingFlexibilityRule(
+            "different-user", SpendingFlexibilityRuleMatch.Prefix, "Mark", SpendingFlexibilityOverride.Optimizable)]));
+
+        transaction.ManualSpendingFlexibility = SpendingFlexibilityOverride.Unclassified;
+        Assert.False(SpendingFlexibilityResolver.NeedsReview(transaction, []));
+        transaction.ManualSpendingFlexibility = null;
+        transaction.Category = "food & groceries";
+        Assert.False(SpendingFlexibilityResolver.NeedsReview(transaction, []));
+        transaction.Category = "uncategorized";
+        Assert.False(SpendingFlexibilityResolver.NeedsReview(transaction, []));
+        transaction.Category = "Shopping & Personal";
+        transaction.Treatment = TransactionTreatment.Refund;
+        Assert.False(SpendingFlexibilityResolver.NeedsReview(transaction, []));
+    }
+
     private static Transaction CreateTransaction() =>
         new()
         {
