@@ -12,7 +12,21 @@ public sealed record StatisticsOverview(
     IReadOnlyList<StatisticsTrendPoint> Trend,
     IReadOnlyList<StatisticsCategorySummary> Categories,
     IReadOnlyList<StatisticsTopExpense> TopExpenses,
-    IReadOnlyList<StatisticsRecurringExpense> RecurringExpenses);
+    IReadOnlyList<StatisticsRecurringExpense> RecurringExpenses,
+    FinancialFlexibilityStatistics FinancialFlexibility);
+
+public sealed record FinancialFlexibilityStatistics(
+    IReadOnlyList<SpendingFlexibilityGroup> Groups,
+    decimal GrossExpenses,
+    decimal RefundAdjustment,
+    decimal NetExpenses,
+    decimal EssentialExpenses,
+    decimal AdjustableExpenses);
+
+public sealed record SpendingFlexibilityGroup(
+    string Classification,
+    decimal Amount,
+    decimal Percentage);
 
 public sealed record MonthlyTotalsStatistics(
     int MonthCount,

@@ -378,7 +378,8 @@ public sealed class DevelopmentDataSeederTests
             return Task.FromResult(inserted);
         }
 
-        public Task AddRangeAsync(IEnumerable<Transaction> transactions) =>
+        public Task AddAsync(
+            Transaction transaction, SpendingFlexibilityRule? newRule, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlySet<string>> GetExistingImportFingerprintsAsync(
@@ -392,10 +393,16 @@ public sealed class DevelopmentDataSeederTests
         public Task<Transaction?> GetByIdAsync(string userId, Guid transactionId) =>
             throw new NotSupportedException();
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        public Task<IReadOnlyList<Transaction>> ApplyCategorizationAsync(
+            string userId,
+            IReadOnlyList<Transaction> originals,
+            IReadOnlyList<TransactionCategorization> suggestions,
+            CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update) =>
+        public Task<Transaction?> UpdateAsync(
+            string userId, Guid transactionId, TransactionUpdate update,
+            SpendingFlexibilityRule? newRule, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category) =>

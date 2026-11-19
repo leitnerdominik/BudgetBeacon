@@ -1,7 +1,11 @@
 import { ApiError, apiClient } from "./httpClient";
+import type { SpendingFlexibilityRulePattern } from "./spendingFlexibilityRulesApi";
 import type {
   MonthlySummaryWithPeriod,
   PaginatedTransactions,
+  SpendingFlexibility,
+  SpendingFlexibilityOverride,
+  SpendingFlexibilitySource,
   StatisticsOverview,
   Transaction,
   TransactionTreatment,
@@ -19,6 +23,10 @@ interface TransactionApiResponse {
     category: string;
     treatment?: TransactionTreatment | null;
     notes?: string | null;
+    spendingFlexibilityOverride?: SpendingFlexibilityOverride | null;
+    spendingFlexibility?: SpendingFlexibility | null;
+    spendingFlexibilitySource?: SpendingFlexibilitySource | null;
+    flexibilityConfidence?: number | null;
     metadata?: {
       rawDescription?: string;
       aiConfidenceScore?: number | null;
@@ -33,12 +41,22 @@ const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
   treatment: transaction.treatment ?? "Expense",
   notes: transaction.notes?.trim() || null,
   aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
-  description:
-    transaction.metadata?.rawDescription?.trim() || "No description",
+  description: transaction.metadata?.rawDescription?.trim() ?? "",
+  spendingFlexibilityOverride: transaction.spendingFlexibilityOverride ?? null,
+  spendingFlexibility: transaction.spendingFlexibility ?? null,
+  spendingFlexibilitySource: transaction.spendingFlexibilitySource ?? null,
+  flexibilityConfidence: transaction.flexibilityConfidence ?? null,
 });
 
 export interface CategorizationCandidatesResponse {
   transactionIds: string[];
+}
+
+export interface SpendingFlexibilityReviewBatchResponse {
+  classifiedCount: number;
+  unclassifiedCount: number;
+  failedCount: number;
+  skippedCount: number;
 }
 
 export interface CategorizeTransactionsBatchResponse {
@@ -69,7 +87,16 @@ export interface TransactionWriteRequest {
   category: string;
   treatment: TransactionTreatment;
   notes: string | null;
+  spendingFlexibilityOverride?: SpendingFlexibilityOverride | "UseAutomatic";
+  spendingFlexibilityRule?: SpendingFlexibilityRulePattern;
 }
+
+type SpendingFlexibilityCategoryDefaults = Partial<Record<string, SpendingFlexibility>>;
+
+export const getSpendingFlexibilityCategoryDefaults = () =>
+  apiClient.get<SpendingFlexibilityCategoryDefaults, SpendingFlexibilityCategoryDefaults>(
+    "/transactions/spending-flexibility/category-defaults",
+  );
 
 export type CreateTransactionRequest = TransactionWriteRequest;
 
@@ -266,6 +293,24 @@ export const getCategorizationCandidates = async (
     CategorizationCandidatesResponse
   >("/transactions/ai/categorization-candidates", { signal });
 };
+
+export const getSpendingFlexibilityReviewCandidates = (
+  signal: AbortSignal,
+): Promise<CategorizationCandidatesResponse> =>
+  apiClient.get<CategorizationCandidatesResponse, CategorizationCandidatesResponse>(
+    "/transactions/ai/flexibility-review-candidates",
+    { signal },
+  );
+
+export const reviewSpendingFlexibilityBatch = (
+  transactionIds: string[],
+  signal: AbortSignal,
+): Promise<SpendingFlexibilityReviewBatchResponse> =>
+  apiClient.post<SpendingFlexibilityReviewBatchResponse, SpendingFlexibilityReviewBatchResponse>(
+    "/transactions/ai/review-flexibility",
+    { transactionIds },
+    { signal },
+  );
 
 const parseCategorizationBatchFailure = (
   data: unknown,

@@ -12,8 +12,10 @@ import {
   ButtonBase,
   Card,
   CardContent,
+  Checkbox,
   CircularProgress,
   Divider,
+  FormControlLabel,
   MenuItem,
   Stack,
   TextField,
@@ -25,6 +27,8 @@ import Grid from "@mui/material/Grid";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useNetworkStatus } from "../../../hooks/useNetworkStatus";
+import type { SpendingFlexibilityRulePattern } from "../../../api/spendingFlexibilityRulesApi";
+import { RulePatternFields } from "../../spendingFlexibility/RulePatternFields";
 import { transactionCategoryOptions } from "../transactionCategories";
 import {
   getDefaultTransactionTreatment,
@@ -34,6 +38,8 @@ import { useCreateTransaction } from "../hooks/useCreateTransaction";
 import { useUpdateTransaction } from "../hooks/useUpdateTransaction";
 import { getTransactionsReturnPath } from "../transactionListUrlState";
 import type { Transaction } from "../types";
+import type { SpendingFlexibilityChoice } from "../spendingFlexibility";
+import { SpendingFlexibilityField } from "./SpendingFlexibilityField";
 import {
   maximumAbsoluteTransactionAmountInput,
   maximumSupportedTransactionDate,
@@ -83,13 +89,26 @@ export const TransactionForm = ({
         transaction?.category ?? "Food & Groceries",
       ),
   );
+  const savedFlexibility = transaction?.spendingFlexibilityOverride ?? "UseAutomatic";
+  const [draftFlexibility, setDraftFlexibility] = useState<SpendingFlexibilityChoice>();
+  const [ruleDraft, setRuleDraft] = useState<SpendingFlexibilityRulePattern | null>(null);
 
+  const flexibility = draftFlexibility ?? savedFlexibility;
+  const canSaveRule = treatment === "Expense" && flexibility !== "UseAutomatic";
+  const newRule = canSaveRule ? ruleDraft : null;
   const amountValidation = validateTransactionAmount(amount);
   const parsedAmount = amountValidation.value ?? 0;
   const signedAmount =
     direction === "expense" ? -Math.abs(parsedAmount) : Math.abs(parsedAmount);
-  const normalizedDescription = description.replace(/\s+/g, " ").trim();
+  const descriptionForSave = description === transaction?.description
+    ? description
+    : description.replace(/\s+/g, " ").trim();
   const normalizedNotes = notes.trim();
+  const savedAssessment = transaction?.description === descriptionForSave &&
+    transaction.treatment === treatment &&
+    (transaction.spendingFlexibilitySource === "MerchantRule" || transaction.amount === signedAmount)
+    ? transaction
+    : undefined;
   const dateValidationError = validateTransactionDate(date);
   const isAmountValid = amountValidation.error === null;
   const isDateValid = dateValidationError === null;
@@ -97,9 +116,15 @@ export const TransactionForm = ({
     isOnline &&
     isDateValid &&
     isAmountValid &&
-    normalizedDescription.length > 0 &&
+    (isEdit || descriptionForSave.length > 0) &&
+    (!newRule || newRule.pattern.trim().length > 0) &&
     !createTransactionMutation.isPending &&
     !updateTransactionMutation.isPending;
+
+  const handleTreatmentChange = (value: Transaction["treatment"]) => {
+    setTreatment(value);
+    if (value !== "Expense") setRuleDraft(null);
+  };
 
   const handleDirectionChange = (
     _: MouseEvent<HTMLElement>,
@@ -107,7 +132,7 @@ export const TransactionForm = ({
   ) => {
     if (value) {
       setDirection(value);
-      setTreatment(
+      handleTreatmentChange(
         getDefaultTransactionTreatment(
           value === "expense" ? -1 : 1,
           category,
@@ -118,7 +143,7 @@ export const TransactionForm = ({
 
   const handleCategoryChange = (value: string) => {
     setCategory(value);
-    setTreatment(getDefaultTransactionTreatment(signedAmount, value));
+    handleTreatmentChange(getDefaultTransactionTreatment(signedAmount, value));
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -131,10 +156,15 @@ export const TransactionForm = ({
     const request = {
       date,
       amount: signedAmount,
-      description: normalizedDescription,
+      description: descriptionForSave,
       category,
       treatment,
       notes: normalizedNotes || null,
+      ...(newRule
+        ? { spendingFlexibilityOverride: flexibility, spendingFlexibilityRule: newRule }
+        : treatment === "Expense" && draftFlexibility !== undefined
+        ? { spendingFlexibilityOverride: draftFlexibility }
+        : {}),
     };
     const options = {
       onSuccess: () => navigate(transactionsReturnPath),
@@ -359,7 +389,7 @@ export const TransactionForm = ({
                         select
                         value={treatment}
                         onChange={(event) =>
-                          setTreatment(
+                          handleTreatmentChange(
                             event.target.value as Transaction["treatment"],
                           )
                         }
@@ -437,7 +467,7 @@ export const TransactionForm = ({
                       disabled={isPending}
                       slotProps={{ htmlInput: { maxLength: 200 } }}
                       helperText={`${description.length}/200`}
-                      required
+                      required={!isEdit}
                       fullWidth
                     />
                   </Grid>
@@ -459,15 +489,24 @@ export const TransactionForm = ({
                 <Divider />
 
                 <Box>
-                  <Typography variant="subtitle1" fontWeight={700}>
-                    Category
-                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Category
+                    </Typography>
+                    {isEdit && category !== "Uncategorized" ? (
+                      <Button size="small" disabled={isPending} onClick={() => setCategory("Uncategorized")}>
+                        Clear category
+                      </Button>
+                    ) : null}
+                  </Stack>
                   <Typography
                     variant="body2"
                     color="text.secondary"
                     sx={{ mt: 0.5, mb: 2 }}
                   >
-                    Choose the category that best matches this transaction.
+                    {category === "Uncategorized"
+                      ? "Uncategorized"
+                      : "Choose the category that best matches this transaction."}
                   </Typography>
                   <Grid
                     container
@@ -554,7 +593,7 @@ export const TransactionForm = ({
                   select
                   value={treatment}
                   onChange={(event) =>
-                    setTreatment(event.target.value as Transaction["treatment"])
+                    handleTreatmentChange(event.target.value as Transaction["treatment"])
                   }
                   disabled={isPending}
                   helperText="Expenses affect spending charts; transfers do not; savings and investments are tracked separately."
@@ -573,6 +612,38 @@ export const TransactionForm = ({
                 </TextField>
               </>
             )}
+
+            {treatment === "Expense" ? (
+              <Stack spacing={1}>
+                <SpendingFlexibilityField
+                  value={flexibility}
+                  category={category}
+                  transaction={savedAssessment}
+                  disabled={isPending}
+                  onChange={(choice) => {
+                    setDraftFlexibility(choice === savedFlexibility ? undefined : choice);
+                    setRuleDraft(null);
+                  }}
+                />
+                {canSaveRule && (
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={newRule !== null}
+                        onChange={(_, checked) => setRuleDraft(
+                          checked ? { matchType: "Exact", pattern: descriptionForSave } : null,
+                        )}
+                        disabled={isPending}
+                      />
+                    }
+                    label="Also save this assessment as a personal rule"
+                  />
+                )}
+                {newRule && (
+                  <RulePatternFields value={newRule} onChange={setRuleDraft} disabled={isPending} />
+                )}
+              </Stack>
+            ) : null}
 
             {!isOnline ? (
               <Typography variant="body2" color="error">

@@ -52,7 +52,15 @@ export interface Transaction {
   treatment: TransactionTreatment;
   notes: string | null;
   aiConfidenceScore: number | null;
+  spendingFlexibilityOverride: SpendingFlexibilityOverride | null;
+  spendingFlexibility: SpendingFlexibility | null;
+  spendingFlexibilitySource: SpendingFlexibilitySource | null;
+  flexibilityConfidence: number | null;
 }
+
+export type SpendingFlexibility = "Essential" | "Optimizable" | "Optional";
+export type SpendingFlexibilityOverride = SpendingFlexibility | "Unclassified";
+export type SpendingFlexibilitySource = "Manual" | "MerchantRule" | "Ai" | "CategoryDefault" | "Unclassified";
 
 export type TransactionTreatment =
   | "Income"
@@ -111,6 +119,20 @@ export interface StatisticsOverview {
   categories: CategoryExpenseSummary[];
   topExpenses: TopExpense[];
   recurringExpenses: RecurringExpenseCandidate[];
+  financialFlexibility: FinancialFlexibilityStatistics;
+}
+
+export interface FinancialFlexibilityStatistics {
+  groups: {
+    classification: SpendingFlexibilityOverride;
+    amount: number;
+    percentage: number;
+  }[];
+  grossExpenses: number;
+  refundAdjustment: number;
+  netExpenses: number;
+  essentialExpenses: number;
+  adjustableExpenses: number;
 }
 
 export interface MonthlyTotalsStatistics {

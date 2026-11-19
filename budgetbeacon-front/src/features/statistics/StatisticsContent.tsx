@@ -1,6 +1,7 @@
 import { Box } from "@mui/material";
 import type { StatisticsOverview } from "../../types/api";
 import { CategoryBreakdown } from "./CategoryBreakdown";
+import { FinancialFlexibility } from "./FinancialFlexibility";
 import { MonthComparison } from "./MonthComparison";
 import { MonthlyTrend } from "./MonthlyTrend";
 import { PeriodOverview } from "./PeriodOverview";
@@ -48,6 +49,8 @@ export const StatisticsContent = ({
         onCategorySelect={onCategorySelect}
         periodLabel={periodLabel}
       />
+
+      {data?.financialFlexibility && <FinancialFlexibility report={data.financialFlexibility} />}
 
       <TopExpenses expenses={data?.topExpenses ?? []} periodLabel={periodLabel} />
 

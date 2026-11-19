@@ -2,6 +2,7 @@ import { Stack } from "@mui/material";
 import { LoadingState, StatusMessage } from "../components/AsyncState";
 import { SettingsForm } from "../features/settings/SettingsForm";
 import { TransactionExport } from "../features/settings/TransactionExport";
+import { SpendingFlexibilityRules } from "../features/spendingFlexibility/SpendingFlexibilityRules";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useSlowLoading } from "../hooks/useSlowLoading";
 import { useUserPreferences } from "../features/settings/useUserPreferences";
@@ -48,6 +49,7 @@ export const SettingsPage = () => {
           isOnline={isOnline}
         />
       )}
+      <SpendingFlexibilityRules isOnline={isOnline} />
       <TransactionExport isOnline={isOnline} />
     </Stack>
   );

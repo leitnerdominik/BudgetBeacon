@@ -49,6 +49,7 @@ import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
 import { TransactionImportButton } from "./TransactionImportButton";
+import { SpendingFlexibilityReviewButton } from "./SpendingFlexibilityReviewButton";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
 import { getTransactionTreatmentLabel } from "../transactionTreatment";
 import {
@@ -363,6 +364,9 @@ export const TransactionList = () => {
         <Stack
           direction={{ xs: "column", sm: "row" }}
           spacing={1}
+          flexWrap="wrap"
+          useFlexGap
+          justifyContent={{ sm: "flex-end" }}
           alignItems={{ xs: "stretch", sm: "center" }}
         >
           <Button
@@ -384,6 +388,7 @@ export const TransactionList = () => {
           >
             Categorize uncategorized
           </Button>
+          <SpendingFlexibilityReviewButton isOnline={isOnline} />
           <TransactionImportButton />
           <Button
             variant="contained"
@@ -860,7 +865,7 @@ export const TransactionList = () => {
                             fontWeight={700}
                             sx={{ lineHeight: 1.3 }}
                           >
-                            {transaction.description}
+                            {transaction.description || "No description"}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             {formatCalendarDate(transaction.date)}
@@ -1172,7 +1177,7 @@ export const TransactionList = () => {
           </DialogContentText>
           {transactionToDelete ? (
             <Typography variant="body2" sx={{ mt: 2, fontWeight: 700 }}>
-              {transactionToDelete.description} | {formatCurrency(transactionToDelete.amount)}
+              {transactionToDelete.description || "No description"} | {formatCurrency(transactionToDelete.amount)}
             </Typography>
           ) : null}
         </DialogContent>

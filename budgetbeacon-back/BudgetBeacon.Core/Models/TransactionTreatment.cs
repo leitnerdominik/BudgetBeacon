@@ -32,6 +32,9 @@ public static class TransactionTreatment
             string.Equals(allowed, normalized, StringComparison.OrdinalIgnoreCase));
     }
 
+    public static string GetEffective(string? treatment, decimal amount, string? category) =>
+        Normalize(treatment) ?? GetDefault(amount, category);
+
     public static string GetDefault(decimal amount, string? category)
     {
         if (string.Equals(category, "Income", StringComparison.OrdinalIgnoreCase) || amount > 0)

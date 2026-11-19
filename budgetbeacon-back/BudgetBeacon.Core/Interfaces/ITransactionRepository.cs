@@ -5,15 +5,21 @@ namespace BudgetBeacon.Core.Interfaces
 {
     public interface ITransactionRepository
     {
-        Task AddRangeAsync(IEnumerable<Transaction> transactions);
+        Task AddAsync(Transaction transaction, SpendingFlexibilityRule? newRule, CancellationToken cancellationToken);
         Task<int> AddImportedTransactionsAsync(IEnumerable<Transaction> transactions);
         Task<IReadOnlySet<string>> GetExistingImportFingerprintsAsync(
             string userId,
             IReadOnlyCollection<string> importFingerprints);
         Task<bool> DeleteAsync(string userId, Guid transactionId);
         Task<Transaction?> GetByIdAsync(string userId, Guid transactionId);
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
-        Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update);
+        Task<IReadOnlyList<Transaction>> ApplyCategorizationAsync(
+            string userId,
+            IReadOnlyList<Transaction> originals,
+            IReadOnlyList<TransactionCategorization> suggestions,
+            CancellationToken cancellationToken = default);
+        Task<Transaction?> UpdateAsync(
+            string userId, Guid transactionId, TransactionUpdate update,
+            SpendingFlexibilityRule? newRule, CancellationToken cancellationToken);
         Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category);
         Task<IEnumerable<Transaction>> GetAllAsync(string userId, DateTime? endDate = null);
         IAsyncEnumerable<Transaction> StreamForExportAsync(

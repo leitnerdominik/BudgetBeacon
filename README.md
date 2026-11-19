@@ -77,6 +77,23 @@ Infrastructure -> Core
 Tests -> Api/Core/Infrastructure
 ```
 
+### Financial Flexibility API
+
+`POST /api/transactions` and `PUT /api/transactions/{id}` accept the optional JSON field `spendingFlexibilityOverride`.
+
+| Request value | Behavior |
+| --- | --- |
+| Field omitted | Retain the current override on update. New transactions start in automatic mode. |
+| `"Essential"`, `"Optimizable"`, or `"Optional"` | Save the selected manual class. |
+| `"Unclassified"` | Save a manual decision to leave the expense without a class. |
+| `"UseAutomatic"` | Remove the manual override. |
+
+The values are case-sensitive. A supplied value must be a supported string and the resulting treatment must be `Expense`. Explicit JSON `null` is rejected. To clear details on an existing transaction, send an empty `description` or set `category` to `"Uncategorized"`.
+
+Transaction list, detail, and mutation responses include `spendingFlexibilityOverride` (the saved manual choice or `null`), `spendingFlexibility` (the effective class or `null`), `spendingFlexibilitySource`, and `flexibilityConfidence`. The source for expenses is `Manual`, `Ai`, `CategoryDefault`, or `Unclassified`, in that order of precedence. A manual `"Unclassified"` override returns a null class with source `Manual`. Confidence is returned only when the effective source is `Ai`. The transaction form suggests reviewing AI assessments below 0.7. Other treatments return null effective fields and retain any saved override for future expense edits.
+
+`GET /api/transactions/spending-flexibility/category-defaults` returns the defaults used in the form. Food & Groceries defaults to Optimizable. Eating Out and Leisure & Hobbies default to Optional. Existing transactions and CSV or XLSX imports start without an override and receive a category default when applicable.
+
 ## Local Setup
 
 ### Prerequisites
@@ -115,7 +132,7 @@ Required frontend values:
 dotnet tool restore
 cd budgetbeacon-back
 dotnet restore BudgetBeacon.sln
-dotnet tool run dotnet-ef database update --project BudgetBeacon.Infrastructure\BudgetBeacon.Infrastructure.csproj --startup-project BudgetBeacon.Api\BudgetBeacon.Api.csproj --context BudgetBeacon.Infrastructure.Data.BudgetBeaconDbContext
+dotnet tool run dotnet-ef database update --project BudgetBeacon.Infrastructure --startup-project BudgetBeacon.Infrastructure --context BudgetBeaconDbContext
 ```
 
 ### 3. Run the Backend

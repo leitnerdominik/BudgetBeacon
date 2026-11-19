@@ -1,9 +1,11 @@
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using BudgetBeacon.Api.Controllers;
+using BudgetBeacon.Api.Infrastructure;
 using BudgetBeacon.Core.Entities;
 using BudgetBeacon.Core.Exceptions;
 using BudgetBeacon.Core.Interfaces;
@@ -14,6 +16,304 @@ namespace BudgetBeacon.Tests.Api;
 
 public sealed class TransactionsControllerTests
 {
+    [Theory]
+    [InlineData("Essential", "Essential", "Manual")]
+    [InlineData("Optimizable", "Optimizable", "Manual")]
+    [InlineData("Optional", "Optional", "Manual")]
+    [InlineData("Unclassified", null, "Manual")]
+    [InlineData("UseAutomatic", "Optimizable", "CategoryDefault")]
+    public async Task Create_ExposesEffectiveSpendingFlexibility(
+        string choice, string? expectedValue, string expectedSource)
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+        var request = new TransactionsController.CreateTransactionRequest(
+            new DateOnly(2026, 6, 4), -10m, "Groceries", "Food & Groceries", null,
+            SpendingFlexibilityOverride: JsonSerializer.SerializeToElement(choice));
+
+        var result = Assert.IsType<CreatedResult>(await controller.Create(request));
+        var response = Assert.IsType<TransactionResponse>(result.Value);
+        Assert.Equal(expectedValue, response.SpendingFlexibility);
+        Assert.Equal(expectedSource, response.SpendingFlexibilitySource);
+        var expectedOverride = choice == "UseAutomatic" ? null : choice;
+        Assert.Equal(expectedOverride, response.SpendingFlexibilityOverride);
+        Assert.Equal(expectedOverride, Assert.Single(repository.AddedTransactions).ManualSpendingFlexibility?.ToString());
+        Assert.Null(repository.LastRuleToSave);
+    }
+
+    [Theory]
+    [InlineData("Essential", "Essential")]
+    [InlineData("Unclassified", null)]
+    public async Task ManualWrite_OnlySavesRuleWhenExplicitlyRequested(string choice, string? value)
+    {
+        var expense = new Transaction { UserId = "user-1" };
+        var repository = new FakeTransactionRepository { TransactionToUpdate = expense };
+        var controller = CreateController(repository);
+        var input = JsonSerializer.SerializeToElement(choice);
+        var rule = new SpendingFlexibilityRuleInput("Prefix", "  Coffee\tHouse  ");
+        var date = new DateOnly(2026, 6, 4);
+
+        var created = Assert.IsType<CreatedResult>(await controller.Create(
+            new(date, -10m, "Coffee House 123", "Eating Out", null, "Expense", input, rule)));
+        Assert.Equal("Manual", Assert.IsType<TransactionResponse>(created.Value).SpendingFlexibilitySource);
+        AssertRule(repository.LastRuleToSave);
+
+        var updated = Assert.IsType<OkObjectResult>(await controller.Update(expense.Id,
+            new(date, -10m, "Coffee House 456", "Eating Out", null, "Expense", input, rule)));
+        var response = Assert.IsType<TransactionResponse>(updated.Value);
+        Assert.Equal("Manual", response.SpendingFlexibilitySource);
+        Assert.Equal(value, response.SpendingFlexibility);
+        AssertRule(repository.LastRuleToSave);
+
+        await controller.Update(expense.Id,
+            new(date, -10m, "Coffee House 456", "Eating Out", null, "Expense", input));
+        Assert.Null(repository.LastRuleToSave);
+
+        void AssertRule(SpendingFlexibilityRule? savedRule)
+        {
+            Assert.NotNull(savedRule);
+            Assert.Equal("user-1", savedRule.UserId);
+            Assert.Equal("Coffee House", savedRule.Pattern);
+            Assert.Equal(SpendingFlexibilityRuleMatch.Prefix, savedRule.MatchType);
+            Assert.Equal(choice, savedRule.SpendingFlexibility.ToString());
+        }
+    }
+
+    [Fact]
+    public async Task Create_ResolvesExistingRuleForNewExpenseWithoutManualOverride()
+    {
+        var rules = new FakeSpendingFlexibilityRuleRepository();
+        await rules.AddAsync(new("user-1", SpendingFlexibilityRuleMatch.Prefix, "Coffee",
+            SpendingFlexibilityOverride.Essential), default);
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository, ruleRepository: rules);
+
+        var result = Assert.IsType<CreatedResult>(await controller.Create(
+            new(new DateOnly(2026, 6, 4), -10m, "COFFEE HOUSE", "Eating Out", null)));
+        var response = Assert.IsType<TransactionResponse>(result.Value);
+        Assert.Equal("Essential", response.SpendingFlexibility);
+        Assert.Equal("MerchantRule", response.SpendingFlexibilitySource);
+        Assert.Null(Assert.Single(repository.AddedTransactions).ManualSpendingFlexibility);
+        Assert.Null(repository.LastRuleToSave);
+    }
+
+    [Fact]
+    public async Task Categorization_DoesNotPersistIfRuleLoadFails()
+    {
+        var transaction = new Transaction { UserId = "user-1" };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = transaction,
+            TransactionToUpdate = transaction
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(1, [new(transaction.Id, "Eating Out", 0.9)], 0)
+        };
+        var rules = new FakeSpendingFlexibilityRuleRepository { ReadError = new TimeoutException() };
+        var controller = CreateController(repository, aiService: aiService, ruleRepository: rules);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => controller.UpdateCategory(transaction.Id, new("Eating Out")));
+        await Assert.ThrowsAsync<TimeoutException>(() => controller.RegenerateCategory(transaction.Id));
+        Assert.Null(repository.LastUpdateCategoryTransactionId);
+        Assert.False(repository.SaveChangesCalled);
+        Assert.Equal("Uncategorized", transaction.Category);
+    }
+
+    [Theory]
+    [InlineData(null, "Expense", "Exact", "Groceries")]
+    [InlineData("UseAutomatic", "Expense", "Exact", "Groceries")]
+    [InlineData("Essential", "Refund", "Exact", "Groceries")]
+    [InlineData("Essential", "Expense", "Contains", "Groceries")]
+    [InlineData("Essential", "Expense", "Exact", " \t ")]
+    public async Task Writes_RejectAnInvalidRuleWithTheWholeTransaction(
+        string? choice, string treatment, string matchType, string pattern)
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+        var input = choice is null ? default : JsonSerializer.SerializeToElement(choice);
+        var rule = new SpendingFlexibilityRuleInput(matchType, pattern);
+        var date = new DateOnly(2026, 6, 4);
+
+        var create = await controller.Create(new(date, -10m, "Groceries", "Food & Groceries", null,
+            treatment, input, rule));
+        var update = await controller.Update(Guid.NewGuid(), new(date, -10m, "Groceries", "Food & Groceries", null,
+            treatment, input, rule));
+
+        foreach (var result in new[] { create, update })
+        {
+            var problem = Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(result).Value);
+            Assert.Contains("SpendingFlexibilityRule", problem.Errors.Keys);
+        }
+        Assert.Empty(repository.AddedTransactions);
+        Assert.Null(repository.LastUpdateTransactionId);
+    }
+
+    [Fact]
+    public async Task Update_DistinguishesOmissionUnclassifiedAndUseAutomatic()
+    {
+        var expense = new Transaction
+        {
+            UserId = "user-1",
+            Category = "Food & Groceries",
+            Treatment = TransactionTreatment.Expense,
+            ManualSpendingFlexibility = SpendingFlexibilityOverride.Essential
+        };
+        var repository = new FakeTransactionRepository { TransactionToUpdate = expense };
+        var controller = CreateController(repository);
+        var legacyRequest = JsonSerializer.Deserialize<TransactionsController.UpdateTransactionRequest>(
+            """
+            {"date":"2026-06-04","amount":-10,"description":"","category":"Uncategorized","notes":null}
+            """, JsonSerializerOptions.Web)!;
+
+        var kept = Assert.IsType<TransactionResponse>(
+            Assert.IsType<OkObjectResult>(await controller.Update(expense.Id, legacyRequest)).Value);
+        Assert.Equal("Essential", kept.SpendingFlexibility);
+        Assert.Equal("Manual", kept.SpendingFlexibilitySource);
+        Assert.Equal("Uncategorized", kept.Category);
+        Assert.Empty(kept.Metadata.RawDescription);
+
+        var classifiedRequest = legacyRequest with
+        {
+            Category = "Eating Out",
+            SpendingFlexibilityOverride = JsonSerializer.SerializeToElement("Unclassified")
+        };
+        var unclassified = Assert.IsType<TransactionResponse>(
+            Assert.IsType<OkObjectResult>(await controller.Update(expense.Id, classifiedRequest)).Value);
+        Assert.Null(unclassified.SpendingFlexibility);
+        Assert.Equal("Manual", unclassified.SpendingFlexibilitySource);
+        Assert.Equal("Unclassified", unclassified.SpendingFlexibilityOverride);
+        Assert.Equal(SpendingFlexibilityOverride.Unclassified, expense.ManualSpendingFlexibility);
+
+        var automaticRequest = classifiedRequest with
+        {
+            SpendingFlexibilityOverride = JsonSerializer.SerializeToElement("UseAutomatic")
+        };
+        var automatic = Assert.IsType<TransactionResponse>(
+            Assert.IsType<OkObjectResult>(await controller.Update(expense.Id, automaticRequest)).Value);
+        Assert.Equal("Optional", automatic.SpendingFlexibility);
+        Assert.Equal("CategoryDefault", automatic.SpendingFlexibilitySource);
+        Assert.Null(expense.ManualSpendingFlexibility);
+    }
+
+    [Theory]
+    [InlineData("null", "Expense")]
+    [InlineData("0", "Expense")]
+    [InlineData("\"0\"", "Expense")]
+    [InlineData("\"essential\"", "Expense")]
+    [InlineData("\"Unknown\"", "Expense")]
+    [InlineData("\"Optional\"", "Refund")]
+    public async Task Writes_RejectInvalidSpendingFlexibility(string jsonValue, string treatment)
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+        var input = JsonSerializer.Deserialize<JsonElement>(jsonValue);
+        var date = new DateOnly(2026, 6, 4);
+
+        var create = await controller.Create(new TransactionsController.CreateTransactionRequest(
+            date, -10m, "Groceries", "Food & Groceries", null, treatment, input));
+        var update = await controller.Update(Guid.NewGuid(), new TransactionsController.UpdateTransactionRequest(
+            date, -10m, "Groceries", "Food & Groceries", null, treatment, input));
+
+        foreach (var result in new[] { create, update })
+        {
+            var problem = Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(result).Value);
+            Assert.Contains("SpendingFlexibilityOverride", problem.Errors.Keys);
+        }
+        Assert.Empty(repository.AddedTransactions);
+        Assert.Null(repository.LastUpdateTransactionId);
+    }
+
+    [Theory]
+    [InlineData("Food & Groceries", "Expense", "Optimizable", "CategoryDefault")]
+    [InlineData("Leisure & Hobbies", "Expense", "Optional", "CategoryDefault")]
+    [InlineData("Travel", "Expense", null, "Unclassified")]
+    [InlineData("Housing & Utilities", "Expense", null, "Unclassified")]
+    [InlineData("Eating Out", "Refund", null, null)]
+    public async Task GetById_ResolvesFlexibilityForExistingTransactions(
+        string category, string treatment, string? value, string? source)
+    {
+        var transaction = new Transaction { UserId = "user-1", Category = category, Treatment = treatment };
+        var controller = CreateController(new FakeTransactionRepository { TransactionById = transaction });
+
+        var result = Assert.IsType<OkObjectResult>(await controller.GetById(transaction.Id));
+        var response = Assert.IsType<TransactionResponse>(result.Value);
+        Assert.Equal(value, response.SpendingFlexibility);
+        Assert.Equal(source, response.SpendingFlexibilitySource);
+        Assert.Null(response.SpendingFlexibilityOverride);
+    }
+
+    [Fact]
+    public async Task ExistingExpenses_UseCurrentRulesInListDetailAndStatisticsThenFallBackAfterDeletion()
+    {
+        var withAi = new Transaction
+        {
+            UserId = "user-1",
+            Date = new DateTime(2026, 6, 4, 0, 0, 0, DateTimeKind.Utc),
+            Amount = -10m,
+            Category = "Eating Out",
+            Treatment = TransactionTreatment.Expense,
+            AiSpendingFlexibility = SpendingFlexibilityOverride.Optimizable,
+            FlexibilityConfidence = 0.9,
+            Metadata = new TransactionMetadata { RawDescription = "Coffee  Store 03" }
+        };
+        var withDefault = new Transaction
+        {
+            UserId = "user-1",
+            Date = withAi.Date,
+            Amount = -20m,
+            Category = "Food & Groceries",
+            Treatment = TransactionTreatment.Expense,
+            Metadata = new TransactionMetadata { RawDescription = "COFFEE STORE 04" }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = withAi,
+            PagedTransactions = [withAi, withDefault],
+            AllTransactions = [withAi, withDefault],
+            RangeTransactions = [withAi, withDefault]
+        };
+        var rules = new FakeSpendingFlexibilityRuleRepository();
+        await rules.AddAsync(new("user-2", SpendingFlexibilityRuleMatch.Exact, "Coffee Store 03",
+            SpendingFlexibilityOverride.Unclassified), default);
+        var controller = CreateController(repository, ruleRepository: rules);
+        var rule = new SpendingFlexibilityRule("user-1", SpendingFlexibilityRuleMatch.Prefix, "Coffee Store",
+            SpendingFlexibilityOverride.Essential);
+        await rules.AddAsync(rule, default);
+
+        await AssertAssessments("Essential", "MerchantRule", "MerchantRule", "Essential");
+        Assert.True(await rules.UpdateAsync(rule.Id, new("user-1", SpendingFlexibilityRuleMatch.Prefix,
+            "Coffee Store", SpendingFlexibilityOverride.Optional), default));
+        await AssertAssessments("Optional", "MerchantRule", "MerchantRule", "Optional");
+        Assert.True(await rules.DeleteAsync("user-1", rule.Id, default));
+        await AssertAssessments("Optimizable", "Ai", "CategoryDefault", "Optimizable");
+        Assert.Equal(0.9, withAi.FlexibilityConfidence);
+        Assert.Null(withAi.ManualSpendingFlexibility);
+        Assert.Null(withDefault.AiSpendingFlexibility);
+
+        async Task AssertAssessments(string value, string aiSource, string defaultSource, string group)
+        {
+            var list = Assert.IsType<OkObjectResult>(await controller.GetAllTransactions());
+            var transactions = Assert.IsAssignableFrom<IEnumerable<TransactionResponse>>(
+                list.Value?.GetType().GetProperty("Data")?.GetValue(list.Value)).ToList();
+            Assert.Equal([value, value], transactions.Select(transaction => transaction.SpendingFlexibility));
+            Assert.Equal([aiSource, defaultSource], transactions.Select(transaction => transaction.SpendingFlexibilitySource));
+
+            var detail = Assert.IsType<OkObjectResult>(await controller.GetById(withAi.Id));
+            Assert.Equal(aiSource, Assert.IsType<TransactionResponse>(detail.Value).SpendingFlexibilitySource);
+
+            var allTime = Assert.IsType<OkObjectResult>(await controller.GetStatistics(allTime: true));
+            var fixedPeriod = Assert.IsType<OkObjectResult>(await controller.GetStatistics(
+                endYear: 2026, endMonth: 6, monthsBack: 1));
+            foreach (var result in new[] { allTime, fixedPeriod })
+            {
+                var figures = Assert.IsType<StatisticsOverview>(result.Value).FinancialFlexibility;
+                Assert.Equal(30m, figures.Groups.Single(item => item.Classification == group).Amount);
+                Assert.Equal(30m, figures.NetExpenses);
+            }
+        }
+    }
+
     [Fact]
     public async Task Export_RequiresAuthenticatedUser()
     {
@@ -199,7 +499,7 @@ public sealed class TransactionsControllerTests
         var result = await controller.GetById(transactionId);
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        Assert.Same(transaction, ok.Value);
+        Assert.Equal(transactionId, Assert.IsType<TransactionResponse>(ok.Value).Id);
         Assert.Equal("user-1", repository.LastGetByIdUserId);
         Assert.Equal(transactionId, repository.LastGetByIdTransactionId);
     }
@@ -229,13 +529,13 @@ public sealed class TransactionsControllerTests
             "  Weekly shopping  "));
 
         var created = Assert.IsType<CreatedResult>(result);
-        var transaction = Assert.IsType<Transaction>(created.Value);
+        var transaction = Assert.IsType<TransactionResponse>(created.Value);
         Assert.Equal("user-1", transaction.UserId);
         Assert.Equal("Food & Groceries", transaction.Category);
         Assert.Equal(TransactionTreatment.Expense, transaction.Treatment);
         Assert.Equal("Weekly shopping", transaction.Notes);
         Assert.Equal("Grocery store", transaction.Metadata.RawDescription);
-        Assert.Same(transaction, Assert.Single(repository.AddedTransactions));
+        Assert.Equal(transaction.Id, Assert.Single(repository.AddedTransactions).Id);
     }
 
     [Fact]
@@ -252,7 +552,7 @@ public sealed class TransactionsControllerTests
             "   "));
 
         var created = Assert.IsType<CreatedResult>(result);
-        var transaction = Assert.IsType<Transaction>(created.Value);
+        var transaction = Assert.IsType<TransactionResponse>(created.Value);
         Assert.Null(transaction.Notes);
         Assert.Equal(TransactionTreatment.Income, transaction.Treatment);
     }
@@ -271,10 +571,10 @@ public sealed class TransactionsControllerTests
             null));
 
         var created = Assert.IsType<CreatedResult>(result);
-        var transaction = Assert.IsType<Transaction>(created.Value);
+        var transaction = Assert.IsType<TransactionResponse>(created.Value);
         Assert.Equal("Other", transaction.Category);
         Assert.Equal(TransactionTreatment.Expense, transaction.Treatment);
-        Assert.Same(transaction, Assert.Single(repository.AddedTransactions));
+        Assert.Equal(transaction.Id, Assert.Single(repository.AddedTransactions).Id);
     }
 
     [Fact]
@@ -292,7 +592,7 @@ public sealed class TransactionsControllerTests
             "SavingsInvestment"));
 
         var created = Assert.IsType<CreatedResult>(result);
-        var transaction = Assert.IsType<Transaction>(created.Value);
+        var transaction = Assert.IsType<TransactionResponse>(created.Value);
         Assert.Equal(TransactionTreatment.SavingsInvestment, transaction.Treatment);
     }
 
@@ -395,7 +695,7 @@ public sealed class TransactionsControllerTests
                 "  Updated note  "));
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        var updatedTransaction = Assert.IsType<TransactionResponse>(ok.Value);
         Assert.Equal(new DateTime(2026, 6, 4, 0, 0, 0, DateTimeKind.Utc), updatedTransaction.Date);
         Assert.Equal(1250m, updatedTransaction.Amount);
         Assert.Equal("Income", updatedTransaction.Category);
@@ -443,7 +743,7 @@ public sealed class TransactionsControllerTests
                 "New note"));
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        var updatedTransaction = Assert.IsType<TransactionResponse>(ok.Value);
         Assert.Equal("Food & Groceries", updatedTransaction.Metadata.AiSuggestedCategory);
         Assert.Equal(0.91, updatedTransaction.Metadata.AiConfidenceScore);
     }
@@ -476,7 +776,7 @@ public sealed class TransactionsControllerTests
                 null));
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var transaction = Assert.IsType<Transaction>(ok.Value);
+        var transaction = Assert.IsType<TransactionResponse>(ok.Value);
         Assert.Equal("Other", transaction.Category);
         Assert.Equal(TransactionTreatment.Expense, transaction.Treatment);
     }
@@ -492,7 +792,7 @@ public sealed class TransactionsControllerTests
             new TransactionsController.UpdateTransactionRequest(
                 new DateOnly(1999, 1, 1),
                 0m,
-                " ",
+                null,
                 "Not real",
                 new string('a', 501),
                 "NotSupported"));
@@ -718,6 +1018,16 @@ public sealed class TransactionsControllerTests
         Assert.Equal(40m, GetValue<decimal>(monthlyTotals, "MedianExpense"));
         var previous = GetRawValue(ok.Value, "PreviousMonthSummary");
         Assert.Equal(-25m, GetValue<decimal>(previous, "TotalExpense"));
+        var serialized = JsonSerializer.SerializeToElement(ok.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(-40m, serialized.GetProperty("summary").GetProperty("totalExpense").GetDecimal());
+        var flexibility = serialized.GetProperty("financialFlexibility");
+        Assert.Equal(40m, flexibility.GetProperty("grossExpenses").GetDecimal());
+        Assert.Equal(40m, flexibility.GetProperty("netExpenses").GetDecimal());
+        var groups = flexibility.GetProperty("groups");
+        Assert.Equal(4, groups.GetArrayLength());
+        Assert.Equal("Optimizable", groups[1].GetProperty("classification").GetString());
+        Assert.Equal(40m, groups[1].GetProperty("amount").GetDecimal());
+        Assert.Equal(100m, groups[1].GetProperty("percentage").GetDecimal());
         Assert.Equal("user-1", repository.LastDateRangeUserId);
         Assert.Equal(
             new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -751,6 +1061,7 @@ public sealed class TransactionsControllerTests
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.True(GetValue<bool>(ok.Value, "AllTime"));
         Assert.Equal("year", GetValue<string>(ok.Value, "TrendGranularity"));
+        Assert.Equal(25m, Assert.IsType<StatisticsOverview>(ok.Value).FinancialFlexibility.AdjustableExpenses);
         Assert.Equal(1, repository.GetAllCalls);
     }
 
@@ -1611,7 +1922,7 @@ public sealed class TransactionsControllerTests
             new TransactionsController.UpdateTransactionCategoryRequest("transport"));
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        var updatedTransaction = Assert.IsType<TransactionResponse>(ok.Value);
         Assert.Equal("Transport", updatedTransaction.Category);
         Assert.Null(updatedTransaction.Metadata.AiSuggestedCategory);
         Assert.Null(updatedTransaction.Metadata.AiConfidenceScore);
@@ -1705,22 +2016,20 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = items =>
-            {
-                items[0].Category = "Eating Out";
-                items[0].Metadata.AiSuggestedCategory = "Eating Out";
-                items[0].Metadata.AiConfidenceScore = 0.87;
-                return new TransactionCategorizationResult(1, 1, 0, 0);
-            }
+            CategorizeAction = items => new TransactionCategorizationResult(
+                1, [new(items[0].Id, "Eating Out", 0.87, new(SpendingFlexibilityOverride.Essential, 0.61))], 0)
         };
         var controller = CreateController(repository, preferencesRepository, aiService: aiService);
 
         var result = await controller.RegenerateCategory(transactionId);
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var updatedTransaction = Assert.IsType<Transaction>(ok.Value);
+        var updatedTransaction = Assert.IsType<TransactionResponse>(ok.Value);
         Assert.Equal("Eating Out", updatedTransaction.Category);
         Assert.Equal(0.87, updatedTransaction.Metadata.AiConfidenceScore);
+        Assert.Equal("Essential", updatedTransaction.SpendingFlexibility);
+        Assert.Equal("Ai", updatedTransaction.SpendingFlexibilitySource);
+        Assert.Equal(0.61, updatedTransaction.FlexibilityConfidence);
         Assert.Equal("user-1", repository.LastGetByIdUserId);
         Assert.Equal(transactionId, repository.LastGetByIdTransactionId);
         Assert.Equal(1, aiService.CategorizeCalls);
@@ -1759,7 +2068,7 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = _ => new TransactionCategorizationResult(1, 0, 1, 1)
+            CategorizeAction = _ => new TransactionCategorizationResult(1, [], 1)
         };
         var controller = CreateController(repository, aiService: aiService);
 
@@ -1770,6 +2079,27 @@ public sealed class TransactionsControllerTests
         var problem = Assert.IsType<ProblemDetails>(badGateway.Value);
         Assert.Equal("urn:budgetbeacon:external-service", problem.Type);
         Assert.False(repository.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task RegenerateCategory_ReturnsConflictWhenTransactionChangedDuringProviderCall()
+    {
+        var transaction = new Transaction { UserId = "user-1" };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = transaction,
+            StaleCategorizationIds = [transaction.Id]
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(1, [new(transaction.Id, "Eating Out", 0.9)], 0)
+        };
+        var controller = CreateController(repository, aiService: aiService);
+
+        var result = await controller.RegenerateCategory(transaction.Id);
+
+        Assert.Equal(StatusCodes.Status409Conflict, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Equal("Uncategorized", transaction.Category);
     }
 
     [Fact]
@@ -1856,12 +2186,8 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = items =>
-            {
-                items[0].Category = "Food & Groceries";
-                items[1].Category = "Transport";
-                return new TransactionCategorizationResult(2, 2, 0, 0);
-            }
+            CategorizeAction = items => new TransactionCategorizationResult(
+                2, [new(items[0].Id, "Food & Groceries", 0.8), new(items[1].Id, "Transport", 0.9)], 0)
         };
         var controller = CreateController(repository, aiService: aiService);
         var request = new TransactionsController.CategorizeTransactionsRequest(
@@ -1899,11 +2225,8 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = items =>
-            {
-                items[0].Category = "Food & Groceries";
-                return new TransactionCategorizationResult(2, 1, 1, 1);
-            }
+            CategorizeAction = items => new TransactionCategorizationResult(
+                2, [new(items[0].Id, "Food & Groceries", 0.8)], 1)
         };
         var controller = CreateController(repository, preferencesRepository, aiService: aiService);
         var request = new TransactionsController.CategorizeTransactionsRequest(
@@ -1926,6 +2249,37 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task TriggerCategorization_SkipsStaleSuggestionsAndAppliesFreshOnes()
+    {
+        var stale = new Transaction();
+        var fresh = new Transaction();
+        var repository = new FakeTransactionRepository
+        {
+            UncategorizedTransactions = [stale, fresh],
+            StaleCategorizationIds = [stale.Id]
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(
+                2, [new(stale.Id, "Transport", 0.9), new(fresh.Id, "Food & Groceries", 0.9)], 0)
+        };
+        var controller = CreateController(repository, aiService: aiService);
+        var request = new TransactionsController.CategorizeTransactionsRequest([stale.Id, fresh.Id]);
+
+        var result = await controller.TriggerCategorization(request);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, GetValue<int>(ok.Value, "ProcessedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "ChangedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "SkippedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "FailedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "RemainingCount"));
+        Assert.Equal("Uncategorized", stale.Category);
+        Assert.Equal("Food & Groceries", fresh.Category);
+        Assert.Equal("CategoryDefault", TransactionResponse.FromTransaction(fresh).SpendingFlexibilitySource);
+    }
+
+    [Fact]
     public async Task TriggerCategorization_ReturnsBadGatewayWithoutSavingForTotalFailure()
     {
         var repository = new FakeTransactionRepository
@@ -1938,7 +2292,7 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = _ => new TransactionCategorizationResult(2, 0, 2, 2)
+            CategorizeAction = _ => new TransactionCategorizationResult(2, [], 2)
         };
         var controller = CreateController(repository, aiService: aiService);
         var request = new TransactionsController.CategorizeTransactionsRequest(
@@ -2238,7 +2592,8 @@ public sealed class TransactionsControllerTests
         FakeUserPreferencesRepository? preferencesRepository = null,
         FakeAiAdvisorService? aiService = null,
         FakeTransactionImportParser? importParser = null,
-        string? userId = "user-1")
+        string? userId = "user-1",
+        ISpendingFlexibilityRuleRepository? ruleRepository = null)
     {
         var transactionRepository = repository ?? new FakeTransactionRepository();
         var userPreferencesRepository = preferencesRepository ?? new FakeUserPreferencesRepository();
@@ -2246,6 +2601,7 @@ public sealed class TransactionsControllerTests
         var controller = new TransactionsController(
             transactionRepository,
             userPreferencesRepository,
+            ruleRepository ?? new FakeSpendingFlexibilityRuleRepository(),
             new StatisticsAggregationService(new FinanceAggregationService()),
             aiService ?? new FakeAiAdvisorService(),
             importParser ?? new FakeTransactionImportParser(),
@@ -2357,6 +2713,7 @@ public sealed class TransactionsControllerTests
         public IReadOnlySet<string> ExistingImportFingerprints { get; init; } =
             new HashSet<string>(StringComparer.Ordinal);
         public bool SaveChangesCalled { get; private set; }
+        public IReadOnlyCollection<Guid> StaleCategorizationIds { get; init; } = [];
         public bool DeleteCalled { get; private set; }
         public Transaction? TransactionById { get; init; }
         public Transaction? TransactionToDelete { get; init; }
@@ -2381,9 +2738,13 @@ public sealed class TransactionsControllerTests
         public int? LastPagedPageNumber { get; private set; }
         public int? LastPagedPageSize { get; private set; }
 
-        public Task AddRangeAsync(IEnumerable<Transaction> transactions)
+        public SpendingFlexibilityRule? LastRuleToSave { get; private set; }
+
+        public Task AddAsync(
+            Transaction transaction, SpendingFlexibilityRule? newRule, CancellationToken cancellationToken)
         {
-            AddedTransactions.AddRange(transactions);
+            AddedTransactions.Add(transaction);
+            LastRuleToSave = newRule;
             return Task.CompletedTask;
         }
 
@@ -2435,14 +2796,29 @@ public sealed class TransactionsControllerTests
             return Task.FromResult<Transaction?>(TransactionById);
         }
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Transaction>> ApplyCategorizationAsync(
+            string userId,
+            IReadOnlyList<Transaction> originals,
+            IReadOnlyList<TransactionCategorization> suggestions,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             SaveChangesCalled = true;
-            return Task.CompletedTask;
+            var applied = new List<Transaction>();
+            foreach (var suggestion in suggestions.Where(suggestion =>
+                !StaleCategorizationIds.Contains(suggestion.TransactionId)))
+            {
+                var transaction = originals.Single(item => item.Id == suggestion.TransactionId);
+                transaction.ApplyCategorization(suggestion);
+                applied.Add(transaction);
+            }
+
+            return Task.FromResult<IReadOnlyList<Transaction>>(applied);
         }
 
-        public Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update)
+        public Task<Transaction?> UpdateAsync(
+            string userId, Guid transactionId, TransactionUpdate update,
+            SpendingFlexibilityRule? newRule, CancellationToken cancellationToken)
         {
             LastUpdateUserId = userId;
             LastUpdateTransactionId = transactionId;
@@ -2455,6 +2831,7 @@ public sealed class TransactionsControllerTests
             }
 
             TransactionToUpdate.ApplyUpdate(update);
+            LastRuleToSave = newRule;
 
             return Task.FromResult<Transaction?>(TransactionToUpdate);
         }
@@ -2471,9 +2848,7 @@ public sealed class TransactionsControllerTests
                 return Task.FromResult<Transaction?>(null);
             }
 
-            TransactionToUpdate.Category = category;
-            TransactionToUpdate.Metadata.AiSuggestedCategory = null;
-            TransactionToUpdate.Metadata.AiConfidenceScore = null;
+            TransactionToUpdate.ApplyCategoryUpdate(category);
 
             return Task.FromResult<Transaction?>(TransactionToUpdate);
         }
@@ -2586,6 +2961,10 @@ public sealed class TransactionsControllerTests
 
     private sealed class FakeAiAdvisorService : IAiAdvisorService
     {
+        public Task<IReadOnlyList<SpendingFlexibilityReview>> ReviewSpendingFlexibilityAsync(
+            IReadOnlyList<Transaction> transactions, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public int CategorizeCalls { get; private set; }
         public int GetSavingTipsCalls { get; private set; }
         public SavingsTipsSummary? LastSavingsTipsSummary { get; private set; }
@@ -2612,15 +2991,7 @@ public sealed class TransactionsControllerTests
             cancellationToken.ThrowIfCancellationRequested();
             return
                 CategorizeAction?.Invoke(transactions) ??
-                new TransactionCategorizationResult(
-                    transactions.Count,
-                    transactions.Count,
-                    0,
-                    transactions.Count(transaction =>
-                        string.Equals(
-                            transaction.Category,
-                            "Uncategorized",
-                            StringComparison.OrdinalIgnoreCase)));
+                new TransactionCategorizationResult(transactions.Count, [], transactions.Count);
         }
 
         public Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(

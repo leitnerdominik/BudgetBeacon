@@ -46,3 +46,4 @@ logs/
 AGENTS.md
 .codex/
 tmp/
+codex-prompts/

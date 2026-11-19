@@ -157,7 +157,7 @@ const SupportingTransactions = ({
             >
               <Box sx={{ minWidth: 0 }}>
                 <Typography fontWeight={700} sx={{ overflowWrap: "anywhere" }}>
-                  {transaction.description}
+                  {transaction.description || "No description"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {formatCalendarDate(transaction.date)}

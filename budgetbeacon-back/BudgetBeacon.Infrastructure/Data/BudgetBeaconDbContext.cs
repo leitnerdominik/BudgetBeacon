@@ -14,6 +14,7 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    public DbSet<SpendingFlexibilityRule> SpendingFlexibilityRules => Set<SpendingFlexibilityRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +46,26 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<SpendingFlexibilityRule>(entity =>
+        {
+            entity.Property(rule => rule.UserId).HasMaxLength(450);
+            entity.Property(rule => rule.MatchType).HasConversion<string>().HasMaxLength(6);
+            entity.Property(rule => rule.Pattern).HasMaxLength(SpendingFlexibilityRule.MaxPatternLength);
+            entity.Property(rule => rule.NormalizedPattern)
+                .HasMaxLength(SpendingFlexibilityRule.MaxPatternLength)
+                .UseCollation("C");
+            entity.Property(rule => rule.SpendingFlexibility).HasConversion<string>().HasMaxLength(16);
+
+            entity.HasIndex(rule => new { rule.UserId, rule.MatchType, rule.NormalizedPattern })
+                .IsUnique()
+                .HasDatabaseName(SpendingFlexibilityRuleRepository.UniquePatternIndex);
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(rule => rule.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Transaction>(entity =>
         {
             entity.HasKey(transaction => transaction.Id);
@@ -61,6 +82,16 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(transaction => transaction.Treatment)
                 .HasMaxLength(32)
                 .HasDefaultValue(TransactionTreatment.Expense);
+
+            entity.Property(transaction => transaction.ManualSpendingFlexibility)
+                .HasConversion<string>()
+                .HasMaxLength(16);
+
+            entity.Property(transaction => transaction.AiSpendingFlexibility)
+                .HasConversion<string>()
+                .HasMaxLength(16);
+
+            entity.Property(transaction => transaction.AiFlexibilityAbstained).HasDefaultValue(false);
 
             entity.Property(transaction => transaction.Date)
                 .HasConversion(

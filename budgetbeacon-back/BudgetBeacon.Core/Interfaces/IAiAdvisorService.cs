@@ -9,6 +9,9 @@ namespace BudgetBeacon.Core.Interfaces
             List<Transaction> transactions,
             string? aiLocationContext = null,
             CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<SpendingFlexibilityReview>> ReviewSpendingFlexibilityAsync(
+            IReadOnlyList<Transaction> transactions,
+            CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(
             SavingsTipsSummary summary,
             string? aiLocationContext = null,
