@@ -392,7 +392,11 @@ public sealed class DevelopmentDataSeederTests
         public Task<Transaction?> GetByIdAsync(string userId, Guid transactionId) =>
             throw new NotSupportedException();
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        public Task<IReadOnlyList<Transaction>> ApplyCategorizationAsync(
+            string userId,
+            IReadOnlyList<Transaction> originals,
+            IReadOnlyList<TransactionCategorization> suggestions,
+            CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update) =>

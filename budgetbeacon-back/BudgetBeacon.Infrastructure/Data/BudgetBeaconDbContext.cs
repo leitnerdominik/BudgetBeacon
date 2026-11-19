@@ -66,6 +66,10 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
                 .HasConversion<string>()
                 .HasMaxLength(16);
 
+            entity.Property(transaction => transaction.AiSpendingFlexibility)
+                .HasConversion<string>()
+                .HasMaxLength(16);
+
             entity.Property(transaction => transaction.Date)
                 .HasConversion(
                     value => value.ToUniversalTime(),

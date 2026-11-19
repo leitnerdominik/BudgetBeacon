@@ -6,6 +6,8 @@ import type {
 
 export type SpendingFlexibilityChoice = SpendingFlexibilityOverride | "UseAutomatic";
 
+const flexibilityReviewThreshold = 0.7;
+
 export const spendingFlexibilityChoices: Record<SpendingFlexibilityChoice, {
   label: string;
   description: string;
@@ -20,11 +22,21 @@ export const spendingFlexibilityChoices: Record<SpendingFlexibilityChoice, {
 export const getSpendingFlexibilitySummary = (
   choice: SpendingFlexibilityChoice,
   category: string,
-  transaction?: Pick<Transaction, "category" | "spendingFlexibility" | "spendingFlexibilitySource">,
+  transaction?: Pick<Transaction, "category" | "spendingFlexibility" | "spendingFlexibilitySource" | "flexibilityConfidence">,
   defaults?: Partial<Record<string, SpendingFlexibility>>,
 ) => {
   if (choice !== "UseAutomatic") {
     return `${choice} · Manual`;
+  }
+
+  if (transaction?.category === category && transaction.spendingFlexibilitySource === "Ai") {
+    const needsReview = transaction.flexibilityConfidence !== null &&
+      transaction.flexibilityConfidence < flexibilityReviewThreshold;
+    return `${transaction.spendingFlexibility} · AI${needsReview ? " · Review suggested" : ""}`;
+  }
+
+  if (transaction?.category === category && transaction.spendingFlexibilitySource === "Manual") {
+    return "Automatic assessment will be shown after saving";
   }
 
   if (transaction?.category === category && transaction.spendingFlexibilitySource === "CategoryDefault") {

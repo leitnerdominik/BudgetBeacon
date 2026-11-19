@@ -25,6 +25,7 @@ interface TransactionApiResponse {
     spendingFlexibilityOverride?: SpendingFlexibilityOverride | null;
     spendingFlexibility?: SpendingFlexibility | null;
     spendingFlexibilitySource?: SpendingFlexibilitySource | null;
+    flexibilityConfidence?: number | null;
     metadata?: {
       rawDescription?: string;
       aiConfidenceScore?: number | null;
@@ -43,6 +44,7 @@ const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
   spendingFlexibilityOverride: transaction.spendingFlexibilityOverride ?? null,
   spendingFlexibility: transaction.spendingFlexibility ?? null,
   spendingFlexibilitySource: transaction.spendingFlexibilitySource ?? null,
+  flexibilityConfidence: transaction.flexibilityConfidence ?? null,
 });
 
 export interface CategorizationCandidatesResponse {

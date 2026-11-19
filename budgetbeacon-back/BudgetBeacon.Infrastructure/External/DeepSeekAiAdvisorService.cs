@@ -66,8 +66,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 
         var batches = transactions.Chunk(CategorizationBatchSize).ToList();
         var processedCount = 0;
-        var changedCount = 0;
-        var failedCount = 0;
+        var suggestions = new List<TransactionCategorization>();
 
         foreach (var batch in batches)
         {
@@ -92,13 +91,10 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                     prompt,
                     "categorization",
                     cancellationToken: cancellationToken);
-                var batchChangedCount = ApplyCategorizationResults(batch, textResult);
-                changedCount += batchChangedCount;
-                failedCount += batch.Length - batchChangedCount;
+                suggestions.AddRange(ReadCategorizationResults(batch, textResult));
             }
             catch (ExternalServiceException ex)
             {
-                failedCount += batch.Length;
                 _logger.LogError(
                     ObservabilityEventIds.DeepSeekInvalidResponse,
                     ex,
@@ -107,7 +103,9 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
             }
         }
 
+        var categorizedIds = suggestions.Select(suggestion => suggestion.TransactionId).ToHashSet();
         var remainingCount = transactions.Count(transaction =>
+            !categorizedIds.Contains(transaction.Id) &&
             string.Equals(
                 transaction.Category,
                 "Uncategorized",
@@ -116,14 +114,13 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         _logger.LogInformation(
             "Completed AI categorization. Processed: {ProcessedCount}, Changed: {ChangedCount}, Failed: {FailedCount}, Remaining: {RemainingCount}.",
             transactions.Count,
-            changedCount,
-            failedCount,
+            suggestions.Count,
+            transactions.Count - suggestions.Count,
             remainingCount);
 
         return new TransactionCategorizationResult(
             transactions.Count,
-            changedCount,
-            failedCount,
+            suggestions,
             remainingCount);
     }
 
@@ -304,7 +301,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         }
     }
 
-    private static int ApplyCategorizationResults(
+    private static IReadOnlyList<TransactionCategorization> ReadCategorizationResults(
         IReadOnlyList<Transaction> batch,
         string textResult)
     {
@@ -327,7 +324,7 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 
             var expectedTransactions = batch.ToDictionary(transaction => transaction.Id);
             var occurrenceCounts = new Dictionary<Guid, int>();
-            var validResults = new Dictionary<Guid, ValidCategoryResult>();
+            var validResults = new Dictionary<Guid, TransactionCategorization>();
 
             foreach (var item in document.RootElement.EnumerateArray())
             {
@@ -358,30 +355,46 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
                     continue;
                 }
 
-                validResults[id] = new ValidCategoryResult(
+                validResults[id] = new TransactionCategorization(
+                    id,
                     category,
-                    Math.Clamp(confidence, 0.0, 1.0));
+                    Math.Clamp(confidence, 0.0, 1.0),
+                    ReadFlexibility(item));
             }
 
-            var changedCount = 0;
-            foreach (var transaction in batch)
+            return validResults.Values
+                .Where(result => occurrenceCounts[result.TransactionId] == 1)
+                .ToArray();
+        }
+    }
+
+    private static SpendingFlexibilityAssessment? ReadFlexibility(JsonElement item)
+    {
+        try
+        {
+            if (!TryGetProperty(item, "SpendingFlexibility", out var valueElement) ||
+                valueElement.ValueKind != JsonValueKind.String ||
+                !TryGetProperty(item, "FlexibilityConfidence", out var confidenceElement) ||
+                confidenceElement.ValueKind != JsonValueKind.Number ||
+                !confidenceElement.TryGetDouble(out var confidence) ||
+                !double.IsFinite(confidence) || confidence is < 0 or > 1)
             {
-                if (occurrenceCounts.GetValueOrDefault(transaction.Id) != 1 ||
-                    !validResults.TryGetValue(transaction.Id, out var result))
-                {
-                    continue;
-                }
-
-                transaction.Category = result.Category;
-                transaction.Treatment = TransactionTreatment.GetDefault(
-                    transaction.Amount,
-                    result.Category);
-                transaction.Metadata.AiSuggestedCategory = result.Category;
-                transaction.Metadata.AiConfidenceScore = result.Confidence;
-                changedCount++;
+                return null;
             }
 
-            return changedCount;
+            SpendingFlexibilityOverride? value = valueElement.GetString() switch
+            {
+                nameof(SpendingFlexibilityOverride.Essential) => SpendingFlexibilityOverride.Essential,
+                nameof(SpendingFlexibilityOverride.Optimizable) => SpendingFlexibilityOverride.Optimizable,
+                nameof(SpendingFlexibilityOverride.Optional) => SpendingFlexibilityOverride.Optional,
+                _ => null
+            };
+            return value is { } classification ? new SpendingFlexibilityAssessment(classification, confidence) : null;
+        }
+        catch (InvalidOperationException)
+        {
+            // Malformed Unicode escapes can make a JSON property name or string value unreadable.
+            return null;
         }
     }
 
@@ -415,12 +428,21 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
 
                 CRUCIAL INSTRUCTION: For EACH transaction, you MUST calculate a realistic 'Confidence' score between 0.0 (completely guessing) and 1.0 (absolutely certain) based on how recognizable the description is. Do not just copy the example value!
 
+                For an expense, optionally assess its financial flexibility independently of its category:
+                - Essential expenses are difficult to avoid in the short term, such as a clearly identified rent payment (RENT NOVEMBER).
+                - Optimizable expenses are necessary with room to reduce their cost, such as groceries (LIDL 75 EUR).
+                - Optional expenses can be skipped without affecting basic needs, such as a restaurant visit (PIZZERIA 32 EUR).
+                When the purchase is unclear, such as PHARMACY 18 EUR or AMAZON 89 EUR without item details, return null for both flexibility fields. Do not assume flexibility from a merchant name alone. Also return null for non-expenses.
+                For a proposed class, return a separate numeric FlexibilityConfidence between 0.0 and 1.0.
+
                 Return ONLY a raw JSON array of objects with the following exact structure. Do not use markdown fences or prose:
                 [
                   {{
                     ""Id"": ""the-guid-here"",
                     ""Category"": ""Suggested Category"",
-                    ""Confidence"": 0.82
+                    ""Confidence"": 0.82,
+                    ""SpendingFlexibility"": ""Optional"",
+                    ""FlexibilityConfidence"": 0.91
                   }}
                 ]
 
@@ -594,5 +616,4 @@ public sealed class DeepSeekAiAdvisorService : IAiAdvisorService
         public string Content { get; init; } = string.Empty;
     }
 
-    private sealed record ValidCategoryResult(string Category, double Confidence);
 }

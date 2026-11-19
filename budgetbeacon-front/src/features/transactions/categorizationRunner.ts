@@ -78,9 +78,11 @@ const buildResult = (
         : `${progress.changedCount} transaction(s) categorized; ${progress.failedCount} could not be categorized.`
       : outcome === "failed"
         ? errorMessage ?? "No transactions could be categorized."
-        : progress.changedCount > 0
-          ? `${progress.changedCount} uncategorized transaction(s) categorized.`
-          : "All transactions are already categorized.";
+        : progress.skippedCount > 0 && progress.remainingCount > 0
+          ? `${progress.changedCount} transaction(s) categorized, ${progress.skippedCount} skipped. ${progress.remainingCount} remain uncategorized.`
+          : progress.changedCount > 0
+            ? `${progress.changedCount} uncategorized transaction(s) categorized.`
+            : "All transactions are already categorized.";
 
   return {
     ...progress,

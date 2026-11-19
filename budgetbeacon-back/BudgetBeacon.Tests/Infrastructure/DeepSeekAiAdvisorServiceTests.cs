@@ -132,17 +132,9 @@ public sealed class DeepSeekAiAdvisorServiceTests
 
         var result = await sut.CategorizeTransactionsAsync(transactions);
 
-        Assert.Equal("Transport", transactions[0].Category);
-        Assert.Equal("Transport", transactions[0].Metadata.AiSuggestedCategory);
-        Assert.Equal(1.0, transactions[0].Metadata.AiConfidenceScore);
-
-        Assert.Equal("Other", transactions[1].Category);
-        Assert.Equal("Other", transactions[1].Metadata.AiSuggestedCategory);
-        Assert.Equal(0.75, transactions[1].Metadata.AiConfidenceScore);
-
-        Assert.Equal("Uncategorized", transactions[2].Category);
-        Assert.Null(transactions[2].Metadata.AiSuggestedCategory);
-        Assert.Null(transactions[2].Metadata.AiConfidenceScore);
+        Assert.Equal(new TransactionCategorization(transportId, "Transport", 1.0), result.Suggestions[0]);
+        Assert.Equal(new TransactionCategorization(otherId, "Other", 0.75), result.Suggestions[1]);
+        Assert.All(transactions, transaction => Assert.Equal("Uncategorized", transaction.Category));
         Assert.Equal(3, result.ProcessedCount);
         Assert.Equal(2, result.ChangedCount);
         Assert.Equal(1, result.FailedCount);
@@ -164,6 +156,82 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Contains("Shopping & Personal", prompt);
         Assert.Contains("Other", prompt);
         Assert.DoesNotContain("Groceries, Lifestyle", prompt);
+    }
+
+    [Theory]
+    [InlineData("", null, null)]
+    [InlineData(",\"SpendingFlexibility\":null,\"FlexibilityConfidence\":null", null, null)]
+    [InlineData(",\"FlexibilityConfidence\":0.8", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\"", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfidence\":null", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfidence\":\"0.8\"", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfidence\":false", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfidence\":-0.01", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfidence\":1.01", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfidence\":1e400", null, null)]
+    [InlineData(",\"SpendingFlexibility\":{},\"FlexibilityConfidence\":0.8", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"\\uD800\",\"FlexibilityConfidence\":0.8", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfiden\\uD800e\":0.8", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Discretionary\",\"FlexibilityConfidence\":0.8", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Unclassified\",\"FlexibilityConfidence\":0.8", null, null)]
+    [InlineData(",\"SpendingFlexibility\":\"Essential\",\"FlexibilityConfidence\":1", SpendingFlexibilityOverride.Essential, 1.0)]
+    [InlineData(",\"SpendingFlexibility\":\"Optimizable\",\"FlexibilityConfidence\":0", SpendingFlexibilityOverride.Optimizable, 0.0)]
+    [InlineData(",\"SpendingFlexibility\":\"Optional\",\"FlexibilityConfidence\":0.61", SpendingFlexibilityOverride.Optional, 0.61)]
+    public async Task CategorizeTransactionsAsync_ValidatesFlexibilityWithoutRejectingCategory(
+        string fields, SpendingFlexibilityOverride? expectedClass, double? expectedConfidence)
+    {
+        var transaction = new Transaction { Amount = -15m };
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse(
+            $$"""[{"Id":"{{transaction.Id}}","Category":"Food & Groceries","Confidence":0.9{{fields}}}]"""));
+
+        var result = await CreateService(handler).CategorizeTransactionsAsync([transaction]);
+
+        var suggestion = Assert.Single(result.Suggestions);
+        Assert.Equal("Food & Groceries", suggestion.Category);
+        Assert.Equal(0.9, suggestion.Confidence);
+        Assert.Equal(expectedClass, suggestion.Flexibility?.Value);
+        Assert.Equal(expectedConfidence, suggestion.Flexibility?.Confidence);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task CategorizeTransactionsAsync_ProcessesMixedFlexibilityResponsesInOneRequest()
+    {
+        var rent = new Transaction { Amount = -675m, Metadata = new() { RawDescription = "RENT NOVEMBER" } };
+        var pharmacy = new Transaction { Amount = -18m };
+        var dinner = new Transaction { Amount = -32m };
+        var unknownCategory = new Transaction { Amount = -7m };
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(DeepSeekResponse($$"""
+            [
+              {"Id":"{{rent.Id}}","Category":"Housing & Utilities","Confidence":0.9,"SpendingFlexibility":"Essential","FlexibilityConfidence":0.97},
+              {"Id":"{{pharmacy.Id}}","Category":"Health & Insurance","Confidence":0.9,"SpendingFlexibility":null,"FlexibilityConfidence":null},
+              {"Id":"{{dinner.Id}}","Category":"Eating Out","Confidence":0.9,"SpendingFlexibility":"Optional","FlexibilityConfidence":-1},
+              {"Id":"{{unknownCategory.Id}}","Category":"Invalid","Confidence":0.9,"SpendingFlexibility":"Optimizable","FlexibilityConfidence":0.9}
+            ]
+            """));
+
+        var result = await CreateService(handler).CategorizeTransactionsAsync([rent, pharmacy, dinner, unknownCategory]);
+
+        Assert.Equal(3, result.ChangedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(new(SpendingFlexibilityOverride.Essential, 0.97),
+            result.Suggestions.Single(suggestion => suggestion.TransactionId == rent.Id).Flexibility);
+        Assert.Null(result.Suggestions.Single(suggestion => suggestion.TransactionId == pharmacy.Id).Flexibility);
+        var dinnerSuggestion = result.Suggestions.Single(suggestion => suggestion.TransactionId == dinner.Id);
+        Assert.Equal("Eating Out", dinnerSuggestion.Category);
+        Assert.Null(dinnerSuggestion.Flexibility);
+
+        var prompt = GetPrompt(Assert.Single(handler.Requests).Body);
+        Assert.Contains("PHARMACY 18 EUR or AMAZON 89 EUR", prompt);
+        Assert.Contains("LIDL 75 EUR", prompt);
+        Assert.Contains("PIZZERIA 32 EUR", prompt);
+        using var batch = JsonDocument.Parse(prompt[(prompt.LastIndexOf('\n') + 1)..].Trim());
+        Assert.Equal(4, batch.RootElement.GetArrayLength());
+        Assert.Equal(new[] { "Id", "Description", "Amount" },
+            batch.RootElement[0].EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]
@@ -227,8 +295,8 @@ public sealed class DeepSeekAiAdvisorServiceTests
         var result = await sut.CategorizeTransactionsAsync(transactions);
 
         Assert.Equal(2, handler.Requests.Count);
-        Assert.Equal("Food & Groceries", transactions[0].Category);
-        Assert.Equal("Transport", transactions[10].Category);
+        Assert.Equal("Food & Groceries", result.Suggestions.Single(s => s.TransactionId == transactions[0].Id).Category);
+        Assert.Equal("Transport", result.Suggestions.Single(s => s.TransactionId == transactions[10].Id).Category);
         Assert.Equal(11, result.ProcessedCount);
         Assert.Equal(2, result.ChangedCount);
         Assert.Equal(9, result.FailedCount);
@@ -346,7 +414,7 @@ public sealed class DeepSeekAiAdvisorServiceTests
         Assert.Equal(1, result.ChangedCount);
         Assert.Equal(10, result.FailedCount);
         Assert.Equal(10, result.RemainingCount);
-        Assert.Equal("Transport", transactions[10].Category);
+        Assert.Equal("Transport", Assert.Single(result.Suggestions).Category);
     }
 
     [Fact]

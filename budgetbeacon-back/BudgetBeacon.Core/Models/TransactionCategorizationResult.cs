@@ -4,16 +4,11 @@ public sealed record TransactionCategorizationResult
 {
     public TransactionCategorizationResult(
         int processedCount,
-        int changedCount,
-        int failedCount,
+        IReadOnlyList<TransactionCategorization> suggestions,
         int remainingCount)
     {
-        if (processedCount < 0 ||
-            changedCount < 0 ||
-            failedCount < 0 ||
-            remainingCount < 0 ||
-            changedCount + failedCount != processedCount ||
-            remainingCount > processedCount)
+        if (suggestions.Count > processedCount ||
+            remainingCount < 0 || remainingCount > processedCount)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(processedCount),
@@ -21,15 +16,15 @@ public sealed record TransactionCategorizationResult
         }
 
         ProcessedCount = processedCount;
-        ChangedCount = changedCount;
-        FailedCount = failedCount;
+        Suggestions = suggestions;
         RemainingCount = remainingCount;
     }
 
     public int ProcessedCount { get; }
-    public int ChangedCount { get; }
-    public int FailedCount { get; }
+    public IReadOnlyList<TransactionCategorization> Suggestions { get; }
+    public int ChangedCount => Suggestions.Count;
+    public int FailedCount => ProcessedCount - Suggestions.Count;
     public int RemainingCount { get; }
 
-    public static TransactionCategorizationResult Empty { get; } = new(0, 0, 0, 0);
+    public static TransactionCategorizationResult Empty { get; } = new(0, [], 0);
 }

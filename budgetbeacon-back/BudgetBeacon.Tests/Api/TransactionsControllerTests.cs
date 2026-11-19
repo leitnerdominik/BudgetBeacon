@@ -1836,13 +1836,8 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = items =>
-            {
-                items[0].Category = "Eating Out";
-                items[0].Metadata.AiSuggestedCategory = "Eating Out";
-                items[0].Metadata.AiConfidenceScore = 0.87;
-                return new TransactionCategorizationResult(1, 1, 0, 0);
-            }
+            CategorizeAction = items => new TransactionCategorizationResult(
+                1, [new(items[0].Id, "Eating Out", 0.87, new(SpendingFlexibilityOverride.Essential, 0.61))], 0)
         };
         var controller = CreateController(repository, preferencesRepository, aiService: aiService);
 
@@ -1852,6 +1847,9 @@ public sealed class TransactionsControllerTests
         var updatedTransaction = Assert.IsType<TransactionResponse>(ok.Value);
         Assert.Equal("Eating Out", updatedTransaction.Category);
         Assert.Equal(0.87, updatedTransaction.Metadata.AiConfidenceScore);
+        Assert.Equal("Essential", updatedTransaction.SpendingFlexibility);
+        Assert.Equal("Ai", updatedTransaction.SpendingFlexibilitySource);
+        Assert.Equal(0.61, updatedTransaction.FlexibilityConfidence);
         Assert.Equal("user-1", repository.LastGetByIdUserId);
         Assert.Equal(transactionId, repository.LastGetByIdTransactionId);
         Assert.Equal(1, aiService.CategorizeCalls);
@@ -1890,7 +1888,7 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = _ => new TransactionCategorizationResult(1, 0, 1, 1)
+            CategorizeAction = _ => new TransactionCategorizationResult(1, [], 1)
         };
         var controller = CreateController(repository, aiService: aiService);
 
@@ -1901,6 +1899,27 @@ public sealed class TransactionsControllerTests
         var problem = Assert.IsType<ProblemDetails>(badGateway.Value);
         Assert.Equal("urn:budgetbeacon:external-service", problem.Type);
         Assert.False(repository.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task RegenerateCategory_ReturnsConflictWhenTransactionChangedDuringProviderCall()
+    {
+        var transaction = new Transaction { UserId = "user-1" };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = transaction,
+            StaleCategorizationIds = [transaction.Id]
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(1, [new(transaction.Id, "Eating Out", 0.9)], 0)
+        };
+        var controller = CreateController(repository, aiService: aiService);
+
+        var result = await controller.RegenerateCategory(transaction.Id);
+
+        Assert.Equal(StatusCodes.Status409Conflict, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Equal("Uncategorized", transaction.Category);
     }
 
     [Fact]
@@ -1987,12 +2006,8 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = items =>
-            {
-                items[0].Category = "Food & Groceries";
-                items[1].Category = "Transport";
-                return new TransactionCategorizationResult(2, 2, 0, 0);
-            }
+            CategorizeAction = items => new TransactionCategorizationResult(
+                2, [new(items[0].Id, "Food & Groceries", 0.8), new(items[1].Id, "Transport", 0.9)], 0)
         };
         var controller = CreateController(repository, aiService: aiService);
         var request = new TransactionsController.CategorizeTransactionsRequest(
@@ -2030,11 +2045,8 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = items =>
-            {
-                items[0].Category = "Food & Groceries";
-                return new TransactionCategorizationResult(2, 1, 1, 1);
-            }
+            CategorizeAction = items => new TransactionCategorizationResult(
+                2, [new(items[0].Id, "Food & Groceries", 0.8)], 1)
         };
         var controller = CreateController(repository, preferencesRepository, aiService: aiService);
         var request = new TransactionsController.CategorizeTransactionsRequest(
@@ -2057,6 +2069,37 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task TriggerCategorization_SkipsStaleSuggestionsAndAppliesFreshOnes()
+    {
+        var stale = new Transaction();
+        var fresh = new Transaction();
+        var repository = new FakeTransactionRepository
+        {
+            UncategorizedTransactions = [stale, fresh],
+            StaleCategorizationIds = [stale.Id]
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(
+                2, [new(stale.Id, "Transport", 0.9), new(fresh.Id, "Food & Groceries", 0.9)], 0)
+        };
+        var controller = CreateController(repository, aiService: aiService);
+        var request = new TransactionsController.CategorizeTransactionsRequest([stale.Id, fresh.Id]);
+
+        var result = await controller.TriggerCategorization(request);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, GetValue<int>(ok.Value, "ProcessedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "ChangedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "SkippedCount"));
+        Assert.Equal(0, GetValue<int>(ok.Value, "FailedCount"));
+        Assert.Equal(1, GetValue<int>(ok.Value, "RemainingCount"));
+        Assert.Equal("Uncategorized", stale.Category);
+        Assert.Equal("Food & Groceries", fresh.Category);
+        Assert.Equal("CategoryDefault", TransactionResponse.FromTransaction(fresh).SpendingFlexibilitySource);
+    }
+
+    [Fact]
     public async Task TriggerCategorization_ReturnsBadGatewayWithoutSavingForTotalFailure()
     {
         var repository = new FakeTransactionRepository
@@ -2069,7 +2112,7 @@ public sealed class TransactionsControllerTests
         };
         var aiService = new FakeAiAdvisorService
         {
-            CategorizeAction = _ => new TransactionCategorizationResult(2, 0, 2, 2)
+            CategorizeAction = _ => new TransactionCategorizationResult(2, [], 2)
         };
         var controller = CreateController(repository, aiService: aiService);
         var request = new TransactionsController.CategorizeTransactionsRequest(
@@ -2488,6 +2531,7 @@ public sealed class TransactionsControllerTests
         public IReadOnlySet<string> ExistingImportFingerprints { get; init; } =
             new HashSet<string>(StringComparer.Ordinal);
         public bool SaveChangesCalled { get; private set; }
+        public IReadOnlyCollection<Guid> StaleCategorizationIds { get; init; } = [];
         public bool DeleteCalled { get; private set; }
         public Transaction? TransactionById { get; init; }
         public Transaction? TransactionToDelete { get; init; }
@@ -2566,11 +2610,24 @@ public sealed class TransactionsControllerTests
             return Task.FromResult<Transaction?>(TransactionById);
         }
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Transaction>> ApplyCategorizationAsync(
+            string userId,
+            IReadOnlyList<Transaction> originals,
+            IReadOnlyList<TransactionCategorization> suggestions,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             SaveChangesCalled = true;
-            return Task.CompletedTask;
+            var applied = new List<Transaction>();
+            foreach (var suggestion in suggestions.Where(suggestion =>
+                !StaleCategorizationIds.Contains(suggestion.TransactionId)))
+            {
+                var transaction = originals.Single(item => item.Id == suggestion.TransactionId);
+                transaction.ApplyCategorization(suggestion);
+                applied.Add(transaction);
+            }
+
+            return Task.FromResult<IReadOnlyList<Transaction>>(applied);
         }
 
         public Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update)
@@ -2602,9 +2659,7 @@ public sealed class TransactionsControllerTests
                 return Task.FromResult<Transaction?>(null);
             }
 
-            TransactionToUpdate.Category = category;
-            TransactionToUpdate.Metadata.AiSuggestedCategory = null;
-            TransactionToUpdate.Metadata.AiConfidenceScore = null;
+            TransactionToUpdate.ApplyCategoryUpdate(category);
 
             return Task.FromResult<Transaction?>(TransactionToUpdate);
         }
@@ -2743,15 +2798,7 @@ public sealed class TransactionsControllerTests
             cancellationToken.ThrowIfCancellationRequested();
             return
                 CategorizeAction?.Invoke(transactions) ??
-                new TransactionCategorizationResult(
-                    transactions.Count,
-                    transactions.Count,
-                    0,
-                    transactions.Count(transaction =>
-                        string.Equals(
-                            transaction.Category,
-                            "Uncategorized",
-                            StringComparison.OrdinalIgnoreCase)));
+                new TransactionCategorizationResult(transactions.Count, [], transactions.Count);
         }
 
         public Task<IReadOnlyList<SavingsTip>> GetSavingTipsAsync(

@@ -71,6 +71,20 @@ test("returns a completed no-op without sending a categorization batch", async (
   assert.equal(result.totalCount, 0);
 });
 
+test("reports skipped transactions that still need categorization", async () => {
+  const result = await runTransactionCategorization(
+    {
+      getCandidates: async () => ({ transactionIds: ["id-1"] }),
+      categorizeBatch: async () => buildBatchResult(1, 0, 0, 1, 1),
+    },
+    new AbortController().signal,
+  );
+
+  assert.equal(result.outcome, "completed");
+  assert.equal(result.remainingCount, 1);
+  assert.match(result.message, /1 skipped.*1 remain uncategorized/);
+});
+
 test("continues after a partial batch result and aggregates failed and skipped counts", async () => {
   const transactionIds = Array.from({ length: 12 }, (_, index) => `id-${index}`);
   let categorizeCalls = 0;

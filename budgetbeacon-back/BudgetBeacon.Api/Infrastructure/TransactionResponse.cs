@@ -15,11 +15,12 @@ public sealed record TransactionResponse(
     TransactionMetadata Metadata,
     string? SpendingFlexibilityOverride,
     string? SpendingFlexibility,
-    string? SpendingFlexibilitySource)
+    string? SpendingFlexibilitySource,
+    double? FlexibilityConfidence)
 {
     public static TransactionResponse FromTransaction(Transaction transaction)
     {
-        var (value, source) = SpendingFlexibilityResolver.Resolve(transaction);
+        var (value, source, confidence) = SpendingFlexibilityResolver.Resolve(transaction);
         return new TransactionResponse(
             transaction.Id,
             transaction.UserId,
@@ -32,6 +33,7 @@ public sealed record TransactionResponse(
             transaction.Metadata,
             transaction.ManualSpendingFlexibility?.ToString(),
             value,
-            source);
+            source,
+            confidence);
     }
 }

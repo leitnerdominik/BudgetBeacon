@@ -92,8 +92,14 @@ export const TransactionForm = ({
   const parsedAmount = amountValidation.value ?? 0;
   const signedAmount =
     direction === "expense" ? -Math.abs(parsedAmount) : Math.abs(parsedAmount);
-  const normalizedDescription = description.replace(/\s+/g, " ").trim();
+  const descriptionForSave = description === transaction?.description
+    ? description
+    : description.replace(/\s+/g, " ").trim();
   const normalizedNotes = notes.trim();
+  const savedAssessment = transaction?.description === descriptionForSave &&
+    transaction.amount === signedAmount && transaction.treatment === treatment
+    ? transaction
+    : undefined;
   const dateValidationError = validateTransactionDate(date);
   const isAmountValid = amountValidation.error === null;
   const isDateValid = dateValidationError === null;
@@ -101,7 +107,7 @@ export const TransactionForm = ({
     isOnline &&
     isDateValid &&
     isAmountValid &&
-    (isEdit || normalizedDescription.length > 0) &&
+    (isEdit || descriptionForSave.length > 0) &&
     !createTransactionMutation.isPending &&
     !updateTransactionMutation.isPending;
 
@@ -135,7 +141,7 @@ export const TransactionForm = ({
     const request = {
       date,
       amount: signedAmount,
-      description: normalizedDescription,
+      description: descriptionForSave,
       category,
       treatment,
       notes: normalizedNotes || null,
@@ -594,7 +600,7 @@ export const TransactionForm = ({
               <SpendingFlexibilityField
                 value={draftFlexibility ?? savedFlexibility}
                 category={category}
-                transaction={transaction}
+                transaction={savedAssessment}
                 disabled={isPending}
                 onChange={(choice) => setDraftFlexibility(choice === savedFlexibility ? undefined : choice)}
               />

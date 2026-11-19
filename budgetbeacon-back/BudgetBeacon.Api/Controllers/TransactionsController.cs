@@ -1047,9 +1047,19 @@ public class TransactionsController : ControllerBase
                 "urn:budgetbeacon:external-service");
         }
 
-        await _repository.SaveChangesAsync(cancellationToken);
+        var applied = await _repository.ApplyCategorizationAsync(
+            userId, [transaction], categorizationResult.Suggestions, cancellationToken);
 
-        return Ok(TransactionResponse.FromTransaction(transaction));
+        if (applied.Count == 0)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status409Conflict,
+                "Transaction changed during categorization",
+                "Refresh the transaction before retrying categorization.",
+                "urn:budgetbeacon:transaction-changed");
+        }
+
+        return Ok(TransactionResponse.FromTransaction(applied[0]));
     }
 
     [HttpPost("ai/categorize")]
@@ -1137,10 +1147,11 @@ public class TransactionsController : ControllerBase
                 });
         }
 
-        if (categorizationResult.ChangedCount > 0)
-        {
-            await _repository.SaveChangesAsync(cancellationToken);
-        }
+        var applied = await _repository.ApplyCategorizationAsync(
+            userId, uncategorized, categorizationResult.Suggestions, cancellationToken);
+        var changedCount = applied.Count;
+        var staleCount = categorizationResult.ChangedCount - changedCount;
+        skippedCount += staleCount;
 
         var totalRemainingCount = await _repository.CountUncategorizedAsync(
             userId,
@@ -1148,6 +1159,8 @@ public class TransactionsController : ControllerBase
 
         var message = categorizationResult.FailedCount > 0
             ? "Categorization partially completed. Some transactions could not be categorized."
+            : staleCount > 0
+                ? "Categorization completed. Some transactions changed during categorization."
             : skippedCount > 0
                 ? "Categorization completed. Some requested transactions no longer required categorization."
                 : "Categorization successful.";
@@ -1156,12 +1169,12 @@ public class TransactionsController : ControllerBase
         {
             Message = message,
             RequestedCount = transactionIds.Count,
-            categorizationResult.ProcessedCount,
-            categorizationResult.ChangedCount,
+            ProcessedCount = categorizationResult.ProcessedCount - staleCount,
+            ChangedCount = changedCount,
             categorizationResult.FailedCount,
             SkippedCount = skippedCount,
             RemainingCount = totalRemainingCount,
-            CategorizedCount = categorizationResult.ChangedCount
+            CategorizedCount = changedCount
         });
     }
 

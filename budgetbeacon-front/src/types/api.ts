@@ -55,11 +55,12 @@ export interface Transaction {
   spendingFlexibilityOverride: SpendingFlexibilityOverride | null;
   spendingFlexibility: SpendingFlexibility | null;
   spendingFlexibilitySource: SpendingFlexibilitySource | null;
+  flexibilityConfidence: number | null;
 }
 
 export type SpendingFlexibility = "Essential" | "Optimizable" | "Optional";
 export type SpendingFlexibilityOverride = SpendingFlexibility | "Unclassified";
-export type SpendingFlexibilitySource = "Manual" | "CategoryDefault" | "Unclassified";
+export type SpendingFlexibilitySource = "Manual" | "Ai" | "CategoryDefault" | "Unclassified";
 
 export type TransactionTreatment =
   | "Income"

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { regenerateTransactionCategory } from "../../../api/transactionsApi";
+import { ApiError } from "../../../api/httpClient";
 import { useNotification } from "../../../components/NotificationProvider";
 import { clearTipsQueryCache } from "../../tips/tipsCache";
 
@@ -20,6 +21,9 @@ export const useRegenerateTransactionCategory = () => {
       });
     },
     onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      }
       showNotification({
         severity: "error",
         message:

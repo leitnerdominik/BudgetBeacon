@@ -14,17 +14,19 @@ public static class SpendingFlexibilityResolver
             ["Leisure & Hobbies"] = nameof(SpendingFlexibilityOverride.Optional)
         });
 
-    public static (string? Value, string? Source) Resolve(Transaction transaction)
+    public static (string? Value, string? Source, double? Confidence) Resolve(Transaction transaction)
     {
-        if (TransactionTreatment.GetEffective(transaction.Treatment, transaction.Amount, transaction.Category) !=
-            TransactionTreatment.Expense)
-            return (null, null);
+        if (transaction.EffectiveTreatment != TransactionTreatment.Expense)
+            return (null, null, null);
 
         if (transaction.ManualSpendingFlexibility is { } manual)
-            return (manual == SpendingFlexibilityOverride.Unclassified ? null : manual.ToString(), "Manual");
+            return (manual == SpendingFlexibilityOverride.Unclassified ? null : manual.ToString(), "Manual", null);
+
+        if (transaction.AiSpendingFlexibility is { } ai && transaction.FlexibilityConfidence is { } confidence)
+            return (ai.ToString(), "Ai", confidence);
 
         return CategoryDefaults.TryGetValue(transaction.Category, out var categoryDefault)
-            ? (categoryDefault, "CategoryDefault")
-            : (null, "Unclassified");
+            ? (categoryDefault, "CategoryDefault", null)
+            : (null, "Unclassified", null);
     }
 }

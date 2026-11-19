@@ -90,7 +90,7 @@ Tests -> Api/Core/Infrastructure
 
 The values are case-sensitive. A supplied value must be a supported string and the resulting treatment must be `Expense`. Explicit JSON `null` is rejected. To clear details on an existing transaction, send an empty `description` or set `category` to `"Uncategorized"`.
 
-Transaction list, detail, and mutation responses include `spendingFlexibilityOverride` (the saved manual choice or `null`), `spendingFlexibility` (the effective class or `null`), and `spendingFlexibilitySource`. The source for expenses is `Manual`, `CategoryDefault`, or `Unclassified`. A manual `"Unclassified"` override returns a null class with source `Manual`. Other treatments return both effective fields as `null` and retain any saved override for future expense edits.
+Transaction list, detail, and mutation responses include `spendingFlexibilityOverride` (the saved manual choice or `null`), `spendingFlexibility` (the effective class or `null`), `spendingFlexibilitySource`, and `flexibilityConfidence`. The source for expenses is `Manual`, `Ai`, `CategoryDefault`, or `Unclassified`, in that order of precedence. A manual `"Unclassified"` override returns a null class with source `Manual`. Confidence is returned only when the effective source is `Ai`. The transaction form suggests reviewing AI assessments below 0.7. Other treatments return null effective fields and retain any saved override for future expense edits.
 
 `GET /api/transactions/spending-flexibility/category-defaults` returns the defaults used in the form. Food & Groceries defaults to Optimizable. Eating Out and Leisure & Hobbies default to Optional. Existing transactions and CSV or XLSX imports start without an override and receive a category default when applicable.
 

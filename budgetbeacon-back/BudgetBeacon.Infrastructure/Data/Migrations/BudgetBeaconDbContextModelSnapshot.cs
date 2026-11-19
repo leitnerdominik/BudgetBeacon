@@ -28,6 +28,10 @@ namespace BudgetBeacon.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AiSpendingFlexibility")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -38,6 +42,9 @@ namespace BudgetBeacon.Infrastructure.Data.Migrations
 
                     b.Property<DateTime>("Date")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("FlexibilityConfidence")
+                        .HasColumnType("double precision");
 
                     b.Property<string>("ImportFingerprint")
                         .HasMaxLength(64)
