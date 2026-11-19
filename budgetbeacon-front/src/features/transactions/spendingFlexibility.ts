@@ -29,6 +29,10 @@ export const getSpendingFlexibilitySummary = (
     return `${choice} · Manual`;
   }
 
+  if (transaction?.spendingFlexibilitySource === "MerchantRule") {
+    return `${transaction.spendingFlexibility ?? "Unclassified"} · Personal rule`;
+  }
+
   if (transaction?.category === category && transaction.spendingFlexibilitySource === "Ai") {
     const needsReview = transaction.flexibilityConfidence !== null &&
       transaction.flexibilityConfidence < flexibilityReviewThreshold;

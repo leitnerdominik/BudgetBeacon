@@ -14,6 +14,7 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    public DbSet<SpendingFlexibilityRule> SpendingFlexibilityRules => Set<SpendingFlexibilityRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +43,26 @@ public class BudgetBeaconDbContext : IdentityDbContext<ApplicationUser>
             entity.HasOne(settings => settings.User)
                 .WithOne()
                 .HasForeignKey<UserSettings>(settings => settings.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SpendingFlexibilityRule>(entity =>
+        {
+            entity.Property(rule => rule.UserId).HasMaxLength(450);
+            entity.Property(rule => rule.MatchType).HasConversion<string>().HasMaxLength(6);
+            entity.Property(rule => rule.Pattern).HasMaxLength(SpendingFlexibilityRule.MaxPatternLength);
+            entity.Property(rule => rule.NormalizedPattern)
+                .HasMaxLength(SpendingFlexibilityRule.MaxPatternLength)
+                .UseCollation("C");
+            entity.Property(rule => rule.SpendingFlexibility).HasConversion<string>().HasMaxLength(16);
+
+            entity.HasIndex(rule => new { rule.UserId, rule.MatchType, rule.NormalizedPattern })
+                .IsUnique()
+                .HasDatabaseName(SpendingFlexibilityRuleRepository.UniquePatternIndex);
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(rule => rule.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

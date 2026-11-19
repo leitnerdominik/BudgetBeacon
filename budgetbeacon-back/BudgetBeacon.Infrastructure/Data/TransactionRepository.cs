@@ -18,13 +18,15 @@ public class TransactionRepository : ITransactionRepository
         _context = context;
     }
 
-    public async Task AddRangeAsync(IEnumerable<Transaction> transactions)
+    public async Task AddAsync(
+        Transaction transaction, SpendingFlexibilityRule? newRule, CancellationToken cancellationToken)
     {
-        var transactionList = transactions.ToList();
-        ApplyDefaultTreatment(transactionList);
+        if (string.IsNullOrWhiteSpace(transaction.Treatment))
+            transaction.Treatment = TransactionTreatment.GetDefault(transaction.Amount, transaction.Category);
 
-        await _context.Transactions.AddRangeAsync(transactionList);
-        await _context.SaveChangesAsync();
+        _context.Transactions.Add(transaction);
+
+        await SaveTransactionAsync(transaction.UserId, newRule, cancellationToken);
     }
 
     public async Task<int> AddImportedTransactionsAsync(IEnumerable<Transaction> transactions)
@@ -116,19 +118,6 @@ public class TransactionRepository : ITransactionRepository
         return fingerprints.ToHashSet(StringComparer.Ordinal);
     }
 
-    private static void ApplyDefaultTreatment(IEnumerable<Transaction> transactions)
-    {
-        foreach (var transaction in transactions)
-        {
-            if (string.IsNullOrWhiteSpace(transaction.Treatment))
-            {
-                transaction.Treatment = TransactionTreatment.GetDefault(
-                    transaction.Amount,
-                    transaction.Category);
-            }
-        }
-    }
-
     public async Task<bool> DeleteAsync(string userId, Guid transactionId)
     {
         var transaction = await _context.Transactions
@@ -183,25 +172,44 @@ public class TransactionRepository : ITransactionRepository
         return applied;
     }
 
-    public Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update) =>
-        UpdateLockedAsync(userId, transactionId, transaction => transaction.ApplyUpdate(update));
+    public Task<Transaction?> UpdateAsync(
+        string userId, Guid transactionId, TransactionUpdate update,
+        SpendingFlexibilityRule? newRule, CancellationToken cancellationToken) =>
+        UpdateLockedAsync(userId, transactionId, transaction => transaction.ApplyUpdate(update), newRule, cancellationToken);
 
     public Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category) =>
         UpdateLockedAsync(userId, transactionId, transaction => transaction.ApplyCategoryUpdate(category));
 
     private async Task<Transaction?> UpdateLockedAsync(
-        string userId, Guid transactionId, Action<Transaction> apply)
+        string userId, Guid transactionId, Action<Transaction> apply,
+        SpendingFlexibilityRule? newRule = null, CancellationToken cancellationToken = default)
     {
-        await using var operation = await _context.Database.BeginTransactionAsync();
-        var rows = await LockTransactionsAsync(userId, [transactionId]);
+        await using var operation = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var rows = await LockTransactionsAsync(userId, [transactionId], cancellationToken);
         var transaction = rows.SingleOrDefault();
         if (transaction is null)
             return null;
 
         apply(transaction);
-        await _context.SaveChangesAsync();
-        await operation.CommitAsync();
+        await SaveTransactionAsync(userId, newRule, cancellationToken);
+        await operation.CommitAsync(cancellationToken);
         return transaction;
+    }
+
+    private async Task SaveTransactionAsync(
+        string? userId, SpendingFlexibilityRule? newRule, CancellationToken cancellationToken)
+    {
+        if (newRule is null)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (newRule.UserId != userId)
+            throw new InvalidOperationException("The rule and transaction must belong to the same user.");
+
+        _context.SpendingFlexibilityRules.Add(newRule);
+        await SpendingFlexibilityRuleRepository.SaveChangesAsync(_context, cancellationToken);
     }
 
     private Task<List<Transaction>> LockTransactionsAsync(

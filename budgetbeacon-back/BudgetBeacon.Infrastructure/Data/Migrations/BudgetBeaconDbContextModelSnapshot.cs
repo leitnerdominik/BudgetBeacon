@@ -22,6 +22,47 @@ namespace BudgetBeacon.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("BudgetBeacon.Core.Entities.SpendingFlexibilityRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MatchType")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)");
+
+                    b.Property<string>("NormalizedPattern")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .UseCollation("C");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SpendingFlexibility")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "MatchType", "NormalizedPattern")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SpendingFlexibilityRules_UserId_MatchType_NormalizedPattern");
+
+                    b.ToTable("SpendingFlexibilityRules");
+                });
+
             modelBuilder.Entity("BudgetBeacon.Core.Entities.Transaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -306,6 +347,15 @@ namespace BudgetBeacon.Infrastructure.Data.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("BudgetBeacon.Core.Entities.SpendingFlexibilityRule", b =>
+                {
+                    b.HasOne("BudgetBeacon.Infrastructure.Data.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("BudgetBeacon.Core.Entities.Transaction", b =>

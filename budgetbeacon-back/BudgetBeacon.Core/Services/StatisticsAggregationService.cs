@@ -21,7 +21,8 @@ public sealed partial class StatisticsAggregationService
         IEnumerable<Transaction> transactions,
         DateTime startDate,
         DateTime endDate,
-        int monthsBack)
+        int monthsBack,
+        IReadOnlyList<SpendingFlexibilityRule>? rules = null)
     {
         var allTransactions = transactions.ToList();
         var periodTransactions = FilterByDateRange(allTransactions, startDate, endDate);
@@ -46,10 +47,11 @@ public sealed partial class StatisticsAggregationService
             RecurringExpenses: monthsBack >= 2
                 ? BuildRecurringExpenses(periodTransactions, RecurringExpenseLimit)
                 : [],
-            FinancialFlexibility: BuildFinancialFlexibility(periodTransactions, summary));
+            FinancialFlexibility: BuildFinancialFlexibility(periodTransactions, summary, rules));
     }
 
-    public StatisticsOverview BuildAllTime(IEnumerable<Transaction> transactions)
+    public StatisticsOverview BuildAllTime(
+        IEnumerable<Transaction> transactions, IReadOnlyList<SpendingFlexibilityRule>? rules = null)
     {
         var allTransactions = transactions
             .OrderBy(transaction => transaction.Date)
@@ -78,7 +80,7 @@ public sealed partial class StatisticsAggregationService
             Categories: BuildCategorySummaries(allTransactions),
             TopExpenses: BuildTopExpenses(allTransactions, TopExpenseLimit),
             RecurringExpenses: BuildRecurringExpenses(allTransactions, RecurringExpenseLimit),
-            FinancialFlexibility: BuildFinancialFlexibility(allTransactions, summary));
+            FinancialFlexibility: BuildFinancialFlexibility(allTransactions, summary, rules));
     }
 
     public MonthlySummary BuildMonthlySummary(
@@ -155,11 +157,12 @@ public sealed partial class StatisticsAggregationService
 
     private static FinancialFlexibilityStatistics BuildFinancialFlexibility(
         IReadOnlyCollection<Transaction> transactions,
-        StatisticsSummary summary)
+        StatisticsSummary summary,
+        IReadOnlyList<SpendingFlexibilityRule>? rules)
     {
         var groupTotals = transactions
             .Where(IsExpense)
-            .GroupBy(transaction => SpendingFlexibilityResolver.Resolve(transaction).Value ??
+            .GroupBy(transaction => SpendingFlexibilityResolver.Resolve(transaction, rules).Value ??
                 nameof(SpendingFlexibilityOverride.Unclassified))
             .ToDictionary(group => group.Key, SumAbsolute);
         var grossExpenses = groupTotals.Values.Sum();

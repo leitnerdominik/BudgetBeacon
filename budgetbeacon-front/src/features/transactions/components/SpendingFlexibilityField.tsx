@@ -29,11 +29,15 @@ export const SpendingFlexibilityField = ({
     staleTime: Infinity,
   });
   const summary = getSpendingFlexibilitySummary(value, category, transaction, defaults.data);
-  const helperText = summary
-    ? `${summary}. ${spendingFlexibilityChoices[value].description}`
-    : defaults.isFetching
-      ? "Loading the automatic assessment…"
-      : "The automatic assessment is currently unavailable.";
+  const hasSavedAssessment = transaction && (
+    transaction.category === category || transaction.spendingFlexibilitySource === "MerchantRule"
+  );
+  const possibleDefault = defaults.data?.[category];
+  const helperText = value === "UseAutomatic" && (!hasSavedAssessment || !summary)
+    ? possibleDefault
+      ? `${possibleDefault} is the category default if no personal rule matches.`
+      : "The automatic assessment will be shown after saving."
+    : `${summary}. ${spendingFlexibilityChoices[value].description}`;
 
   return (
     <TextField

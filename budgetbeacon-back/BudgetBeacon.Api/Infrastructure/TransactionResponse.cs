@@ -18,9 +18,10 @@ public sealed record TransactionResponse(
     string? SpendingFlexibilitySource,
     double? FlexibilityConfidence)
 {
-    public static TransactionResponse FromTransaction(Transaction transaction)
+    public static TransactionResponse FromTransaction(
+        Transaction transaction, IReadOnlyList<SpendingFlexibilityRule>? rules = null)
     {
-        var (value, source, confidence) = SpendingFlexibilityResolver.Resolve(transaction);
+        var (value, source, confidence) = SpendingFlexibilityResolver.Resolve(transaction, rules);
         return new TransactionResponse(
             transaction.Id,
             transaction.UserId,

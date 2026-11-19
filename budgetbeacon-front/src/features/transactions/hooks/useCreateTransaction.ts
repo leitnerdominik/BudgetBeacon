@@ -6,6 +6,7 @@ import {
 } from "../../../api/transactionsApi";
 import { useNotification } from "../../../components/NotificationProvider";
 import { clearTipsQueryCache } from "../../tips/tipsCache";
+import { spendingFlexibilityRulesQueryKey } from "../../spendingFlexibility/useSpendingFlexibilityRules";
 
 export const useCreateTransaction = () => {
   const queryClient = useQueryClient();
@@ -13,8 +14,11 @@ export const useCreateTransaction = () => {
 
   return useMutation({
     mutationFn: (request: CreateTransactionRequest) => createTransaction(request),
-    onSuccess: () => {
+    onSuccess: (_, request) => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      if (request.spendingFlexibilityRule) {
+        queryClient.invalidateQueries({ queryKey: spendingFlexibilityRulesQueryKey });
+      }
       clearTipsQueryCache(queryClient);
       showNotification({
         severity: "success",

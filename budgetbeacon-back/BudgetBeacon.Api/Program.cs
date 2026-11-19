@@ -250,6 +250,7 @@ try
 
     builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
     builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
+    builder.Services.AddScoped<ISpendingFlexibilityRuleRepository, SpendingFlexibilityRuleRepository>();
     builder.Services.AddScoped<DevelopmentDataSeeder>();
     builder.Services.AddScoped<FinanceAggregationService>();
     builder.Services.AddScoped<StatisticsAggregationService>();

@@ -38,6 +38,115 @@ public sealed class TransactionsControllerTests
         var expectedOverride = choice == "UseAutomatic" ? null : choice;
         Assert.Equal(expectedOverride, response.SpendingFlexibilityOverride);
         Assert.Equal(expectedOverride, Assert.Single(repository.AddedTransactions).ManualSpendingFlexibility?.ToString());
+        Assert.Null(repository.LastRuleToSave);
+    }
+
+    [Theory]
+    [InlineData("Essential", "Essential")]
+    [InlineData("Unclassified", null)]
+    public async Task ManualWrite_OnlySavesRuleWhenExplicitlyRequested(string choice, string? value)
+    {
+        var expense = new Transaction { UserId = "user-1" };
+        var repository = new FakeTransactionRepository { TransactionToUpdate = expense };
+        var controller = CreateController(repository);
+        var input = JsonSerializer.SerializeToElement(choice);
+        var rule = new SpendingFlexibilityRuleInput("Prefix", "  Coffee\tHouse  ");
+        var date = new DateOnly(2026, 6, 4);
+
+        var created = Assert.IsType<CreatedResult>(await controller.Create(
+            new(date, -10m, "Coffee House 123", "Eating Out", null, "Expense", input, rule)));
+        Assert.Equal("Manual", Assert.IsType<TransactionResponse>(created.Value).SpendingFlexibilitySource);
+        AssertRule(repository.LastRuleToSave);
+
+        var updated = Assert.IsType<OkObjectResult>(await controller.Update(expense.Id,
+            new(date, -10m, "Coffee House 456", "Eating Out", null, "Expense", input, rule)));
+        var response = Assert.IsType<TransactionResponse>(updated.Value);
+        Assert.Equal("Manual", response.SpendingFlexibilitySource);
+        Assert.Equal(value, response.SpendingFlexibility);
+        AssertRule(repository.LastRuleToSave);
+
+        await controller.Update(expense.Id,
+            new(date, -10m, "Coffee House 456", "Eating Out", null, "Expense", input));
+        Assert.Null(repository.LastRuleToSave);
+
+        void AssertRule(SpendingFlexibilityRule? savedRule)
+        {
+            Assert.NotNull(savedRule);
+            Assert.Equal("user-1", savedRule.UserId);
+            Assert.Equal("Coffee House", savedRule.Pattern);
+            Assert.Equal(SpendingFlexibilityRuleMatch.Prefix, savedRule.MatchType);
+            Assert.Equal(choice, savedRule.SpendingFlexibility.ToString());
+        }
+    }
+
+    [Fact]
+    public async Task Create_ResolvesExistingRuleForNewExpenseWithoutManualOverride()
+    {
+        var rules = new FakeSpendingFlexibilityRuleRepository();
+        await rules.AddAsync(new("user-1", SpendingFlexibilityRuleMatch.Prefix, "Coffee",
+            SpendingFlexibilityOverride.Essential), default);
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository, ruleRepository: rules);
+
+        var result = Assert.IsType<CreatedResult>(await controller.Create(
+            new(new DateOnly(2026, 6, 4), -10m, "COFFEE HOUSE", "Eating Out", null)));
+        var response = Assert.IsType<TransactionResponse>(result.Value);
+        Assert.Equal("Essential", response.SpendingFlexibility);
+        Assert.Equal("MerchantRule", response.SpendingFlexibilitySource);
+        Assert.Null(Assert.Single(repository.AddedTransactions).ManualSpendingFlexibility);
+        Assert.Null(repository.LastRuleToSave);
+    }
+
+    [Fact]
+    public async Task Categorization_DoesNotPersistIfRuleLoadFails()
+    {
+        var transaction = new Transaction { UserId = "user-1" };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = transaction,
+            TransactionToUpdate = transaction
+        };
+        var aiService = new FakeAiAdvisorService
+        {
+            CategorizeAction = _ => new TransactionCategorizationResult(1, [new(transaction.Id, "Eating Out", 0.9)], 0)
+        };
+        var rules = new FakeSpendingFlexibilityRuleRepository { ReadError = new TimeoutException() };
+        var controller = CreateController(repository, aiService: aiService, ruleRepository: rules);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => controller.UpdateCategory(transaction.Id, new("Eating Out")));
+        await Assert.ThrowsAsync<TimeoutException>(() => controller.RegenerateCategory(transaction.Id));
+        Assert.Null(repository.LastUpdateCategoryTransactionId);
+        Assert.False(repository.SaveChangesCalled);
+        Assert.Equal("Uncategorized", transaction.Category);
+    }
+
+    [Theory]
+    [InlineData(null, "Expense", "Exact", "Groceries")]
+    [InlineData("UseAutomatic", "Expense", "Exact", "Groceries")]
+    [InlineData("Essential", "Refund", "Exact", "Groceries")]
+    [InlineData("Essential", "Expense", "Contains", "Groceries")]
+    [InlineData("Essential", "Expense", "Exact", " \t ")]
+    public async Task Writes_RejectAnInvalidRuleWithTheWholeTransaction(
+        string? choice, string treatment, string matchType, string pattern)
+    {
+        var repository = new FakeTransactionRepository();
+        var controller = CreateController(repository);
+        var input = choice is null ? default : JsonSerializer.SerializeToElement(choice);
+        var rule = new SpendingFlexibilityRuleInput(matchType, pattern);
+        var date = new DateOnly(2026, 6, 4);
+
+        var create = await controller.Create(new(date, -10m, "Groceries", "Food & Groceries", null,
+            treatment, input, rule));
+        var update = await controller.Update(Guid.NewGuid(), new(date, -10m, "Groceries", "Food & Groceries", null,
+            treatment, input, rule));
+
+        foreach (var result in new[] { create, update })
+        {
+            var problem = Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(result).Value);
+            Assert.Contains("SpendingFlexibilityRule", problem.Errors.Keys);
+        }
+        Assert.Empty(repository.AddedTransactions);
+        Assert.Null(repository.LastUpdateTransactionId);
     }
 
     [Fact]
@@ -132,6 +241,77 @@ public sealed class TransactionsControllerTests
         Assert.Equal(value, response.SpendingFlexibility);
         Assert.Equal(source, response.SpendingFlexibilitySource);
         Assert.Null(response.SpendingFlexibilityOverride);
+    }
+
+    [Fact]
+    public async Task ExistingExpenses_UseCurrentRulesInListDetailAndStatisticsThenFallBackAfterDeletion()
+    {
+        var withAi = new Transaction
+        {
+            UserId = "user-1",
+            Date = new DateTime(2026, 6, 4, 0, 0, 0, DateTimeKind.Utc),
+            Amount = -10m,
+            Category = "Eating Out",
+            Treatment = TransactionTreatment.Expense,
+            AiSpendingFlexibility = SpendingFlexibilityOverride.Optimizable,
+            FlexibilityConfidence = 0.9,
+            Metadata = new TransactionMetadata { RawDescription = "Coffee  Store 03" }
+        };
+        var withDefault = new Transaction
+        {
+            UserId = "user-1",
+            Date = withAi.Date,
+            Amount = -20m,
+            Category = "Food & Groceries",
+            Treatment = TransactionTreatment.Expense,
+            Metadata = new TransactionMetadata { RawDescription = "COFFEE STORE 04" }
+        };
+        var repository = new FakeTransactionRepository
+        {
+            TransactionById = withAi,
+            PagedTransactions = [withAi, withDefault],
+            AllTransactions = [withAi, withDefault],
+            RangeTransactions = [withAi, withDefault]
+        };
+        var rules = new FakeSpendingFlexibilityRuleRepository();
+        await rules.AddAsync(new("user-2", SpendingFlexibilityRuleMatch.Exact, "Coffee Store 03",
+            SpendingFlexibilityOverride.Unclassified), default);
+        var controller = CreateController(repository, ruleRepository: rules);
+        var rule = new SpendingFlexibilityRule("user-1", SpendingFlexibilityRuleMatch.Prefix, "Coffee Store",
+            SpendingFlexibilityOverride.Essential);
+        await rules.AddAsync(rule, default);
+
+        await AssertAssessments("Essential", "MerchantRule", "MerchantRule", "Essential");
+        Assert.True(await rules.UpdateAsync(rule.Id, new("user-1", SpendingFlexibilityRuleMatch.Prefix,
+            "Coffee Store", SpendingFlexibilityOverride.Optional), default));
+        await AssertAssessments("Optional", "MerchantRule", "MerchantRule", "Optional");
+        Assert.True(await rules.DeleteAsync("user-1", rule.Id, default));
+        await AssertAssessments("Optimizable", "Ai", "CategoryDefault", "Optimizable");
+        Assert.Equal(0.9, withAi.FlexibilityConfidence);
+        Assert.Null(withAi.ManualSpendingFlexibility);
+        Assert.Null(withDefault.AiSpendingFlexibility);
+
+        async Task AssertAssessments(string value, string aiSource, string defaultSource, string group)
+        {
+            var list = Assert.IsType<OkObjectResult>(await controller.GetAllTransactions());
+            var transactions = Assert.IsAssignableFrom<IEnumerable<TransactionResponse>>(
+                list.Value?.GetType().GetProperty("Data")?.GetValue(list.Value)).ToList();
+            Assert.Equal([value, value], transactions.Select(transaction => transaction.SpendingFlexibility));
+            Assert.Equal([aiSource, defaultSource], transactions.Select(transaction => transaction.SpendingFlexibilitySource));
+
+            var detail = Assert.IsType<OkObjectResult>(await controller.GetById(withAi.Id));
+            Assert.Equal(aiSource, Assert.IsType<TransactionResponse>(detail.Value).SpendingFlexibilitySource);
+
+            var allTime = Assert.IsType<OkObjectResult>(await controller.GetStatistics(allTime: true));
+            var fixedPeriod = Assert.IsType<OkObjectResult>(await controller.GetStatistics(
+                endYear: 2026, endMonth: 6, monthsBack: 1));
+            foreach (var result in new[] { allTime, fixedPeriod })
+            {
+                var figures = Assert.IsType<StatisticsOverview>(result.Value).FinancialFlexibility;
+                Assert.Equal(30m, figures.Groups.Single(item => item.Classification == group).Amount);
+                Assert.Equal(30m, figures.NetExpenses);
+            }
+        }
     }
 
     [Fact]
@@ -2412,7 +2592,8 @@ public sealed class TransactionsControllerTests
         FakeUserPreferencesRepository? preferencesRepository = null,
         FakeAiAdvisorService? aiService = null,
         FakeTransactionImportParser? importParser = null,
-        string? userId = "user-1")
+        string? userId = "user-1",
+        ISpendingFlexibilityRuleRepository? ruleRepository = null)
     {
         var transactionRepository = repository ?? new FakeTransactionRepository();
         var userPreferencesRepository = preferencesRepository ?? new FakeUserPreferencesRepository();
@@ -2420,6 +2601,7 @@ public sealed class TransactionsControllerTests
         var controller = new TransactionsController(
             transactionRepository,
             userPreferencesRepository,
+            ruleRepository ?? new FakeSpendingFlexibilityRuleRepository(),
             new StatisticsAggregationService(new FinanceAggregationService()),
             aiService ?? new FakeAiAdvisorService(),
             importParser ?? new FakeTransactionImportParser(),
@@ -2556,9 +2738,13 @@ public sealed class TransactionsControllerTests
         public int? LastPagedPageNumber { get; private set; }
         public int? LastPagedPageSize { get; private set; }
 
-        public Task AddRangeAsync(IEnumerable<Transaction> transactions)
+        public SpendingFlexibilityRule? LastRuleToSave { get; private set; }
+
+        public Task AddAsync(
+            Transaction transaction, SpendingFlexibilityRule? newRule, CancellationToken cancellationToken)
         {
-            AddedTransactions.AddRange(transactions);
+            AddedTransactions.Add(transaction);
+            LastRuleToSave = newRule;
             return Task.CompletedTask;
         }
 
@@ -2630,7 +2816,9 @@ public sealed class TransactionsControllerTests
             return Task.FromResult<IReadOnlyList<Transaction>>(applied);
         }
 
-        public Task<Transaction?> UpdateAsync(string userId, Guid transactionId, TransactionUpdate update)
+        public Task<Transaction?> UpdateAsync(
+            string userId, Guid transactionId, TransactionUpdate update,
+            SpendingFlexibilityRule? newRule, CancellationToken cancellationToken)
         {
             LastUpdateUserId = userId;
             LastUpdateTransactionId = transactionId;
@@ -2643,6 +2831,7 @@ public sealed class TransactionsControllerTests
             }
 
             TransactionToUpdate.ApplyUpdate(update);
+            LastRuleToSave = newRule;
 
             return Task.FromResult<Transaction?>(TransactionToUpdate);
         }

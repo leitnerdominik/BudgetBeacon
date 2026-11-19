@@ -55,6 +55,21 @@ test("removing a manual override defers the automatic result until saving", () =
   );
 });
 
+test("shows the personal rule source, including an unclassified result", () => {
+  const saved = {
+    category: "Food & Groceries",
+    spendingFlexibility: "Essential",
+    spendingFlexibilitySource: "MerchantRule",
+    flexibilityConfidence: null,
+  } as const;
+  assert.equal(getSpendingFlexibilitySummary("UseAutomatic", "Eating Out", saved, defaults),
+    "Essential · Personal rule");
+  assert.equal(getSpendingFlexibilitySummary("UseAutomatic", saved.category,
+    { ...saved, spendingFlexibility: null }, defaults), "Unclassified · Personal rule");
+  assert.equal(getSpendingFlexibilitySummary("Unclassified", saved.category, saved, defaults),
+    "Unclassified · Manual");
+});
+
 test("labels the AI source and suggests review only below the confidence threshold", () => {
   const saved = {
     category: "Food & Groceries",
@@ -114,6 +129,17 @@ test("renders the saved AI assessment in a form with an unchanged description co
       createElement(MemoryRouter, null,
         createElement(NotificationProvider, null, createElement(TransactionForm, { transaction })))));
     assert.match(html, /Essential · AI · Review suggested/);
+    assert.doesNotMatch(html, /Also save this assessment as a personal rule/);
+
+    const manualHtml = renderToString(createElement(QueryClientProvider, { client: new QueryClient() },
+      createElement(MemoryRouter, null,
+        createElement(NotificationProvider, null, createElement(TransactionForm, {
+          transaction: { ...transaction, spendingFlexibilityOverride: "Essential" },
+        })))));
+    assert.match(manualHtml, /Also save this assessment as a personal rule/);
+    assert.match(manualHtml, /<input[^>]*type="checkbox"/);
+    assert.doesNotMatch(manualHtml, /<input[^>]*checked=""/);
+    assert.doesNotMatch(manualHtml, /Description to match/);
   } finally {
     await server.close();
   }

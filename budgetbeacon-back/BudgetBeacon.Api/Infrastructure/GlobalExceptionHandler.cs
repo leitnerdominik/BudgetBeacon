@@ -70,6 +70,11 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 "Invalid request data",
                 invalidInput.Message,
                 "urn:budgetbeacon:invalid-input"),
+            DuplicateSpendingFlexibilityRuleException => (
+                StatusCodes.Status409Conflict,
+                "Duplicate financial flexibility rule",
+                "A rule with this match type and description already exists. Edit it in Settings.",
+                "urn:budgetbeacon:duplicate-spending-flexibility-rule"),
             ExternalServiceException externalService => (
                 StatusCodes.Status502BadGateway,
                 "Upstream service failure",

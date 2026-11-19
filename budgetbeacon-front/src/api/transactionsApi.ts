@@ -1,4 +1,5 @@
 import { ApiError, apiClient } from "./httpClient";
+import type { SpendingFlexibilityRulePattern } from "./spendingFlexibilityRulesApi";
 import type {
   MonthlySummaryWithPeriod,
   PaginatedTransactions,
@@ -80,6 +81,7 @@ export interface TransactionWriteRequest {
   treatment: TransactionTreatment;
   notes: string | null;
   spendingFlexibilityOverride?: SpendingFlexibilityOverride | "UseAutomatic";
+  spendingFlexibilityRule?: SpendingFlexibilityRulePattern;
 }
 
 type SpendingFlexibilityCategoryDefaults = Partial<Record<string, SpendingFlexibility>>;

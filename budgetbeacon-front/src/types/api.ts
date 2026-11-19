@@ -60,7 +60,7 @@ export interface Transaction {
 
 export type SpendingFlexibility = "Essential" | "Optimizable" | "Optional";
 export type SpendingFlexibilityOverride = SpendingFlexibility | "Unclassified";
-export type SpendingFlexibilitySource = "Manual" | "Ai" | "CategoryDefault" | "Unclassified";
+export type SpendingFlexibilitySource = "Manual" | "MerchantRule" | "Ai" | "CategoryDefault" | "Unclassified";
 
 export type TransactionTreatment =
   | "Income"
