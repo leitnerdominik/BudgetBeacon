@@ -7,5 +7,6 @@ public sealed class TransactionUpdate
     public string Description { get; init; } = string.Empty;
     public string Category { get; init; } = "Uncategorized";
     public string Treatment { get; init; } = TransactionTreatment.Expense;
+    public SpendingFlexibilityOverrideChange? SpendingFlexibilityOverride { get; init; }
     public string? Notes { get; init; }
 }

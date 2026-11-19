@@ -89,6 +89,15 @@ public sealed class StatisticsAggregationServiceTests
         Assert.NotNull(result.PreviousMonthSummary);
         Assert.Equal(-25m, result.PreviousMonthSummary.TotalExpense);
         Assert.Empty(result.RecurringExpenses);
+        Assert.Equal(new SpendingFlexibilityGroup("Optimizable", 40m, 100m), result.FinancialFlexibility.Groups[1]);
+
+        var march = _sut.BuildFixedPeriod(
+            transactions,
+            new DateTime(2026, 3, 1),
+            new DateTime(2026, 4, 1).AddTicks(-1),
+            monthsBack: 1);
+
+        Assert.Equal(new SpendingFlexibilityGroup("Optimizable", 25m, 100m), march.FinancialFlexibility.Groups[1]);
     }
 
     [Fact]
@@ -131,6 +140,18 @@ public sealed class StatisticsAggregationServiceTests
         Assert.Equal(0m, result.MonthlyTotals.MedianIncome);
         Assert.Equal(0m, result.MonthlyTotals.AverageExpense);
         Assert.Equal(0m, result.MonthlyTotals.MedianExpense);
+        var flexibility = result.FinancialFlexibility;
+        Assert.Equal(4, flexibility.Groups.Count);
+        Assert.All(flexibility.Groups, group =>
+        {
+            Assert.Equal(0m, group.Amount);
+            Assert.Equal(0m, group.Percentage);
+        });
+        Assert.Equal(0m, flexibility.GrossExpenses);
+        Assert.Equal(0m, flexibility.RefundAdjustment);
+        Assert.Equal(0m, flexibility.NetExpenses);
+        Assert.Equal(0m, flexibility.EssentialExpenses);
+        Assert.Equal(0m, flexibility.AdjustableExpenses);
     }
 
     [Fact]
@@ -253,13 +274,77 @@ public sealed class StatisticsAggregationServiceTests
         Assert.DoesNotContain(result.TopExpenses, expense => expense.Category == "Savings & Investments");
     }
 
+    [Fact]
+    public void BuildFixedPeriod_UsesEffectiveFlexibilityAndExcludesOtherTreatments()
+    {
+        var date = new DateTime(2026, 4, 15);
+        var transactions = new[]
+        {
+            CreateTransaction(date, -50m, "Eating Out", "Manual classification", flexibility: SpendingFlexibilityOverride.Essential),
+            CreateTransaction(date, -25m, "Food & Groceries", "Legacy default", treatment: ""),
+            CreateTransaction(date, -15m, "Leisure & Hobbies", "Normalized treatment", treatment: " expense "),
+            CreateTransaction(date, -6.25m, "Food & Groceries", "Manual unclassified", flexibility: SpendingFlexibilityOverride.Unclassified),
+            CreateTransaction(date, -3.75m, "Shopping & Personal", "No default"),
+            CreateTransaction(date, 2000m, "Food & Groceries", "Income", treatment: TransactionTreatment.Income),
+            CreateTransaction(date, -100m, "Food & Groceries", "Transfer", treatment: TransactionTreatment.InternalTransfer),
+            CreateTransaction(date, -200m, "Food & Groceries", "Investments", treatment: TransactionTreatment.SavingsInvestment),
+            CreateTransaction(date, -300m, "Food & Groceries", "Adjustment", treatment: TransactionTreatment.Adjustment)
+        };
+
+        var result = _sut.BuildFixedPeriod(transactions, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), 1);
+        var flexibility = result.FinancialFlexibility;
+
+        Assert.Equal<SpendingFlexibilityGroup>(
+            [new("Essential", 50m, 50m), new("Optimizable", 25m, 25m), new("Optional", 15m, 15m), new("Unclassified", 10m, 10m)],
+            flexibility.Groups);
+        Assert.Equal(100m, flexibility.GrossExpenses);
+        Assert.Equal(100m, flexibility.NetExpenses);
+        Assert.Equal(50m, flexibility.EssentialExpenses);
+        Assert.Equal(40m, flexibility.AdjustableExpenses);
+    }
+
+    [Theory]
+    [InlineData(100, 20, 80)]
+    [InlineData(100, 120, 0)]
+    [InlineData(100, -20, 80)]
+    [InlineData(0, 20, 0)]
+    public void BuildAllTime_KeepsRefundsSeparateAndUsesClampedNetExpenses(int expense, int refund, int netExpenses)
+    {
+        var date = new DateTime(2026, 4, 15);
+        var transactions = new List<Transaction>
+        {
+            CreateTransaction(date, refund, "Food & Groceries", "Refund", treatment: TransactionTreatment.Refund)
+        };
+        if (expense > 0)
+        {
+            transactions.Add(CreateTransaction(date, -expense, "Eating Out", "Meal"));
+        }
+
+        var result = _sut.BuildAllTime(transactions);
+        var flexibility = result.FinancialFlexibility;
+
+        Assert.Equal(new SpendingFlexibilityGroup("Optional", expense, expense > 0 ? 100m : 0m), flexibility.Groups[2]);
+        Assert.All(flexibility.Groups.Where(group => group.Classification != "Optional"), group =>
+        {
+            Assert.Equal(0m, group.Amount);
+            Assert.Equal(0m, group.Percentage);
+        });
+        Assert.Equal(expense, flexibility.GrossExpenses);
+        Assert.Equal(expense, flexibility.AdjustableExpenses);
+        Assert.Equal(0m, flexibility.EssentialExpenses);
+        Assert.Equal(-Math.Abs(refund), flexibility.RefundAdjustment);
+        Assert.Equal(netExpenses, flexibility.NetExpenses);
+        Assert.Equal(-flexibility.NetExpenses, result.Summary.TotalExpense);
+    }
+
     private static Transaction CreateTransaction(
         DateTime date,
         decimal amount,
         string category,
         string description,
         Guid? id = null,
-        string? treatment = null) =>
+        string? treatment = null,
+        SpendingFlexibilityOverride? flexibility = null) =>
         new()
         {
             Id = id ?? Guid.NewGuid(),
@@ -267,6 +352,7 @@ public sealed class StatisticsAggregationServiceTests
             Amount = amount,
             Category = category,
             Treatment = treatment ?? TransactionTreatment.GetDefault(amount, category),
+            ManualSpendingFlexibility = flexibility,
             Metadata = new TransactionMetadata { RawDescription = description }
         };
 }

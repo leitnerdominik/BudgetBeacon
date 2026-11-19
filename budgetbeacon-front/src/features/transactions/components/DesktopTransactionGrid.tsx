@@ -82,7 +82,13 @@ export const DesktopTransactionGrid = ({
       width: 150,
       valueFormatter: (value) => formatCalendarDate(value),
     },
-    { field: "description", headerName: "Description", flex: 1, minWidth: 170 },
+    {
+      field: "description",
+      headerName: "Description",
+      flex: 1,
+      minWidth: 170,
+      valueFormatter: (value: string) => value || "No description",
+    },
     {
       field: "notes",
       headerName: "Notes",

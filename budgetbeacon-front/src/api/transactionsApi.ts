@@ -2,6 +2,9 @@ import { ApiError, apiClient } from "./httpClient";
 import type {
   MonthlySummaryWithPeriod,
   PaginatedTransactions,
+  SpendingFlexibility,
+  SpendingFlexibilityOverride,
+  SpendingFlexibilitySource,
   StatisticsOverview,
   Transaction,
   TransactionTreatment,
@@ -19,6 +22,9 @@ interface TransactionApiResponse {
     category: string;
     treatment?: TransactionTreatment | null;
     notes?: string | null;
+    spendingFlexibilityOverride?: SpendingFlexibilityOverride | null;
+    spendingFlexibility?: SpendingFlexibility | null;
+    spendingFlexibilitySource?: SpendingFlexibilitySource | null;
     metadata?: {
       rawDescription?: string;
       aiConfidenceScore?: number | null;
@@ -33,8 +39,10 @@ const mapTransaction = (transaction: TransactionApiResponse): Transaction => ({
   treatment: transaction.treatment ?? "Expense",
   notes: transaction.notes?.trim() || null,
   aiConfidenceScore: transaction.metadata?.aiConfidenceScore ?? null,
-  description:
-    transaction.metadata?.rawDescription?.trim() || "No description",
+  description: transaction.metadata?.rawDescription?.trim() ?? "",
+  spendingFlexibilityOverride: transaction.spendingFlexibilityOverride ?? null,
+  spendingFlexibility: transaction.spendingFlexibility ?? null,
+  spendingFlexibilitySource: transaction.spendingFlexibilitySource ?? null,
 });
 
 export interface CategorizationCandidatesResponse {
@@ -69,7 +77,15 @@ export interface TransactionWriteRequest {
   category: string;
   treatment: TransactionTreatment;
   notes: string | null;
+  spendingFlexibilityOverride?: SpendingFlexibilityOverride | "UseAutomatic";
 }
+
+type SpendingFlexibilityCategoryDefaults = Partial<Record<string, SpendingFlexibility>>;
+
+export const getSpendingFlexibilityCategoryDefaults = () =>
+  apiClient.get<SpendingFlexibilityCategoryDefaults, SpendingFlexibilityCategoryDefaults>(
+    "/transactions/spending-flexibility/category-defaults",
+  );
 
 export type CreateTransactionRequest = TransactionWriteRequest;
 

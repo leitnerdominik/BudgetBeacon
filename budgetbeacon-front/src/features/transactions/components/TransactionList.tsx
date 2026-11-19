@@ -860,7 +860,7 @@ export const TransactionList = () => {
                             fontWeight={700}
                             sx={{ lineHeight: 1.3 }}
                           >
-                            {transaction.description}
+                            {transaction.description || "No description"}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             {formatCalendarDate(transaction.date)}
@@ -1172,7 +1172,7 @@ export const TransactionList = () => {
           </DialogContentText>
           {transactionToDelete ? (
             <Typography variant="body2" sx={{ mt: 2, fontWeight: 700 }}>
-              {transactionToDelete.description} | {formatCurrency(transactionToDelete.amount)}
+              {transactionToDelete.description || "No description"} | {formatCurrency(transactionToDelete.amount)}
             </Typography>
           ) : null}
         </DialogContent>

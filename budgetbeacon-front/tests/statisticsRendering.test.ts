@@ -40,6 +40,15 @@ const zeroSummary = {
   totalSavedOrInvested: 0, internalTransferTotal: 0, adjustmentTotal: 0,
   averageExpense: 0, medianExpense: 0, transactionCount: 0, analyticsTransactionCount: 0,
 };
+const flexibility: StatisticsOverview["financialFlexibility"] = {
+  groups: [
+    { classification: "Essential", amount: 50, percentage: 50 },
+    { classification: "Optimizable", amount: 25, percentage: 25 },
+    { classification: "Optional", amount: 15, percentage: 15 },
+    { classification: "Unclassified", amount: 10, percentage: 10 },
+  ],
+  grossExpenses: 100, refundAdjustment: 0, netExpenses: 100, essentialExpenses: 50, adjustableExpenses: 40,
+};
 const data: StatisticsOverview = {
   allTime: false, monthsBack: 1,
   startDate: "2026-01-01T00:00:00", endDate: "2026-01-31T23:59:59",
@@ -47,6 +56,7 @@ const data: StatisticsOverview = {
   monthlyTotals: { monthCount: 1, averageIncome: 1000, medianIncome: 1000, averageExpense: 100, medianExpense: 100 },
   trend: [{ year: 2026, month: 1, ...summary }],
   categories: [], topExpenses: [], recurringExpenses: [],
+  financialFlexibility: flexibility,
 };
 
 test("server-renders production Statistics shell, navigation, content and request states", async (t) => {
@@ -169,6 +179,41 @@ test("server-renders production Statistics shell, navigation, content and reques
         client.clear();
       }
     };
+
+    await t.test("Financial Flexibility renders the selected period, gross shares, and separate refunds in both layouts", () => {
+      const emptyGroups = flexibility.groups.map((group) => ({ ...group, amount: 0, percentage: 0 }));
+      const optionalGroups = emptyGroups.map((group) => group.classification === "Optional"
+        ? { ...group, amount: 100, percentage: 100 } : group);
+      const cases = [
+        { month: "2026-01", report: flexibility, amounts: [50, 25, 15, 10], shares: [50, 25, 15, 10], metrics: [50, 40], totals: [100, 0, 100] },
+        { month: "2026-02", report: { groups: optionalGroups, grossExpenses: 100, refundAdjustment: -20, netExpenses: 80, essentialExpenses: 0, adjustableExpenses: 100 },
+          amounts: [0, 0, 100, 0], shares: [0, 0, 100, 0], metrics: [0, 100], totals: [100, -20, 80] },
+        { month: "2026-03", report: { groups: optionalGroups, grossExpenses: 100, refundAdjustment: -120, netExpenses: 0, essentialExpenses: 0, adjustableExpenses: 100 },
+          amounts: [0, 0, 100, 0], shares: [0, 0, 100, 0], metrics: [0, 100], totals: [100, -120, 0] },
+        { month: "2026-04", report: { groups: emptyGroups, grossExpenses: 0, refundAdjustment: 0, netExpenses: 0, essentialExpenses: 0, adjustableExpenses: 0 },
+          amounts: [0, 0, 0, 0], shares: [0, 0, 0, 0], metrics: [0, 0], totals: [0, 0, 0] },
+        { month: "2026-05", report: { groups: emptyGroups, grossExpenses: 0, refundAdjustment: -20, netExpenses: 0, essentialExpenses: 0, adjustableExpenses: 0 },
+          amounts: [0, 0, 0, 0], shares: [0, 0, 0, 0], metrics: [0, 0], totals: [0, -20, 0] },
+      ];
+      for (const mobile of [false, true]) {
+        for (const { month, report, amounts, shares, metrics, totals } of cases) {
+          const response = { ...data, financialFlexibility: report };
+          const panel = section(render("spending", { response, month, mobile }), "Financial Flexibility");
+          assert.deepEqual(definitionText(panel, "dt"), [
+            "Essential Expenses", "Adjustable Expenses", "Essential", "Optimizable", "Optional", "Unclassified",
+            "Expenses before refunds", "Refund adjustment", "Net expenses",
+          ], month);
+          assert.deepEqual(definitionText(panel, "dd"), [
+            ...metrics.map(formatCurrency),
+            ...amounts.map((amount, index) => `${formatCurrency(amount)} · ${shares[index]} %`),
+            ...totals.map(formatCurrency),
+          ], month);
+          assert.match(panel, /The breakdown and both metrics use expenses before refunds\. Some adjustable expenses are still necessary\./);
+          assert.equal(panel.includes("No expenses before refunds for this period."), totals[0] === 0, month);
+          assert.doesNotMatch(panel, /Infinity|NaN/);
+        }
+      }
+    });
 
     await t.test("API-shaped financial edge cases retain supplied values across all three views", () => {
       const cases = [

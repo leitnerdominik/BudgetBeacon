@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using BudgetBeacon.Core.Entities;
@@ -202,8 +203,19 @@ public class TransactionsController : ControllerBase
             TotalCount = totalCount,
             CurrentPage = page,
             PageSize = pageSize,
-            Data = items
+            Data = items.Select(TransactionResponse.FromTransaction)
         });
+    }
+
+    [HttpGet("spending-flexibility/category-defaults")]
+    public IActionResult GetSpendingFlexibilityCategoryDefaults()
+    {
+        if (GetCurrentUserId() is null)
+        {
+            return UnauthorizedProblem("A valid authenticated user is required to access transactions.");
+        }
+
+        return Ok(SpendingFlexibilityResolver.CategoryDefaults);
     }
 
     [HttpGet("{transactionId:guid}")]
@@ -221,7 +233,7 @@ public class TransactionsController : ControllerBase
             return TransactionNotFoundProblem();
         }
 
-        return Ok(transaction);
+        return Ok(TransactionResponse.FromTransaction(transaction));
     }
 
     [HttpPost]
@@ -242,6 +254,8 @@ public class TransactionsController : ControllerBase
             ? TransactionTreatment.GetDefault(request.Amount, category)
             : TransactionTreatment.Normalize(request.Treatment);
         var hasInvalidTreatment = treatment is null;
+        var flexibilityError = ValidateSpendingFlexibilityOverride(
+            request.SpendingFlexibilityOverride, treatment, out var flexibilityOverride);
         var financialValueValidation = FinancialValueValidator.Validate(
             request.Amount,
             request.Date);
@@ -251,7 +265,8 @@ public class TransactionsController : ControllerBase
             description.Length > 200 ||
             notes?.Length > 500 ||
             category is null ||
-            hasInvalidTreatment)
+            hasInvalidTreatment ||
+            flexibilityError is not null)
         {
             return this.ApiValidationProblem(
                 "Invalid transaction",
@@ -292,6 +307,11 @@ public class TransactionsController : ControllerBase
                     {
                         errors.AddModelError(nameof(request.Treatment), "Unsupported transaction statistics treatment.");
                     }
+
+                    if (flexibilityError is not null)
+                    {
+                        errors.AddModelError(nameof(request.SpendingFlexibilityOverride), flexibilityError);
+                    }
                 });
         }
 
@@ -302,6 +322,7 @@ public class TransactionsController : ControllerBase
             Amount = request.Amount,
             Category = category,
             Treatment = treatment!,
+            ManualSpendingFlexibility = flexibilityOverride?.Value,
             Notes = notes,
             Metadata = new TransactionMetadata
             {
@@ -311,7 +332,7 @@ public class TransactionsController : ControllerBase
 
         await _repository.AddRangeAsync([transaction]);
 
-        return Created($"/api/transactions/{transaction.Id}", transaction);
+        return Created($"/api/transactions/{transaction.Id}", TransactionResponse.FromTransaction(transaction));
     }
 
     [HttpGet("summary")]
@@ -846,16 +867,19 @@ public class TransactionsController : ControllerBase
             ? TransactionTreatment.GetDefault(request.Amount, category)
             : TransactionTreatment.Normalize(request.Treatment);
         var hasInvalidTreatment = treatment is null;
+        var flexibilityError = ValidateSpendingFlexibilityOverride(
+            request.SpendingFlexibilityOverride, treatment, out var flexibilityOverride);
         var financialValueValidation = FinancialValueValidator.Validate(
             request.Amount,
             request.Date);
 
         if (!financialValueValidation.IsValid ||
-            string.IsNullOrWhiteSpace(description) ||
+            description is null ||
             description.Length > 200 ||
             notes?.Length > 500 ||
             category is null ||
-            hasInvalidTreatment)
+            hasInvalidTreatment ||
+            flexibilityError is not null)
         {
             return this.ApiValidationProblem(
                 "Invalid transaction",
@@ -872,7 +896,7 @@ public class TransactionsController : ControllerBase
                         errors.AddModelError(nameof(request.Amount), error);
                     }
 
-                    if (string.IsNullOrWhiteSpace(description))
+                    if (description is null)
                     {
                         errors.AddModelError(nameof(request.Description), "Description is required.");
                     }
@@ -896,6 +920,11 @@ public class TransactionsController : ControllerBase
                     {
                         errors.AddModelError(nameof(request.Treatment), "Unsupported transaction statistics treatment.");
                     }
+
+                    if (flexibilityError is not null)
+                    {
+                        errors.AddModelError(nameof(request.SpendingFlexibilityOverride), flexibilityError);
+                    }
                 });
         }
 
@@ -909,6 +938,7 @@ public class TransactionsController : ControllerBase
                 Description = description,
                 Category = category,
                 Treatment = treatment!,
+                SpendingFlexibilityOverride = flexibilityOverride,
                 Notes = notes
             });
 
@@ -917,7 +947,7 @@ public class TransactionsController : ControllerBase
             return TransactionNotFoundProblem();
         }
 
-        return Ok(transaction);
+        return Ok(TransactionResponse.FromTransaction(transaction));
     }
 
     [HttpPatch("{transactionId:guid}/category")]
@@ -946,7 +976,7 @@ public class TransactionsController : ControllerBase
             return TransactionNotFoundProblem();
         }
 
-        return Ok(transaction);
+        return Ok(TransactionResponse.FromTransaction(transaction));
     }
 
     [HttpDelete("{transactionId:guid}")]
@@ -1019,7 +1049,7 @@ public class TransactionsController : ControllerBase
 
         await _repository.SaveChangesAsync(cancellationToken);
 
-        return Ok(transaction);
+        return Ok(TransactionResponse.FromTransaction(transaction));
     }
 
     [HttpPost("ai/categorize")]
@@ -1386,6 +1416,34 @@ public class TransactionsController : ControllerBase
         }
     }
 
+    private static string? ValidateSpendingFlexibilityOverride(
+        JsonElement input, string? treatment, out SpendingFlexibilityOverrideChange? change)
+    {
+        change = null;
+        if (input.ValueKind == JsonValueKind.Undefined)
+            return null;
+
+        var inputValue = input.ValueKind == JsonValueKind.String ? input.GetString() : null;
+        SpendingFlexibilityOverride? manualOverride = inputValue switch
+        {
+            nameof(SpendingFlexibilityOverride.Essential) => SpendingFlexibilityOverride.Essential,
+            nameof(SpendingFlexibilityOverride.Optimizable) => SpendingFlexibilityOverride.Optimizable,
+            nameof(SpendingFlexibilityOverride.Optional) => SpendingFlexibilityOverride.Optional,
+            nameof(SpendingFlexibilityOverride.Unclassified) => SpendingFlexibilityOverride.Unclassified,
+            _ => null
+        };
+        if (manualOverride is null && inputValue != "UseAutomatic")
+        {
+            return "Choose Essential, Optimizable, Optional, Unclassified, or UseAutomatic.";
+        }
+
+        if (treatment != TransactionTreatment.Expense)
+            return "Financial flexibility is available for Expense transactions.";
+
+        change = new SpendingFlexibilityOverrideChange(manualOverride);
+        return null;
+    }
+
     public sealed record UpdateTransactionCategoryRequest(string? Category);
     public sealed record CategorizeTransactionsRequest(IReadOnlyList<Guid>? TransactionIds);
     public sealed record CreateTransactionRequest(
@@ -1394,13 +1452,15 @@ public class TransactionsController : ControllerBase
         string? Description,
         string? Category,
         string? Notes,
-        string? Treatment = null);
+        string? Treatment = null,
+        JsonElement SpendingFlexibilityOverride = default);
     public sealed record UpdateTransactionRequest(
         DateOnly Date,
         decimal Amount,
         string? Description,
         string? Category,
         string? Notes,
-        string? Treatment = null);
+        string? Treatment = null,
+        JsonElement SpendingFlexibilityOverride = default);
 
 }

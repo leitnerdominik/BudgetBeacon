@@ -66,6 +66,7 @@ public class TransactionRepository : ITransactionRepository
             Value = payload
         };
 
+        // Omitting the nullable manual override starts each imported transaction in automatic mode.
         const string sql = """
             INSERT INTO "Transactions" ("Id", "UserId", "Date", "Amount", "Category", "Treatment", "Notes", "ImportFingerprint", "Metadata")
             SELECT

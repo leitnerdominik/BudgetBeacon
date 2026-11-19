@@ -34,6 +34,8 @@ import { useCreateTransaction } from "../hooks/useCreateTransaction";
 import { useUpdateTransaction } from "../hooks/useUpdateTransaction";
 import { getTransactionsReturnPath } from "../transactionListUrlState";
 import type { Transaction } from "../types";
+import type { SpendingFlexibilityChoice } from "../spendingFlexibility";
+import { SpendingFlexibilityField } from "./SpendingFlexibilityField";
 import {
   maximumAbsoluteTransactionAmountInput,
   maximumSupportedTransactionDate,
@@ -83,6 +85,8 @@ export const TransactionForm = ({
         transaction?.category ?? "Food & Groceries",
       ),
   );
+  const savedFlexibility = transaction?.spendingFlexibilityOverride ?? "UseAutomatic";
+  const [draftFlexibility, setDraftFlexibility] = useState<SpendingFlexibilityChoice>();
 
   const amountValidation = validateTransactionAmount(amount);
   const parsedAmount = amountValidation.value ?? 0;
@@ -97,7 +101,7 @@ export const TransactionForm = ({
     isOnline &&
     isDateValid &&
     isAmountValid &&
-    normalizedDescription.length > 0 &&
+    (isEdit || normalizedDescription.length > 0) &&
     !createTransactionMutation.isPending &&
     !updateTransactionMutation.isPending;
 
@@ -135,6 +139,9 @@ export const TransactionForm = ({
       category,
       treatment,
       notes: normalizedNotes || null,
+      ...(treatment === "Expense" && draftFlexibility !== undefined
+        ? { spendingFlexibilityOverride: draftFlexibility }
+        : {}),
     };
     const options = {
       onSuccess: () => navigate(transactionsReturnPath),
@@ -437,7 +444,7 @@ export const TransactionForm = ({
                       disabled={isPending}
                       slotProps={{ htmlInput: { maxLength: 200 } }}
                       helperText={`${description.length}/200`}
-                      required
+                      required={!isEdit}
                       fullWidth
                     />
                   </Grid>
@@ -459,15 +466,24 @@ export const TransactionForm = ({
                 <Divider />
 
                 <Box>
-                  <Typography variant="subtitle1" fontWeight={700}>
-                    Category
-                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Category
+                    </Typography>
+                    {isEdit && category !== "Uncategorized" ? (
+                      <Button size="small" disabled={isPending} onClick={() => setCategory("Uncategorized")}>
+                        Clear category
+                      </Button>
+                    ) : null}
+                  </Stack>
                   <Typography
                     variant="body2"
                     color="text.secondary"
                     sx={{ mt: 0.5, mb: 2 }}
                   >
-                    Choose the category that best matches this transaction.
+                    {category === "Uncategorized"
+                      ? "Uncategorized"
+                      : "Choose the category that best matches this transaction."}
                   </Typography>
                   <Grid
                     container
@@ -573,6 +589,16 @@ export const TransactionForm = ({
                 </TextField>
               </>
             )}
+
+            {treatment === "Expense" ? (
+              <SpendingFlexibilityField
+                value={draftFlexibility ?? savedFlexibility}
+                category={category}
+                transaction={transaction}
+                disabled={isPending}
+                onChange={(choice) => setDraftFlexibility(choice === savedFlexibility ? undefined : choice)}
+              />
+            ) : null}
 
             {!isOnline ? (
               <Typography variant="body2" color="error">

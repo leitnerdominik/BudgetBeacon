@@ -8,6 +8,7 @@ public sealed partial class StatisticsAggregationService
 {
     private const int TopExpenseLimit = 5;
     private const int RecurringExpenseLimit = 10;
+    private static readonly string[] FlexibilityClasses = Enum.GetNames<SpendingFlexibilityOverride>();
 
     private readonly FinanceAggregationService _financeAggregationService;
 
@@ -28,6 +29,7 @@ public sealed partial class StatisticsAggregationService
             ? BuildSummary(FilterByDateRange(allTransactions, startDate.AddMonths(-1), startDate.AddTicks(-1)))
             : null;
         var trend = BuildMonthlyTrend(periodTransactions, startDate, endDate);
+        var summary = BuildSummary(periodTransactions);
 
         return new StatisticsOverview(
             AllTime: false,
@@ -35,7 +37,7 @@ public sealed partial class StatisticsAggregationService
             StartDate: startDate,
             EndDate: endDate,
             TrendGranularity: "month",
-            Summary: BuildSummary(periodTransactions),
+            Summary: summary,
             MonthlyTotals: BuildMonthlyTotalsStatistics(trend),
             PreviousMonthSummary: previousMonthSummary,
             Trend: trend,
@@ -43,7 +45,8 @@ public sealed partial class StatisticsAggregationService
             TopExpenses: BuildTopExpenses(periodTransactions, TopExpenseLimit),
             RecurringExpenses: monthsBack >= 2
                 ? BuildRecurringExpenses(periodTransactions, RecurringExpenseLimit)
-                : []);
+                : [],
+            FinancialFlexibility: BuildFinancialFlexibility(periodTransactions, summary));
     }
 
     public StatisticsOverview BuildAllTime(IEnumerable<Transaction> transactions)
@@ -60,6 +63,7 @@ public sealed partial class StatisticsAggregationService
         var monthlyTrend = startDate.HasValue && endDate.HasValue
             ? BuildMonthlyTrend(allTransactions, startDate.Value, endDate.Value)
             : [];
+        var summary = BuildSummary(allTransactions);
 
         return new StatisticsOverview(
             AllTime: true,
@@ -67,13 +71,14 @@ public sealed partial class StatisticsAggregationService
             StartDate: startDate,
             EndDate: endDate,
             TrendGranularity: "year",
-            Summary: BuildSummary(allTransactions),
+            Summary: summary,
             MonthlyTotals: BuildMonthlyTotalsStatistics(monthlyTrend),
             PreviousMonthSummary: null,
             Trend: BuildYearlyTrend(allTransactions),
             Categories: BuildCategorySummaries(allTransactions),
             TopExpenses: BuildTopExpenses(allTransactions, TopExpenseLimit),
-            RecurringExpenses: BuildRecurringExpenses(allTransactions, RecurringExpenseLimit));
+            RecurringExpenses: BuildRecurringExpenses(allTransactions, RecurringExpenseLimit),
+            FinancialFlexibility: BuildFinancialFlexibility(allTransactions, summary));
     }
 
     public MonthlySummary BuildMonthlySummary(
@@ -146,6 +151,35 @@ public sealed partial class StatisticsAggregationService
             _financeAggregationService.CalculateMedian(expenses),
             transactions.Count,
             analyticsTransactions.Count);
+    }
+
+    private static FinancialFlexibilityStatistics BuildFinancialFlexibility(
+        IReadOnlyCollection<Transaction> transactions,
+        StatisticsSummary summary)
+    {
+        var groupTotals = transactions
+            .Where(IsExpense)
+            .GroupBy(transaction => SpendingFlexibilityResolver.Resolve(transaction).Value ??
+                nameof(SpendingFlexibilityOverride.Unclassified))
+            .ToDictionary(group => group.Key, SumAbsolute);
+        var grossExpenses = groupTotals.Values.Sum();
+        var groups = FlexibilityClasses.Select(classification =>
+        {
+            var amount = groupTotals.GetValueOrDefault(classification);
+            return new SpendingFlexibilityGroup(
+                classification,
+                amount,
+                grossExpenses > 0 ? amount / grossExpenses * 100 : 0);
+        }).ToArray();
+
+        return new FinancialFlexibilityStatistics(
+            Groups: groups,
+            GrossExpenses: grossExpenses,
+            RefundAdjustment: transactions.Where(IsRefund).Sum(GetExpenseImpact),
+            NetExpenses: -summary.TotalExpense,
+            EssentialExpenses: groupTotals.GetValueOrDefault(nameof(SpendingFlexibilityOverride.Essential)),
+            AdjustableExpenses: groupTotals.GetValueOrDefault(nameof(SpendingFlexibilityOverride.Optimizable)) +
+                groupTotals.GetValueOrDefault(nameof(SpendingFlexibilityOverride.Optional)));
     }
 
     private IReadOnlyList<StatisticsTrendPoint> BuildMonthlyTrend(
@@ -409,8 +443,7 @@ public sealed partial class StatisticsAggregationService
         string.Equals(GetEffectiveTreatment(transaction), TransactionTreatment.Adjustment, StringComparison.Ordinal);
 
     private static string GetEffectiveTreatment(Transaction transaction) =>
-        TransactionTreatment.Normalize(transaction.Treatment) ??
-        TransactionTreatment.GetDefault(transaction.Amount, transaction.Category);
+        TransactionTreatment.GetEffective(transaction.Treatment, transaction.Amount, transaction.Category);
 
     private static decimal GetExpenseImpact(Transaction transaction) =>
         IsRefund(transaction)

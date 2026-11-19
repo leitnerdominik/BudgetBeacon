@@ -15,6 +15,7 @@ namespace BudgetBeacon.Core.Entities
         public decimal Amount { get; set; }
         public string Category { get; set; } = "Uncategorized";
         public string Treatment { get; set; } = string.Empty;
+        public SpendingFlexibilityOverride? ManualSpendingFlexibility { get; set; }
         public string? Notes { get; set; }
         public string? ImportFingerprint { get; set; }
 
@@ -32,6 +33,11 @@ namespace BudgetBeacon.Core.Entities
             Treatment = update.Treatment;
             Notes = update.Notes;
             Metadata.RawDescription = update.Description;
+
+            if (update.SpendingFlexibilityOverride is { } flexibility)
+            {
+                ManualSpendingFlexibility = flexibility.Value;
+            }
 
             if (shouldResetAiMetadata)
             {
