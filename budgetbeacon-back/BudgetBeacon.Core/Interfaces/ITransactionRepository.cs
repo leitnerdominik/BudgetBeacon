@@ -46,6 +46,8 @@ namespace BudgetBeacon.Core.Interfaces
             string userId,
             TransactionQueryOptions options,
             int pageNumber,
-            int pageSize);
+            int pageSize,
+            IReadOnlyList<SpendingFlexibilityRule>? rules = null,
+            CancellationToken cancellationToken = default);
     }
 }

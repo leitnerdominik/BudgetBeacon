@@ -1,4 +1,5 @@
-import { Box, Card, CardContent, Divider, Stack, Typography } from "@mui/material";
+import { Box, Card, CardContent, Divider, Link, Stack, Typography } from "@mui/material";
+import { Link as RouterLink } from "react-router-dom";
 
 import type { FinancialFlexibilityStatistics, SpendingFlexibilityOverride } from "../../types/api";
 import { formatCurrency } from "../../utils/formatDate";
@@ -20,7 +21,13 @@ const detailsGrid = {
   m: 0,
 };
 
-export const FinancialFlexibility = ({ report }: { report: FinancialFlexibilityStatistics }) => {
+export const FinancialFlexibility = ({
+  report,
+  unclassifiedTransactionsPath,
+}: {
+  report: FinancialFlexibilityStatistics;
+  unclassifiedTransactionsPath: string;
+}) => {
   const metrics = [
     ["Essential Expenses", report.essentialExpenses],
     ["Adjustable Expenses", report.adjustableExpenses],
@@ -66,7 +73,13 @@ export const FinancialFlexibility = ({ report }: { report: FinancialFlexibilityS
               <Box key={classification} sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, justifyContent: "space-between" }}>
                 <Stack component="dt" direction="row" spacing={0.75} alignItems="center">
                   <Box aria-hidden="true" sx={{ width: 10, height: 10, flexShrink: 0, borderRadius: "50%", bgcolor: groupColors[classification] }} />
-                  <Typography component="span" variant="body2">{classification}</Typography>
+                  {classification === "Unclassified" ? (
+                    <Link component={RouterLink} to={unclassifiedTransactionsPath} variant="body2">
+                      {classification}
+                    </Link>
+                  ) : (
+                    <Typography component="span" variant="body2">{classification}</Typography>
+                  )}
                 </Stack>
                 <Typography component="dd" variant="body2" sx={{ m: 0, textAlign: "right" }}>
                   {formatCurrency(amount)}{" · "}{percentFormatter.format(percentage)} %

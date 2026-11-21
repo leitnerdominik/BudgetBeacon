@@ -30,7 +30,8 @@ public sealed record TransactionQueryOptions(
     string? Category = null,
     TransactionTypeFilter TransactionType = TransactionTypeFilter.All,
     TransactionSortField SortBy = TransactionSortField.Date,
-    TransactionSortDirection SortDirection = TransactionSortDirection.Desc);
+    TransactionSortDirection SortDirection = TransactionSortDirection.Desc,
+    bool UnclassifiedOnly = false);
 
 public static class TransactionQuery
 {
@@ -56,7 +57,7 @@ public static class TransactionQuery
         query = options.TransactionType switch
         {
             TransactionTypeFilter.Income => query.Where(transaction => transaction.Treatment == TransactionTreatment.Income),
-            TransactionTypeFilter.Expense => query.Where(transaction =>
+            TransactionTypeFilter.Expense when !options.UnclassifiedOnly => query.Where(transaction =>
                 transaction.Treatment == TransactionTreatment.Expense ||
                 transaction.Treatment == TransactionTreatment.Refund),
             _ => query
@@ -73,7 +74,7 @@ public static class TransactionQuery
         return query;
     }
 
-    public static IQueryable<Transaction> ApplySorting(
+    public static IOrderedQueryable<Transaction> ApplySorting(
         IQueryable<Transaction> query,
         TransactionQueryOptions options)
     {

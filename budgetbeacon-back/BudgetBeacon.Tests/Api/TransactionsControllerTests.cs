@@ -437,7 +437,8 @@ public sealed class TransactionsControllerTests
             category: "Not a category",
             transactionType: "refund",
             sortBy: "balance",
-            sortDirection: "sideways");
+            sortDirection: "sideways",
+            spendingFlexibility: "unknown");
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         var problem = Assert.IsType<ValidationProblemDetails>(badRequest.Value);
@@ -447,6 +448,7 @@ public sealed class TransactionsControllerTests
         Assert.Contains("transactionType", problem.Errors.Keys);
         Assert.Contains("sortBy", problem.Errors.Keys);
         Assert.Contains("sortDirection", problem.Errors.Keys);
+        Assert.Contains("spendingFlexibility", problem.Errors.Keys);
     }
 
     [Fact]
@@ -478,6 +480,27 @@ public sealed class TransactionsControllerTests
         Assert.Equal(TransactionSortDirection.Asc, repository.LastPagedOptions.SortDirection);
         Assert.Equal(2, repository.LastPagedPageNumber);
         Assert.Equal(25, repository.LastPagedPageSize);
+        Assert.False(repository.LastPagedOptions.UnclassifiedOnly);
+    }
+
+    [Fact]
+    public async Task GetAllTransactions_PassesCurrentUsersRulesToUnclassifiedFilter()
+    {
+        var repository = new FakeTransactionRepository();
+        var rules = new FakeSpendingFlexibilityRuleRepository();
+        var currentUsersRule = new SpendingFlexibilityRule("user-1", SpendingFlexibilityRuleMatch.Exact,
+            "Coffee Store", SpendingFlexibilityOverride.Unclassified);
+        await rules.AddAsync(currentUsersRule, default);
+        await rules.AddAsync(new("user-2", SpendingFlexibilityRuleMatch.Exact,
+            "Other Store", SpendingFlexibilityOverride.Optional), default);
+        var controller = CreateController(repository, ruleRepository: rules);
+
+        var result = await controller.GetAllTransactions(spendingFlexibility: " unclassified ");
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("user-1", repository.LastPagedUserId);
+        Assert.True(repository.LastPagedOptions?.UnclassifiedOnly);
+        Assert.Equal(currentUsersRule.Id, Assert.Single(repository.LastPagedRules!).Id);
     }
 
     [Fact]
@@ -2735,6 +2758,7 @@ public sealed class TransactionsControllerTests
         public string? LastCategorizationBatchUserId { get; private set; }
         public IReadOnlyCollection<Guid> LastCategorizationBatchIds { get; private set; } = [];
         public TransactionQueryOptions? LastPagedOptions { get; private set; }
+        public IReadOnlyList<SpendingFlexibilityRule>? LastPagedRules { get; private set; }
         public int? LastPagedPageNumber { get; private set; }
         public int? LastPagedPageSize { get; private set; }
 
@@ -2916,11 +2940,14 @@ public sealed class TransactionsControllerTests
             string userId,
             TransactionQueryOptions options,
             int pageNumber,
-            int pageSize)
+            int pageSize,
+            IReadOnlyList<SpendingFlexibilityRule>? rules = null,
+            CancellationToken cancellationToken = default)
         {
             PagedCalls++;
             LastPagedUserId = userId;
             LastPagedOptions = options;
+            LastPagedRules = rules;
             LastPagedPageNumber = pageNumber;
             LastPagedPageSize = pageSize;
             return Task.FromResult((PagedTransactions, PagedTotalCount));

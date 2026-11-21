@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using BudgetBeacon.Core.Entities;
+using BudgetBeacon.Core.Models;
 using BudgetBeacon.Core.Services;
 using BudgetBeacon.Infrastructure.Data;
 
@@ -7,6 +8,62 @@ namespace BudgetBeacon.Tests.Infrastructure;
 
 public sealed class TransactionRepositoryTests
 {
+    [Fact]
+    public async Task UnclassifiedPages_MatchStatisticsAndReflectMerchantRuleChanges()
+    {
+        var start = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = start.AddMonths(1).AddTicks(-1);
+        var manual = Expense("Manual", -12m, "Food & Groceries", end);
+        manual.ManualSpendingFlexibility = SpendingFlexibilityOverride.Unclassified;
+        var merchant = Expense("Merchant", -23m, "Food & Groceries", start);
+        var legacy = Expense("Legacy", -34m, "Uncategorized", start);
+        legacy.Treatment = "";
+        legacy.ApplySpendingFlexibilityReview(null);
+        var classified = Expense("Classified", -45m, "Food & Groceries", start);
+        var refund = Expense("Refund", 56m, "Other", end);
+        refund.Treatment = TransactionTreatment.Refund;
+        var otherPeriod = Expense("Outside the period", -67m, "Other", end.AddTicks(1));
+        Transaction[] reportRows = [otherPeriod, manual, refund, classified, merchant, legacy];
+        var candidates = TransactionQuery.ApplyFilters(reportRows.AsQueryable(),
+            new(StartDate: start, EndDate: end, TransactionType: TransactionTypeFilter.Expense, UnclassifiedOnly: true));
+        var statistics = new StatisticsAggregationService(new FinanceAggregationService());
+
+        await AssertPages(SpendingFlexibilityOverride.Unclassified, [manual, merchant, legacy]);
+        await AssertPages(SpendingFlexibilityOverride.Essential, [manual, legacy]);
+
+        async Task AssertPages(SpendingFlexibilityOverride ruleValue, Transaction[] expected)
+        {
+            SpendingFlexibilityRule[] rules = [new("user-1", SpendingFlexibilityRuleMatch.Exact, "Merchant", ruleValue)];
+            var first = await TransactionRepository.ReadUnclassifiedPageAsync(ReadCandidates(), rules, 1, 2, default);
+            var second = await TransactionRepository.ReadUnclassifiedPageAsync(ReadCandidates(), rules, 2, 2, default);
+
+            Assert.Equal(expected.Length, first.TotalCount);
+            Assert.Equal(first.TotalCount, second.TotalCount);
+            var matches = first.Items.Concat(second.Items).ToList();
+            Assert.Equal(expected.Select(row => row.Id), matches.Select(row => row.Id));
+            var report = statistics.BuildFixedPeriod(reportRows, start, end, 1, rules);
+            var group = Assert.Single(report.FinancialFlexibility.Groups, group => group.Classification == "Unclassified");
+            Assert.Equal(group.Amount, matches.Sum(row => Math.Abs(row.Amount)));
+        }
+
+        async IAsyncEnumerable<Transaction> ReadCandidates()
+        {
+            await Task.Yield();
+            foreach (var transaction in candidates)
+            {
+                yield return transaction;
+            }
+        }
+    }
+
+    private static Transaction Expense(string description, decimal amount, string category, DateTime date) =>
+        new()
+        {
+            Id = Guid.NewGuid(), UserId = "user-1", Amount = amount, Category = category,
+            Treatment = TransactionTreatment.Expense, Date = date,
+            Metadata = new TransactionMetadata { RawDescription = description }
+        };
+
     [Fact]
     public void ExportQuery_ContainsEveryMatchingRowInStableOrder()
     {

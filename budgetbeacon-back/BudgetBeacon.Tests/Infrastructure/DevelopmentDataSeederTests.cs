@@ -447,7 +447,9 @@ public sealed class DevelopmentDataSeederTests
             string userId,
             TransactionQueryOptions options,
             int pageNumber,
-            int pageSize) =>
+            int pageSize,
+            IReadOnlyList<SpendingFlexibilityRule>? rules = null,
+            CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 }

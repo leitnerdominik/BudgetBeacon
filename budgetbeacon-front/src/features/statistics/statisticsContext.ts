@@ -9,4 +9,5 @@ export type StatisticsContext = {
   isSmallScreen: boolean;
   isMobileView: boolean;
   onCategorySelect: (category: string) => void;
+  unclassifiedTransactionsPath: string;
 };

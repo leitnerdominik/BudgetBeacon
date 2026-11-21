@@ -147,6 +147,7 @@ export interface TransactionQueryRequest {
   searchTerm: string;
   category: string;
   transactionType: TransactionTypeFilter;
+  spendingFlexibility: "" | "Unclassified";
   startDate: string;
   endDate: string;
   sortBy: TransactionSortField;
@@ -157,6 +158,7 @@ export const defaultTransactionQuery: TransactionQueryRequest = {
   searchTerm: "",
   category: "",
   transactionType: "all",
+  spendingFlexibility: "",
   startDate: "",
   endDate: "",
   sortBy: "date",
@@ -188,6 +190,7 @@ export const getTransactions = async (
       searchTerm: query.searchTerm.trim() || undefined,
       category: query.category || undefined,
       transactionType: query.transactionType,
+      spendingFlexibility: query.spendingFlexibility || undefined,
       startDate: query.startDate || undefined,
       endDate: query.endDate || undefined,
       sortBy: query.sortBy,

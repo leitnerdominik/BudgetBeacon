@@ -476,6 +476,15 @@ test("server-renders production Statistics shell, navigation, content and reques
               const capturedContext = captureContext.mock.calls[0]?.arguments[0];
               assert.ok(capturedContext);
               assert.equal(capturedContext.timeframe, timeframe);
+              const unclassified = new URL(capturedContext.unclassifiedTransactionsPath, "https://budgetbeacon.test");
+              assert.equal(unclassified.pathname, "/transactions");
+              assert.deepEqual(Object.fromEntries(unclassified.searchParams), {
+                spendingFlexibility: "Unclassified",
+                ...(timeframe !== "all" && dates.startDate && dates.endDate ? {
+                  startDate: dates.startDate?.slice(0, 10),
+                  endDate: dates.endDate?.slice(0, 10),
+                } : {}),
+              });
               const category = "Food & Groceries / Café + 50%";
               capturedContext.onCategorySelect(category);
               assert.equal(router.state.location.pathname, "/transactions");
@@ -509,8 +518,11 @@ test("server-renders production Statistics shell, navigation, content and reques
       const activeLinks = links.filter((link) => link.includes('aria-current="page"'));
       assert.equal(activeLinks.length, 1);
       assert.ok(activeLinks[0].includes(`href="${path}?timeframe=1&amp;month=2026-01&amp;tag=a&amp;tag=b"`));
-      assert.equal(links.length, 3);
-      assert.ok(links.every((link) => link.includes("tag=a&amp;tag=b")));
+      const transactionLinks = links.filter((link) => link.includes('href="/transactions?'));
+      assert.equal(transactionLinks.length, id === "spending" ? 1 : 0);
+      const viewLinks = links.filter((link) => !transactionLinks.includes(link));
+      assert.equal(viewLinks.length, 3);
+      assert.ok(viewLinks.every((link) => link.includes("tag=a&amp;tag=b")));
       assert.doesNotMatch(html, /Infinity|NaN/);
       if (id === "overview") {
         assert.match(html, /Month Comparison/);
@@ -519,6 +531,7 @@ test("server-renders production Statistics shell, navigation, content and reques
         assert.doesNotMatch(html, /Previous-month comparison is unavailable|Expenses by Category|Average Monthly Income/);
       }
       if (id === "spending") {
+        assert.match(html, /href="\/transactions\?spendingFlexibility=Unclassified&amp;startDate=2026-01-01&amp;endDate=2026-01-31"[^>]*>Unclassified<\/a>/);
         assert.match(html, /Expenses by Category/);
         assert.match(html, /No expenses for this period/);
         assert.match(html, /No expense transactions/);

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Box, Typography, useMediaQuery, useTheme } from "@mui/material";
 import { Outlet, useNavigate, useSearchParams } from "react-router-dom";
 
-import { defaultTransactionQuery, type StatisticsRequest } from "../../api/transactionsApi";
+import { defaultTransactionQuery, type StatisticsRequest, type TransactionQueryRequest } from "../../api/transactionsApi";
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
@@ -47,21 +47,28 @@ export const StatisticsShell = () => {
     const next = buildStatisticsSearchParams(searchParams, nextTimeframe, nextMonth);
     if (next.toString() !== searchParams.toString()) setSearchParams(next);
   };
-  const onCategorySelect = (category: string) => {
+  const getTransactionListPath = (filters: Partial<TransactionQueryRequest>) => {
     const params = buildTransactionListSearchParams({
       page: 0,
       pageSize: 10,
       query: {
         ...defaultTransactionQuery,
-        category,
-        transactionType: "expense",
         startDate: data?.startDate?.slice(0, 10) ?? "",
         endDate: data?.endDate?.slice(0, 10) ?? "",
+        ...filters,
       },
     });
-    navigate(`/transactions?${params}`);
+    return `/transactions?${params}`;
   };
-  const context: StatisticsContext = { data, timeframe, selectedMonth, periodLabel, isSmallScreen, isMobileView, onCategorySelect };
+  const onCategorySelect = (category: string) =>
+    navigate(getTransactionListPath({ category, transactionType: "expense" }));
+  const unclassifiedTransactionsPath = getTransactionListPath({
+    spendingFlexibility: "Unclassified",
+    ...(isAllTime ? { startDate: "", endDate: "" } : {}),
+  });
+  const context: StatisticsContext = {
+    data, timeframe, selectedMonth, periodLabel, isSmallScreen, isMobileView, onCategorySelect, unclassifiedTransactionsPath,
+  };
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%", containerType: "inline-size", overflowWrap: "anywhere", "& .MuiButton-root": { minHeight: 44 }, "& .MuiButtonBase-root:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 } }}>

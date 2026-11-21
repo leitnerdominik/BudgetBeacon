@@ -116,7 +116,8 @@ public class TransactionsController : ControllerBase
         [FromQuery] string sortDirection = "desc",
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 15,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [FromQuery] string? spendingFlexibility = null)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -133,6 +134,9 @@ public class TransactionsController : ControllerBase
         var hasInvalidSortDirection = !TryParseTransactionSortDirection(sortDirection, out var parsedSortDirection);
         var hasInvalidDateRange = startDate.HasValue && endDate.HasValue && startDate.Value > endDate.Value;
         var hasInvalidSearchTerm = searchTerm?.Length > 100;
+        var unclassifiedOnly = string.Equals(spendingFlexibility?.Trim(),
+            nameof(SpendingFlexibilityOverride.Unclassified), StringComparison.OrdinalIgnoreCase);
+        var hasInvalidSpendingFlexibility = !string.IsNullOrWhiteSpace(spendingFlexibility) && !unclassifiedOnly;
 
         if (page < 1 ||
             pageSize < 1 ||
@@ -142,7 +146,8 @@ public class TransactionsController : ControllerBase
             hasInvalidSortBy ||
             hasInvalidSortDirection ||
             hasInvalidDateRange ||
-            hasInvalidSearchTerm)
+            hasInvalidSearchTerm ||
+            hasInvalidSpendingFlexibility)
         {
             return this.ApiValidationProblem(
                 "Invalid transaction query",
@@ -188,6 +193,11 @@ public class TransactionsController : ControllerBase
                     {
                         errors.AddModelError(nameof(searchTerm), "Search term must be 100 characters or fewer.");
                     }
+
+                    if (hasInvalidSpendingFlexibility)
+                    {
+                        errors.AddModelError(nameof(spendingFlexibility), "Spending flexibility must be Unclassified.");
+                    }
                 });
         }
 
@@ -199,9 +209,12 @@ public class TransactionsController : ControllerBase
             Category: normalizedCategory,
             TransactionType: parsedTransactionType,
             SortBy: parsedSortBy,
-            SortDirection: parsedSortDirection);
-        var (items, totalCount) = await _repository.GetTransactionsPagedAsync(userId, queryOptions, page, pageSize);
-        var rules = await _spendingFlexibilityRules.GetAsync(userId, cancellationToken);
+            SortDirection: parsedSortDirection,
+            UnclassifiedOnly: unclassifiedOnly);
+        var rules = unclassifiedOnly ? await _spendingFlexibilityRules.GetAsync(userId, cancellationToken) : null;
+        var (items, totalCount) = await _repository.GetTransactionsPagedAsync(
+            userId, queryOptions, page, pageSize, rules, cancellationToken);
+        rules ??= await _spendingFlexibilityRules.GetAsync(userId, cancellationToken);
 
         return Ok(new
         {

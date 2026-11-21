@@ -65,6 +65,7 @@ export const parseTransactionListUrlState = (
       searchTerm: searchParams.get("search") ?? defaultTransactionQuery.searchTerm,
       category: searchParams.get("category") ?? defaultTransactionQuery.category,
       transactionType: transactionType ?? defaultTransactionQuery.transactionType,
+      spendingFlexibility: searchParams.get("spendingFlexibility") === "Unclassified" ? "Unclassified" : "",
       startDate: searchParams.get("startDate") ?? defaultTransactionQuery.startDate,
       endDate: searchParams.get("endDate") ?? defaultTransactionQuery.endDate,
       sortBy: sortBy ?? defaultTransactionQuery.sortBy,
@@ -97,6 +98,10 @@ export const buildTransactionListSearchParams = (
 
   if (state.query.transactionType !== defaultTransactionQuery.transactionType) {
     params.set("type", state.query.transactionType);
+  }
+
+  if (state.query.spendingFlexibility) {
+    params.set("spendingFlexibility", state.query.spendingFlexibility);
   }
 
   if (state.query.startDate.length > 0) {

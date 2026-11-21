@@ -26,6 +26,7 @@ type StatisticsContentProps = {
   timeframe: StatisticsTimeframeValue;
   isSmallScreen: boolean;
   onCategorySelect: (category: string) => void;
+  unclassifiedTransactionsPath: string;
 };
 
 export const StatisticsContent = ({
@@ -39,6 +40,7 @@ export const StatisticsContent = ({
   timeframe,
   isSmallScreen,
   onCategorySelect,
+  unclassifiedTransactionsPath,
 }: StatisticsContentProps) => {
   const summary = data?.summary;
 
@@ -50,7 +52,9 @@ export const StatisticsContent = ({
         periodLabel={periodLabel}
       />
 
-      {data?.financialFlexibility && <FinancialFlexibility report={data.financialFlexibility} />}
+      {data?.financialFlexibility && (
+        <FinancialFlexibility report={data.financialFlexibility} unclassifiedTransactionsPath={unclassifiedTransactionsPath} />
+      )}
 
       <TopExpenses expenses={data?.topExpenses ?? []} periodLabel={periodLabel} />
 

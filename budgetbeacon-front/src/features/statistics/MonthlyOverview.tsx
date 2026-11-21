@@ -22,7 +22,7 @@ const formatSavingsRate = (value: number | null) =>
   value === null ? "N/A" : `${percentFormatter.format(value)} %`;
 
 export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
-  const { data, timeframe, selectedMonth, periodLabel, isSmallScreen, onCategorySelect } =
+  const { data, timeframe, selectedMonth, periodLabel, isSmallScreen, onCategorySelect, unclassifiedTransactionsPath } =
     useOutletContext<StatisticsContext>();
   const summary = data?.summary;
   const isAllTime = timeframe === "all";
@@ -89,6 +89,7 @@ export const MonthlyOverview = ({ view }: { view: StatisticsView }) => {
         timeframe={timeframe}
         isSmallScreen={isSmallScreen}
         onCategorySelect={onCategorySelect}
+        unclassifiedTransactionsPath={unclassifiedTransactionsPath}
       />
       {view === "overview" ? (
         <StatisticsSecondaryInfo summary={summary} previous={isMonthlyView ? data?.previousMonthSummary : undefined} month={selectedMonth} />

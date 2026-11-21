@@ -124,12 +124,14 @@ export const TransactionList = () => {
     transactionQuery.searchTerm.trim().length > 0 ||
     transactionQuery.category.length > 0 ||
     transactionQuery.transactionType !== "all" ||
+    transactionQuery.spendingFlexibility !== "" ||
     transactionQuery.startDate.length > 0 ||
     transactionQuery.endDate.length > 0;
   const activeFilterCount = [
     transactionQuery.searchTerm.trim(),
     transactionQuery.category,
     transactionQuery.transactionType !== "all" ? transactionQuery.transactionType : "",
+    transactionQuery.spendingFlexibility,
     transactionQuery.startDate,
     transactionQuery.endDate,
   ].filter(Boolean).length;
@@ -155,6 +157,13 @@ export const TransactionList = () => {
             transactionQuery.transactionType === "income" ? "Income" : "Expense"
           }`,
           onDelete: () => handleQueryChange("transactionType", "all"),
+        }
+      : null,
+    transactionQuery.spendingFlexibility
+      ? {
+          key: "spendingFlexibility",
+          label: `Spending flexibility: ${transactionQuery.spendingFlexibility}`,
+          onDelete: () => handleQueryChange("spendingFlexibility", ""),
         }
       : null,
     transactionQuery.startDate.length > 0
@@ -258,11 +267,27 @@ export const TransactionList = () => {
         searchTerm: "",
         category: "",
         transactionType: "all",
+        spendingFlexibility: "",
         startDate: "",
         endDate: "",
       },
     }));
   };
+
+  const renderFlexibilityFilter = (labelId: string) => (
+    <FormControl size="small" sx={{ minWidth: { md: 185 } }}>
+      <InputLabel id={labelId}>Spending flexibility</InputLabel>
+      <Select<TransactionQueryRequest["spendingFlexibility"]>
+        labelId={labelId}
+        label="Spending flexibility"
+        value={transactionQuery.spendingFlexibility}
+        onChange={(event) => handleQueryChange("spendingFlexibility", event.target.value === "Unclassified" ? "Unclassified" : "")}
+      >
+        <MenuItem value="">All</MenuItem>
+        <MenuItem value="Unclassified">Unclassified</MenuItem>
+      </Select>
+    </FormControl>
+  );
 
   const handleRegenerateCategory = (transactionId: string) => {
     regenerateCategoryMutation.mutate(transactionId);
@@ -555,6 +580,7 @@ export const TransactionList = () => {
                   <MenuItem value="Uncategorized">Uncategorized</MenuItem>
                 </Select>
               </FormControl>
+              {renderFlexibilityFilter("mobile-transaction-flexibility-filter-label")}
               <FormControl size="small" fullWidth>
                 <InputLabel id="mobile-transaction-type-filter-label">
                   Type
@@ -611,6 +637,8 @@ export const TransactionList = () => {
               direction="row"
               spacing={1.5}
               alignItems="center"
+              flexWrap="wrap"
+              useFlexGap
             >
               <TextField
                 label="Search"
@@ -620,7 +648,7 @@ export const TransactionList = () => {
                   handleQueryChange("searchTerm", event.target.value)
                 }
                 placeholder="Description or notes"
-                sx={{ flex: 1.2 }}
+                sx={{ flex: "1 1 160px" }}
               />
               <FormControl size="small" sx={{ minWidth: 190 }}>
                 <InputLabel id="transaction-category-filter-label">
@@ -689,8 +717,11 @@ export const TransactionList = () => {
               spacing={1.5}
               alignItems="center"
               justifyContent="space-between"
+              flexWrap="wrap"
+              useFlexGap
             >
-              <Stack direction="row" spacing={1.5} sx={{ flex: 1 }}>
+              <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
+                {renderFlexibilityFilter("transaction-flexibility-filter-label")}
                 <FormControl size="small" sx={{ minWidth: 180 }}>
                   <InputLabel id="transaction-sort-field-label">
                     Sort by

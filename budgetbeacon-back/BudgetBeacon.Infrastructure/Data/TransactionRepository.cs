@@ -459,7 +459,9 @@ public class TransactionRepository : ITransactionRepository, ISpendingFlexibilit
         string userId,
         TransactionQueryOptions options,
         int pageNumber,
-        int pageSize)
+        int pageSize,
+        IReadOnlyList<SpendingFlexibilityRule>? rules = null,
+        CancellationToken cancellationToken = default)
     {
         var query = _context.Transactions
             .Where(t => t.UserId == userId)
@@ -467,12 +469,51 @@ public class TransactionRepository : ITransactionRepository, ISpendingFlexibilit
 
         query = TransactionQuery.ApplyFilters(query, options);
 
-        int totalCount = await query.CountAsync();
+        var sortedQuery = TransactionQuery.ApplySorting(query, options);
+        if (options.UnclassifiedOnly)
+        {
+            var candidates = sortedQuery.ThenBy(transaction => transaction.Id)
+                .AsNoTracking()
+                .AsAsyncEnumerable();
+            return await ReadUnclassifiedPageAsync(candidates, rules, pageNumber, pageSize, cancellationToken);
+        }
 
-        var items = await TransactionQuery.ApplySorting(query, options)
+        int totalCount = await query.CountAsync(cancellationToken);
+
+        var items = await sortedQuery
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
+    internal static async Task<(IEnumerable<Transaction> Items, int TotalCount)> ReadUnclassifiedPageAsync(
+        IAsyncEnumerable<Transaction> candidates,
+        IReadOnlyList<SpendingFlexibilityRule>? rules,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var offset = (pageNumber - 1L) * pageSize;
+        var items = new List<Transaction>(pageSize);
+        var totalCount = 0;
+
+        await foreach (var transaction in candidates.WithCancellation(cancellationToken))
+        {
+            if (transaction.EffectiveTreatment != TransactionTreatment.Expense ||
+                SpendingFlexibilityResolver.Resolve(transaction, rules).Value is not null)
+            {
+                continue;
+            }
+
+            if (totalCount >= offset && items.Count < pageSize)
+            {
+                items.Add(transaction);
+            }
+
+            totalCount++;
+        }
 
         return (items, totalCount);
     }
