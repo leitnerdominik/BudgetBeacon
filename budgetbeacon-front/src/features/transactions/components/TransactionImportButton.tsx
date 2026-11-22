@@ -285,7 +285,7 @@ export const TransactionImportButton = () => {
     <>
       <Button
         component="label"
-        variant="contained"
+        variant="outlined"
         startIcon={
           isPending || isParsingFile ? (
             <CircularProgress size={20} color="inherit" />

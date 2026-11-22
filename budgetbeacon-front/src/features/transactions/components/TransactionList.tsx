@@ -32,7 +32,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { LoadingState, StatusMessage } from "../../../components/AsyncState";
 import {
@@ -49,13 +49,12 @@ import { useDeleteTransaction } from "../hooks/useDeleteTransaction";
 import { useRegenerateTransactionCategory } from "../hooks/useRegenerateTransactionCategory";
 import { useTransactions } from "../hooks/useTransactions";
 import { TransactionImportButton } from "./TransactionImportButton";
-import { SpendingFlexibilityReviewButton } from "./SpendingFlexibilityReviewButton";
 import { TransactionCategoryIcon } from "./TransactionCategoryIcon";
+import { TransactionReviewMenu } from "./TransactionReviewMenu";
 import { getTransactionTreatmentLabel } from "../transactionTreatment";
 import {
   buildTransactionListSearchParams,
   parseTransactionListUrlState,
-  unclassifiedExpensesPath,
   type TransactionListState,
 } from "../transactionListUrlState";
 import type { PaginatedTransactions, Transaction } from "../types";
@@ -395,29 +394,12 @@ export const TransactionList = () => {
           justifyContent={{ sm: "flex-end" }}
           alignItems={{ xs: "stretch", sm: "center" }}
         >
-          <Button
-            variant="outlined"
-            onClick={handleCategorizeUncategorized}
-            disabled={
-              !isOnline ||
-              !hasTransactions ||
-              isLoading ||
-              categorizeMutation.isPending
-            }
-            startIcon={
-              categorizeMutation.isPending ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <AutoAwesomeIcon />
-              )
-            }
-          >
-            Categorize uncategorized
-          </Button>
-          <Button component={Link} to={unclassifiedExpensesPath} variant="outlined">
-            Unclassified expenses
-          </Button>
-          <SpendingFlexibilityReviewButton isOnline={isOnline} />
+          <TransactionReviewMenu
+            isOnline={isOnline}
+            canCategorize={isOnline && hasTransactions && !isLoading && !categorizeMutation.isPending}
+            isCategorizing={categorizeMutation.isPending}
+            onCategorize={handleCategorizeUncategorized}
+          />
           <TransactionImportButton />
           <Button
             variant="contained"
