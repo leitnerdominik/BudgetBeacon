@@ -39,8 +39,15 @@ export const UnclassifiedExpenseRow = ({
               {formatCalendarDate(transaction.date)} · {transaction.category}
             </Typography>
           </Box>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
-            <Typography fontWeight={700} sx={{ fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            spacing={2}
+            useFlexGap
+            sx={{ flexShrink: 0, flexWrap: { xs: "wrap", sm: "nowrap" } }}
+          >
+            <Typography fontWeight={700} sx={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
               {formatCurrency(transaction.amount)}
             </Typography>
             <Button
