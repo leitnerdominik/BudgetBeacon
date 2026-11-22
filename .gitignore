@@ -43,7 +43,6 @@ logs/
 
 # Codex AI Agent
 .codex-build/
-AGENTS.md
 .codex/
 tmp/
 codex-prompts/
