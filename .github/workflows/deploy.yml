@@ -57,12 +57,46 @@ jobs:
           chmod 600 ~/.ssh/budgetbeacon_deploy_key
           ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Check API restart permission
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/budgetbeacon_deploy_key \
+            "$VPS_USER@$VPS_HOST" 'sudo -n -l -- /usr/bin/systemctl restart budgetbeacon-api.service'
+
       - name: Upload backend
         run: >
           rsync -az --delete
           -e "ssh -i ~/.ssh/budgetbeacon_deploy_key"
           publish/backend/
           "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_BACK_DIR }}/"
+
+      - name: Restart API and wait for readiness
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/budgetbeacon_deploy_key \
+            "$VPS_USER@$VPS_HOST" 'bash -se' <<'REMOTE'
+          sudo -n /usr/bin/systemctl restart budgetbeacon-api.service
+
+          readiness_url=http://127.0.0.1:5078/health/ready
+          for attempt in {1..30}; do
+            if status=$(curl --silent --max-time 3 --output /dev/null --write-out '%{http_code}' "$readiness_url") &&
+              [ "$status" = 200 ]; then
+              echo 'BudgetBeacon API is ready.'
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 30 ]; then
+              sleep 2
+            fi
+          done
+
+          printf 'BudgetBeacon API did not become ready (last HTTP status: %s).\n' "$status" >&2
+          exit 1
+          REMOTE
 
       - name: Upload frontend
         run: >

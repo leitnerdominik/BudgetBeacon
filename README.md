@@ -196,3 +196,11 @@ npm run build
 - Configure frontend `VITE_API_BASE_URL` for the deployed API.
 - Store database credentials and `DeepSeek:ApiKey` in platform secrets.
 - Use `/health/ready` for readiness checks.
+
+The GitHub Actions deployment checks restart permissions before uploading the backend. It then restarts `budgetbeacon-api.service` and requires HTTP 200 from `http://127.0.0.1:5078/health/ready` on the VPS before uploading the frontend. API startup applies pending database migrations.
+
+The account configured in `VPS_USER` needs passwordless sudo for the API restart command. If the account is `deploy`, grant that command with a sudoers entry validated by `visudo`.
+
+```sudoers
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart budgetbeacon-api.service
+```
