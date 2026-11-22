@@ -1982,6 +1982,93 @@ public sealed class TransactionsControllerTests
     }
 
     [Fact]
+    public async Task ClassifySpendingFlexibility_ChangesOnlyTheOverrideAndAllowsAnIdenticalRetry()
+    {
+        var transaction = new Transaction
+        {
+            UserId = "user-1",
+            Amount = -23.45m,
+            Category = "Travel",
+            Date = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc),
+            Notes = "Original notes",
+            Metadata = new TransactionMetadata { RawDescription = "Rail ticket" },
+            ManualSpendingFlexibility = SpendingFlexibilityOverride.Unclassified,
+            AiSpendingFlexibility = SpendingFlexibilityOverride.Optional,
+            FlexibilityConfidence = 0.85
+        };
+        var controller = CreateController(new FakeTransactionRepository { TransactionToUpdate = transaction });
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var result = await controller.ClassifySpendingFlexibility(transaction.Id, new("Optimizable"));
+            var response = Assert.IsType<TransactionResponse>(Assert.IsType<OkObjectResult>(result).Value);
+            Assert.Equal("Optimizable", response.SpendingFlexibilityOverride);
+            Assert.Equal("Optimizable", response.SpendingFlexibility);
+            Assert.Equal("Manual", response.SpendingFlexibilitySource);
+            Assert.Equal(-23.45m, response.Amount);
+            Assert.Equal("Travel", response.Category);
+            Assert.Equal(new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc), response.Date);
+            Assert.Equal(string.Empty, response.Treatment);
+            Assert.Equal("Original notes", response.Notes);
+            Assert.Equal("Rail ticket", response.Metadata.RawDescription);
+        }
+
+        Assert.Equal(SpendingFlexibilityOverride.Optional, transaction.AiSpendingFlexibility);
+        Assert.Equal(0.85, transaction.FlexibilityConfidence);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Unclassified")]
+    [InlineData("UseAutomatic")]
+    [InlineData("0")]
+    [InlineData("unsupported")]
+    public async Task ClassifySpendingFlexibility_RejectsInvalidChoices(string? choice)
+    {
+        var controller = CreateController();
+
+        var result = await controller.ClassifySpendingFlexibility(Guid.NewGuid(), new(choice));
+
+        var problem = Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(result).Value);
+        Assert.Contains("SpendingFlexibilityOverride", problem.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData(null, StatusCodes.Status401Unauthorized)]
+    [InlineData("user-2", StatusCodes.Status404NotFound)]
+    public async Task ClassifySpendingFlexibility_RequiresOwnership(string? userId, int expectedStatus)
+    {
+        var transaction = new Transaction { UserId = "user-1", Amount = -10m };
+        var controller = CreateController(
+            new FakeTransactionRepository { TransactionToUpdate = transaction }, userId: userId);
+
+        var result = await controller.ClassifySpendingFlexibility(transaction.Id, new("Essential"));
+
+        Assert.Equal(expectedStatus, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Null(transaction.ManualSpendingFlexibility);
+    }
+
+    [Theory]
+    [InlineData(TransactionTreatment.Refund, null)]
+    [InlineData(TransactionTreatment.InternalTransfer, null)]
+    [InlineData(TransactionTreatment.Expense, SpendingFlexibilityOverride.Optional)]
+    public async Task ClassifySpendingFlexibility_RejectsStaleChanges(
+        string treatment, SpendingFlexibilityOverride? currentOverride)
+    {
+        var transaction = new Transaction
+        {
+            UserId = "user-1", Amount = -10m, Treatment = treatment,
+            ManualSpendingFlexibility = currentOverride
+        };
+        var controller = CreateController(new FakeTransactionRepository { TransactionToUpdate = transaction });
+
+        var result = await controller.ClassifySpendingFlexibility(transaction.Id, new("Essential"));
+
+        Assert.Equal(StatusCodes.Status409Conflict, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Equal(currentOverride, transaction.ManualSpendingFlexibility);
+    }
+
+    [Fact]
     public async Task Delete_RemovesCurrentUsersTransaction()
     {
         var transactionId = Guid.NewGuid();
@@ -2875,6 +2962,18 @@ public sealed class TransactionsControllerTests
             TransactionToUpdate.ApplyCategoryUpdate(category);
 
             return Task.FromResult<Transaction?>(TransactionToUpdate);
+        }
+
+        public Task<(Transaction? Transaction, bool Applied)> ClassifySpendingFlexibilityAsync(
+            string userId, Guid transactionId, SpendingFlexibilityOverride classification,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var transaction = TransactionToUpdate;
+            if (transaction is null || transaction.UserId != userId || transaction.Id != transactionId)
+                return Task.FromResult<(Transaction?, bool)>((null, false));
+
+            return Task.FromResult<(Transaction?, bool)>((transaction, transaction.TryClassifySpendingFlexibility(classification)));
         }
 
         public Task<IEnumerable<Transaction>> GetAllAsync(

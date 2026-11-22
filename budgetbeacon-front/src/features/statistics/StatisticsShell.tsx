@@ -6,7 +6,7 @@ import { defaultTransactionQuery, type StatisticsRequest, type TransactionQueryR
 import { LoadingState, StatusMessage } from "../../components/AsyncState";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { useSlowLoading } from "../../hooks/useSlowLoading";
-import { buildTransactionListSearchParams } from "../transactions/transactionListUrlState";
+import { buildTransactionListSearchParams, getUnclassifiedExpensesPath, unclassifiedExpensesPath } from "../transactions/transactionListUrlState";
 import { StatisticsExclusionNotice } from "./StatisticsExclusionNotice";
 import { StatisticsPeriodControls } from "./StatisticsPeriodControls";
 import { StatisticsViewNavigation } from "./StatisticsViewNavigation";
@@ -62,10 +62,9 @@ export const StatisticsShell = () => {
   };
   const onCategorySelect = (category: string) =>
     navigate(getTransactionListPath({ category, transactionType: "expense" }));
-  const unclassifiedTransactionsPath = getTransactionListPath({
-    spendingFlexibility: "Unclassified",
-    ...(isAllTime ? { startDate: "", endDate: "" } : {}),
-  });
+  const unclassifiedTransactionsPath = isAllTime
+    ? unclassifiedExpensesPath
+    : getUnclassifiedExpensesPath(data?.startDate?.slice(0, 10) ?? "", data?.endDate?.slice(0, 10) ?? "");
   const context: StatisticsContext = {
     data, timeframe, selectedMonth, periodLabel, isSmallScreen, isMobileView, onCategorySelect, unclassifiedTransactionsPath,
   };

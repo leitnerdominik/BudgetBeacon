@@ -268,6 +268,17 @@ public class TransactionRepository : ITransactionRepository, ISpendingFlexibilit
     public Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category) =>
         UpdateLockedAsync(userId, transactionId, transaction => transaction.ApplyCategoryUpdate(category));
 
+    public async Task<(Transaction? Transaction, bool Applied)> ClassifySpendingFlexibilityAsync(
+        string userId, Guid transactionId, SpendingFlexibilityOverride classification,
+        CancellationToken cancellationToken)
+    {
+        var applied = false;
+        var transaction = await UpdateLockedAsync(userId, transactionId,
+            current => applied = current.TryClassifySpendingFlexibility(classification),
+            cancellationToken: cancellationToken);
+        return (transaction, applied);
+    }
+
     private async Task<Transaction?> UpdateLockedAsync(
         string userId, Guid transactionId, Action<Transaction> apply,
         SpendingFlexibilityRule? newRule = null, CancellationToken cancellationToken = default)

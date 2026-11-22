@@ -82,6 +82,21 @@ namespace BudgetBeacon.Core.Entities
             Metadata.AiConfidenceScore = null;
         }
 
+        public bool TryClassifySpendingFlexibility(SpendingFlexibilityOverride classification)
+        {
+            if (classification is not (SpendingFlexibilityOverride.Essential or
+                    SpendingFlexibilityOverride.Optimizable or SpendingFlexibilityOverride.Optional) ||
+                EffectiveTreatment != TransactionTreatment.Expense ||
+                (ManualSpendingFlexibility is { } current &&
+                    current != SpendingFlexibilityOverride.Unclassified && current != classification))
+            {
+                return false;
+            }
+
+            ManualSpendingFlexibility = classification;
+            return true;
+        }
+
         public void ApplyCategorization(TransactionCategorization suggestion)
         {
             var originalCategory = Category;

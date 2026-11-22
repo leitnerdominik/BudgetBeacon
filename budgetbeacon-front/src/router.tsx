@@ -6,6 +6,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { GlobalError } from "./components/GlobalError";
 import { NotFound } from "./components/NotFound";
 import { STATISTICS_VIEW_PATHS } from "./features/statistics/statisticsViews";
+import { unclassifiedExpensesPath } from "./features/transactions/transactionListUrlState";
 
 const RootLayout = lazy(async () => ({
   default: (await import("./components/RootLayout")).RootLayout,
@@ -15,6 +16,9 @@ const DashboardPage = lazy(async () => ({
 }));
 const TransactionsPage = lazy(async () => ({
   default: (await import("./pages/TransactionsPage")).TransactionsPage,
+}));
+const UnclassifiedExpensesPage = lazy(async () => ({
+  default: (await import("./pages/UnclassifiedExpensesPage")).UnclassifiedExpensesPage,
 }));
 const CreateTransactionPage = lazy(async () => ({
   default: (await import("./pages/CreateTransactionPage")).CreateTransactionPage,
@@ -78,6 +82,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: withSuspense(<DashboardPage />) },
           { path: "transactions", element: withSuspense(<TransactionsPage />) },
+          { path: unclassifiedExpensesPath, element: withSuspense(<UnclassifiedExpensesPage />) },
           {
             path: "transactions/new",
             element: withSuspense(<CreateTransactionPage />),

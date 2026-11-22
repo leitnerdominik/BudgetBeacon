@@ -249,6 +249,18 @@ export const regenerateTransactionCategory = async (
   return mapTransaction(response);
 };
 
+export const classifySpendingFlexibility = async (
+  transactionId: string,
+  spendingFlexibilityOverride: SpendingFlexibility,
+): Promise<Transaction> => {
+  const response = await apiClient.patch<
+    TransactionApiResponse,
+    TransactionApiResponse
+  >(`/transactions/${transactionId}/spending-flexibility`, { spendingFlexibilityOverride });
+
+  return mapTransaction(response);
+};
+
 export const deleteTransaction = async (transactionId: string): Promise<void> => {
   await apiClient.delete(`/transactions/${transactionId}`);
 };

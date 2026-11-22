@@ -1031,6 +1031,43 @@ public class TransactionsController : ControllerBase
         return Ok(TransactionResponse.FromTransaction(transaction, rules));
     }
 
+    [HttpPatch("{transactionId:guid}/spending-flexibility")]
+    public async Task<IActionResult> ClassifySpendingFlexibility(
+        Guid transactionId,
+        [FromBody] ClassifySpendingFlexibilityRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+            return UnauthorizedProblem("A valid authenticated user is required to classify expenses.");
+
+        var classification = SpendingFlexibilityRuleInput.ParseClass(request.SpendingFlexibilityOverride);
+        if (classification is null or SpendingFlexibilityOverride.Unclassified)
+        {
+            return this.ApiValidationProblem(
+                "Invalid spending flexibility",
+                "Choose Essential, Optimizable, or Optional.",
+                errors => errors.AddModelError(nameof(request.SpendingFlexibilityOverride),
+                    "Choose Essential, Optimizable, or Optional."));
+        }
+
+        var (transaction, applied) = await _repository.ClassifySpendingFlexibilityAsync(
+            userId, transactionId, classification.Value, cancellationToken);
+        if (transaction is null)
+            return TransactionNotFoundProblem();
+
+        if (!applied)
+        {
+            return this.ApiProblem(
+                StatusCodes.Status409Conflict,
+                "Transaction changed",
+                "The transaction is no longer an expense or already has a different manual classification. Refresh the list.",
+                "urn:budgetbeacon:transaction-changed");
+        }
+
+        return Ok(TransactionResponse.FromTransaction(transaction));
+    }
+
     [HttpDelete("{transactionId:guid}")]
     public async Task<IActionResult> Delete(Guid transactionId)
     {
@@ -1504,6 +1541,7 @@ public class TransactionsController : ControllerBase
     }
 
     public sealed record UpdateTransactionCategoryRequest(string? Category);
+    public sealed record ClassifySpendingFlexibilityRequest(string? SpendingFlexibilityOverride);
     public sealed record CategorizeTransactionsRequest(IReadOnlyList<Guid>? TransactionIds);
     public sealed record CreateTransactionRequest(
         DateOnly Date,

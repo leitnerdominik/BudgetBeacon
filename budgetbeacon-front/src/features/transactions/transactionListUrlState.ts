@@ -125,3 +125,12 @@ export const buildTransactionListSearchParams = (
 
 export const getTransactionsReturnPath = (search: string) =>
   search.length > 0 ? `/transactions${search}` : "/transactions";
+
+export const unclassifiedExpensesPath = "/transactions/unclassified";
+
+export const getUnclassifiedExpensesPath = (startDate: string, endDate: string) => {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  return params.size ? `${unclassifiedExpensesPath}?${params}` : unclassifiedExpensesPath;
+};

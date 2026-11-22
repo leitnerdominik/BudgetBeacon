@@ -203,6 +203,25 @@ public sealed class DevelopmentDataSeederTests
         Assert.NotEmpty(statistics.RecurringExpenses);
     }
 
+    [Fact]
+    public void CreateTransactions_ProvidesUnclassifiedExpensesForMonthlyReview()
+    {
+        var transactions = DevelopmentSeedTransactionFactory.CreateTransactions("seed-user", SeedDate);
+        var unclassified = transactions
+            .Where(transaction => SpendingFlexibilityResolver.Resolve(transaction).Source == "Unclassified")
+            .ToList();
+        var currentMonth = new DateTime(SeedDate.Year, SeedDate.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var previousMonth = currentMonth.AddMonths(-1);
+        var current = unclassified.Where(transaction => transaction.Date >= currentMonth).ToList();
+        var previous = unclassified.Where(transaction => transaction.Date >= previousMonth && transaction.Date < currentMonth);
+
+        Assert.True(current.Count > 10);
+        Assert.Contains(current, transaction => transaction.Metadata.RawDescription == "Household water bill");
+        Assert.Contains(current, transaction => transaction.Metadata.RawDescription == "Photo editing subscription");
+        Assert.Contains(previous, transaction => transaction.Metadata.RawDescription == "Routine eye exam");
+        Assert.All(unclassified, transaction => Assert.Equal(TransactionTreatment.Expense, transaction.EffectiveTreatment));
+    }
+
     private static UserManager<ApplicationUser> CreateUserManager(InMemoryUserStore store)
     {
         var identityOptions = new IdentityOptions
@@ -407,6 +426,10 @@ public sealed class DevelopmentDataSeederTests
 
         public Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category) =>
             throw new NotSupportedException();
+
+        public Task<(Transaction? Transaction, bool Applied)> ClassifySpendingFlexibilityAsync(
+            string userId, Guid transactionId, SpendingFlexibilityOverride classification,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<IEnumerable<Transaction>> GetAllAsync(string userId, DateTime? endDate = null) =>
             throw new NotSupportedException();

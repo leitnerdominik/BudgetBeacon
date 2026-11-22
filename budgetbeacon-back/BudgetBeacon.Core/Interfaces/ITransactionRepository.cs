@@ -21,6 +21,9 @@ namespace BudgetBeacon.Core.Interfaces
             string userId, Guid transactionId, TransactionUpdate update,
             SpendingFlexibilityRule? newRule, CancellationToken cancellationToken);
         Task<Transaction?> UpdateCategoryAsync(string userId, Guid transactionId, string category);
+        Task<(Transaction? Transaction, bool Applied)> ClassifySpendingFlexibilityAsync(
+            string userId, Guid transactionId, SpendingFlexibilityOverride classification,
+            CancellationToken cancellationToken);
         Task<IEnumerable<Transaction>> GetAllAsync(string userId, DateTime? endDate = null);
         IAsyncEnumerable<Transaction> StreamForExportAsync(
             string userId, DateTime? startDate, DateTime? endDate,

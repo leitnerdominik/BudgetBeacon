@@ -32,7 +32,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { LoadingState, StatusMessage } from "../../../components/AsyncState";
 import {
@@ -55,6 +55,7 @@ import { getTransactionTreatmentLabel } from "../transactionTreatment";
 import {
   buildTransactionListSearchParams,
   parseTransactionListUrlState,
+  unclassifiedExpensesPath,
   type TransactionListState,
 } from "../transactionListUrlState";
 import type { PaginatedTransactions, Transaction } from "../types";
@@ -412,6 +413,9 @@ export const TransactionList = () => {
             }
           >
             Categorize uncategorized
+          </Button>
+          <Button component={Link} to={unclassifiedExpensesPath} variant="outlined">
+            Unclassified expenses
           </Button>
           <SpendingFlexibilityReviewButton isOnline={isOnline} />
           <TransactionImportButton />
