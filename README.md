@@ -98,7 +98,7 @@ Transaction list, detail, and mutation responses include `spendingFlexibilityOve
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24, matching CI
 - .NET 9 SDK
 - PostgreSQL
 - Optional: Docker for the frontend dev container
@@ -136,6 +136,8 @@ dotnet tool run dotnet-ef database update --project BudgetBeacon.Infrastructure 
 ```
 
 ### 3. Run the Backend
+
+The API applies pending EF Core migrations to its configured PostgreSQL database on startup. Use a disposable PostgreSQL database for verification.
 
 ```powershell
 cd budgetbeacon-back\BudgetBeacon.Api
@@ -183,10 +185,13 @@ Frontend:
 
 ```powershell
 cd budgetbeacon-front
-npm install
+npm ci
 npm run lint
+npm test
 npm run build
 ```
+
+Run `npm test` locally for frontend changes. The frontend CI job runs lint and build.
 
 ## Deployment Notes
 

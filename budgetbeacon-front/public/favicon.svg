@@ -1,11 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 48 48">
-  <title>BudgetBeacon</title>
-  <rect width="48" height="48" fill="#e6f1ed" rx="10"/>
-  <path fill="#b7791f" d="M24 7 39 25H9z" opacity=".24"/>
-  <path fill="#b7791f" d="M23 6h2v8h-2z"/>
-  <path fill="#17483c" d="M17.5 18.5A6.5 6.5 0 0 1 24 12a6.5 6.5 0 0 1 6.5 6.5v2.2c0 .72-.58 1.3-1.3 1.3H18.8c-.72 0-1.3-.58-1.3-1.3z"/>
-  <path fill="#17483c" d="M15 25.5c0-.83.67-1.5 1.5-1.5h15c.83 0 1.5.67 1.5 1.5V28H15z"/>
-  <path fill="#17483c" d="M10 30c0-1.1.9-2 2-2h24c1.1 0 2 .9 2 2v7c0 2.76-2.24 5-5 5H15c-2.76 0-5-2.24-5-5z"/>
-  <path fill="#e6f1ed" d="M24 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6m9 17.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5"/>
-  <path stroke="#e6f1ed" stroke-linecap="round" stroke-width="2" d="M15 34h10"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <title>BudgetBeacon — Pocket B</title>
+  <rect width="100" height="100" rx="23" fill="#DFEFE6"/>
+  <path d="M27 39v-5q0-5 6-6l29-5q7-1 8 6l2 11" fill="#65A98E"/>
+  <rect x="22" y="35" width="55" height="39" rx="10" fill="#17483C"/>
+  <path d="M34 43h11c6 0 9 3 9 7 0 2-1 4-3 5 3 1 4 3 4 5 0 4-4 7-9 7H34zm5 5v5h5q4 0 4-2.5T44 48zm0 9v5h6q4 0 4-2.5T45 57z" fill="#ACE4C9" fill-rule="evenodd"/>
+  <path d="M76 47h5v16h-8a8 8 0 0 1 0-16z" fill="#85C9AA"/>
 </svg>
