@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Box, Typography, useMediaQuery, useTheme } from "@mui/material";
 import { Outlet, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -10,7 +10,7 @@ import { buildTransactionListSearchParams, getUnclassifiedExpensesPath, unclassi
 import { StatisticsExclusionNotice } from "./StatisticsExclusionNotice";
 import { StatisticsPeriodControls } from "./StatisticsPeriodControls";
 import { StatisticsViewNavigation } from "./StatisticsViewNavigation";
-import type { StatisticsContext } from "./statisticsContext";
+import type { CategorySpendingMetric, StatisticsContext } from "./statisticsContext";
 import {
   buildStatisticsSearchParams,
   formatPeriodLabel,
@@ -26,6 +26,7 @@ import { useStatistics } from "./useStatistics";
 export const StatisticsShell = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [categorySpendingMetric, setCategorySpendingMetric] = useState<CategorySpendingMetric>("median");
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const isMobileView = useMediaQuery(theme.breakpoints.down("md"));
@@ -67,6 +68,7 @@ export const StatisticsShell = () => {
     : getUnclassifiedExpensesPath(data?.startDate?.slice(0, 10) ?? "", data?.endDate?.slice(0, 10) ?? "");
   const context: StatisticsContext = {
     data, timeframe, selectedMonth, periodLabel, isSmallScreen, isMobileView, onCategorySelect, unclassifiedTransactionsPath,
+    categorySpendingMetric, onCategorySpendingMetricChange: setCategorySpendingMetric,
   };
 
   return (

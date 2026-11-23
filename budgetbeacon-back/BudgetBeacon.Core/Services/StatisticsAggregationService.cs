@@ -42,7 +42,7 @@ public sealed partial class StatisticsAggregationService
             MonthlyTotals: BuildMonthlyTotalsStatistics(trend),
             PreviousMonthSummary: previousMonthSummary,
             Trend: trend,
-            Categories: BuildCategorySummaries(periodTransactions),
+            Categories: BuildCategorySummaries(periodTransactions, trend.Count),
             TopExpenses: BuildTopExpenses(periodTransactions, TopExpenseLimit),
             RecurringExpenses: monthsBack >= 2
                 ? BuildRecurringExpenses(periodTransactions, RecurringExpenseLimit)
@@ -77,7 +77,7 @@ public sealed partial class StatisticsAggregationService
             MonthlyTotals: BuildMonthlyTotalsStatistics(monthlyTrend),
             PreviousMonthSummary: null,
             Trend: BuildYearlyTrend(allTransactions),
-            Categories: BuildCategorySummaries(allTransactions),
+            Categories: BuildCategorySummaries(allTransactions, monthlyTrend.Count),
             TopExpenses: BuildTopExpenses(allTransactions, TopExpenseLimit),
             RecurringExpenses: BuildRecurringExpenses(allTransactions, RecurringExpenseLimit),
             FinancialFlexibility: BuildFinancialFlexibility(allTransactions, summary, rules));
@@ -284,7 +284,12 @@ public sealed partial class StatisticsAggregationService
             summary.AnalyticsTransactionCount);
 
     public IReadOnlyList<StatisticsCategorySummary> BuildCategorySummaries(
-        IReadOnlyCollection<Transaction> transactions)
+        IReadOnlyCollection<Transaction> transactions) =>
+        BuildCategorySummaries(transactions, medianMonthCount: null);
+
+    private static IReadOnlyList<StatisticsCategorySummary> BuildCategorySummaries(
+        IReadOnlyCollection<Transaction> transactions,
+        int? medianMonthCount)
     {
         var expenses = transactions
             .Where(transaction => IsExpense(transaction) || IsRefund(transaction))
@@ -304,12 +309,28 @@ public sealed partial class StatisticsAggregationService
                     group.Key,
                     categoryTotal,
                     totalExpense > 0 ? categoryTotal / totalExpense * 100 : 0,
-                    group.Count(IsExpense));
+                    group.Count(IsExpense))
+                {
+                    MedianMonthlyExpense = medianMonthCount is int monthCount
+                        ? CalculateMonthlyCategoryMedian(group, monthCount)
+                        : null
+                };
             })
             .Where(summary => summary.TotalExpense > 0)
             .OrderByDescending(summary => summary.TotalExpense)
             .ThenBy(summary => summary.Category)
             .ToList();
+    }
+
+    private static decimal CalculateMonthlyCategoryMedian(IEnumerable<Transaction> transactions, int monthCount)
+    {
+        var monthlyExpenses = transactions
+            .GroupBy(transaction => (transaction.Date.Year, transaction.Date.Month))
+            .Select(month => Math.Max(0, month.Sum(GetExpenseImpact)))
+            .ToList();
+
+        monthlyExpenses.AddRange(Enumerable.Repeat(0m, monthCount - monthlyExpenses.Count));
+        return CalculateMedian(monthlyExpenses);
     }
 
     public IReadOnlyList<StatisticsTopExpense> BuildTopExpenses(

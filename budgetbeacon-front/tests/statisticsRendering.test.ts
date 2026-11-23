@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createElement, type ComponentType } from "react";
+import { createElement, type ComponentProps, type ComponentType } from "react";
 import { renderToString } from "react-dom/server";
 import { createMemoryRouter, RouterProvider, useOutletContext } from "react-router-dom";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -263,7 +263,13 @@ test("server-renders production Statistics shell, navigation, content and reques
             }
             if (id === "spending") {
               const categories = visibleText(section(html, "Expenses by Category"));
-              assert.ok(categories.includes(`${formatCurrency(categoryExpense)} across ${categoryExpense ? 1 : 0} categories`), name);
+              if (categoryExpense) {
+                assert.ok(categories.includes(`${formatCurrency(categoryExpense)} across 1 categories`), name);
+                assert.match(categories, /Median spending is unavailable for this data/, name);
+              } else {
+                assert.match(categories, /No expenses for this period/, name);
+              }
+              assert.doesNotMatch(html, /Median monthly spending by category/, name);
               if (originalExpense) assert.ok(text.includes(`Synthetic original expenseFood &amp; Groceries - 02. Jan. 2026${formatCurrency(originalExpense)}`), name);
               else assert.match(html, /No expense transactions/, name);
             } else {
@@ -314,8 +320,10 @@ test("server-renders production Statistics shell, navigation, content and reques
             monthlyTotals: { monthCount: isAllTime ? 24 : count,
               averageIncome: 1004.25, medianIncome: 1000.75, averageExpense: 102.5, medianExpense: 100.25 },
             categories: [
-              { category: "Food", totalExpense: expenseTotal * 0.75, percentage: 75, transactionCount: 3 },
-              { category: "Rent", totalExpense: expenseTotal * 0.25, percentage: 25, transactionCount: 1 },
+              { category: "Food", totalExpense: expenseTotal * 0.75, percentage: 75, transactionCount: 3,
+                medianMonthlyExpense: timeframe === "1" ? expenseTotal * 0.75 : 17.23 },
+              { category: "Rent", totalExpense: expenseTotal * 0.25, percentage: 25, transactionCount: 1,
+                medianMonthlyExpense: timeframe === "1" ? expenseTotal * 0.25 : 0 },
             ],
             topExpenses: [
               { id: "expense-one", description: "Synthetic groceries", category: "Food", amount: -74.25, date: "2026-01-15T00:00:00Z" },
@@ -330,8 +338,11 @@ test("server-renders production Statistics shell, navigation, content and reques
           const text = visibleText(spending);
           assert.ok(spending.indexOf("Expenses by Category") < spending.indexOf("Top expense transactions"));
           assert.ok(spending.indexOf("Top expense transactions") < spending.indexOf(timeframe === "1" ? "Daily Average" : "Repeated expenses"));
-          assert.ok(text.includes(`Food3 transactions${formatCurrency(expenseTotal * 0.75)}75 %`));
-          assert.ok(text.includes(`Rent1 transactions${formatCurrency(expenseTotal * 0.25)}25 %`));
+          const foodMedian = timeframe === "1" ? expenseTotal * 0.75 : 17.23;
+          const rentMedian = timeframe === "1" ? expenseTotal * 0.25 : 0;
+          assert.ok(text.includes(`Median monthly spending by categoryFood${formatCurrency(foodMedian)}Rent${formatCurrency(rentMedian)}`));
+          assert.match(spending, /<button\b(?=[^>]*value="median")(?=[^>]*aria-pressed="true")[^>]*>/);
+          assert.doesNotMatch(spending, /Total spending by category/);
           assert.match(spending, /<button\b[^>]*aria-label="View Food transactions for /);
           for (const [index, expense] of response.topExpenses.entries()) {
             const expectedDate = ["15. Jan. 2026", "10. Jan. 2026"][index];
@@ -426,6 +437,74 @@ test("server-renders production Statistics shell, navigation, content and reques
       }
     });
 
+    await t.test("category spending shows only the selected metric at its own scale", async () => {
+      type CategoryBreakdownProps = ComponentProps<typeof import("../src/features/statistics/CategoryBreakdown").CategoryBreakdown>;
+      const { CategoryBreakdown } = await server.ssrLoadModule("/src/features/statistics/CategoryBreakdown.tsx") as {
+        CategoryBreakdown: ComponentType<CategoryBreakdownProps>;
+      };
+      const categories = [
+        { category: "Food", totalExpense: 400, percentage: 50, transactionCount: 5, medianMonthlyExpense: 0.01 },
+        { category: "Transport", totalExpense: 200, percentage: 25, transactionCount: 5, medianMonthlyExpense: 0.04 },
+        { category: "Rent", totalExpense: 100, percentage: 12.5, transactionCount: 1, medianMonthlyExpense: 0 },
+        { category: "Shopping", totalExpense: 100, percentage: 12.5, transactionCount: 1 },
+      ];
+      const cases = [
+        {
+          metric: "median",
+          activeMetric: "median",
+          categories,
+          rows: [
+            { category: "Food", amount: 0.01, width: 25 },
+            { category: "Transport", amount: 0.04, width: 100 },
+            { category: "Rent", amount: 0, width: 0 },
+          ],
+        },
+        {
+          metric: "total",
+          activeMetric: "total",
+          categories,
+          rows: [
+            { category: "Food", amount: 400, width: 100 },
+            { category: "Transport", amount: 200, width: 50 },
+            { category: "Rent", amount: 100, width: 25 },
+            { category: "Shopping", amount: 100, width: 25 },
+          ],
+        },
+        {
+          metric: "median",
+          activeMetric: "median",
+          categories: [categories[2]],
+          rows: [{ category: "Rent", amount: 0, width: 0 }],
+        },
+        {
+          metric: "median",
+          activeMetric: "total",
+          categories: [categories[3]],
+          rows: [{ category: "Shopping", amount: 100, width: 100 }],
+        },
+      ] as const;
+
+      for (const fixture of cases) {
+        const html = renderToString(createElement(ThemeProvider, { theme: appTheme }, createElement(CategoryBreakdown, {
+          categories: [...fixture.categories], metric: fixture.metric, onMetricChange: () => {},
+          periodLabel: "Synthetic period", onCategorySelect: () => {},
+        })));
+        assert.equal(html.includes("Total spending by category</h3>"), fixture.activeMetric === "total");
+        assert.equal(html.includes("Median monthly spending by category</h3>"), fixture.activeMetric === "median");
+        const selectedToggle = html.match(/<button\b(?=[^>]*aria-pressed="true")[^>]*>/)?.[0];
+        assert.ok(selectedToggle?.includes(`value="${fixture.activeMetric}"`));
+        assert.equal(html.includes("Median spending is unavailable for this data."), fixture.metric !== fixture.activeMetric);
+
+        const rows = [...html.matchAll(/<button\b[^>]*aria-label="View ([^"]+) transactions for [^"]+"[^>]*>[\s\S]*?<\/button>/g)];
+        assert.deepEqual(rows.map(([, category]) => category), fixture.rows.map((row) => row.category));
+        rows.forEach(([row], index) => {
+          const expected = fixture.rows[index];
+          assert.ok(row.includes(`style="width:${expected.width}%"`));
+          assert.ok(visibleText(row).includes(formatCurrency(expected.amount)));
+        });
+      }
+    });
+
     await t.test("production category callback preserves expense filters and response calendar boundaries", async () => {
       // SSR does not run the effect that activates useNavigate. Only for this harness,
       // bind that hook directly to the memory router; the shell callback and URL builder
@@ -438,8 +517,7 @@ test("server-renders production Statistics shell, navigation, content and reques
           transform(source: string, id: string) {
             if (!id.endsWith("/StatisticsShell.tsx")) return;
             assert.ok(source.includes("const navigate = useNavigate();"));
-            return { code: source
-              .replace("import { useMemo }", "import { useMemo, useContext }")
+            return { code: ('import { useContext } from "react";\n' + source)
               .replace("Outlet, useNavigate, useSearchParams", "Outlet, UNSAFE_DataRouterContext, useSearchParams")
               .replace("const navigate = useNavigate();", "const navigate = useContext(UNSAFE_DataRouterContext).router.navigate;"),
               map: null };

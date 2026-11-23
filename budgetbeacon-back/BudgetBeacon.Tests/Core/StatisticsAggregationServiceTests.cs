@@ -39,7 +39,44 @@ public sealed class StatisticsAggregationServiceTests
         Assert.Equal(50m, result.MonthlyTotals.AverageExpense);
         Assert.Equal(50m, result.MonthlyTotals.MedianExpense);
         Assert.Equal(2, result.Categories.Count);
+        Assert.All(result.Categories, category => Assert.Equal(0m, category.MedianMonthlyExpense));
         Assert.Null(result.PreviousMonthSummary);
+    }
+
+    [Fact]
+    public void BuildFixedPeriod_TakesMedianOfNetCategoryTotalsAcrossCalendarMonths()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(new DateTime(2025, 12, 2), -70m, "Food & Groceries", "Market"),
+            CreateTransaction(new DateTime(2025, 12, 9), -55m, "Food & Groceries", "Market"),
+            CreateTransaction(new DateTime(2025, 12, 15), 25m, "Food & Groceries", "Refund", treatment: TransactionTreatment.Refund),
+            CreateTransaction(new DateTime(2026, 2, 8), -250m, "Food & Groceries", "Market"),
+            CreateTransaction(new DateTime(2025, 12, 15), 50m, "Transport", "Refund", treatment: TransactionTreatment.Refund),
+            CreateTransaction(new DateTime(2026, 1, 15), 70m, "Transport", "Refund", treatment: TransactionTreatment.Refund),
+            CreateTransaction(new DateTime(2026, 2, 10), -200m, "Transport", "Train")
+        };
+
+        var result = _sut.BuildFixedPeriod(
+            transactions,
+            new DateTime(2025, 12, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc).AddTicks(-1),
+            monthsBack: 3);
+
+        Assert.Collection(
+            result.Categories,
+            food =>
+            {
+                Assert.Equal("Food & Groceries", food.Category);
+                Assert.Equal(350m, food.TotalExpense);
+                Assert.Equal(100m, food.MedianMonthlyExpense);
+            },
+            transport =>
+            {
+                Assert.Equal("Transport", transport.Category);
+                Assert.Equal(80m, transport.TotalExpense);
+                Assert.Equal(0m, transport.MedianMonthlyExpense);
+            });
     }
 
     [Fact]
@@ -121,6 +158,24 @@ public sealed class StatisticsAggregationServiceTests
         var recurring = Assert.Single(result.RecurringExpenses);
         Assert.Equal("music stream", recurring.Description);
         Assert.Equal(2, recurring.MonthCount);
+    }
+
+    [Fact]
+    public void BuildAllTime_CategoryMedianIncludesTheFullRecordedMonthRange()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(new DateTime(2025, 12, 18), 1000m, "Income", "Salary"),
+            CreateTransaction(new DateTime(2026, 1, 8), -100.01m, "Transport", "Train"),
+            CreateTransaction(new DateTime(2026, 3, 10), -250m, "Transport", "Train")
+        };
+
+        var result = _sut.BuildAllTime(transactions);
+
+        Assert.Equal(4, result.MonthlyTotals.MonthCount);
+        var category = Assert.Single(result.Categories);
+        Assert.Equal(350.01m, category.TotalExpense);
+        Assert.Equal(50.005m, category.MedianMonthlyExpense);
     }
 
     [Fact]
@@ -271,6 +326,7 @@ public sealed class StatisticsAggregationServiceTests
         var category = Assert.Single(result.Categories);
         Assert.Equal("Food & Groceries", category.Category);
         Assert.Equal(80m, category.TotalExpense);
+        Assert.Equal(80m, category.MedianMonthlyExpense);
         Assert.DoesNotContain(result.TopExpenses, expense => expense.Category == "Savings & Investments");
     }
 

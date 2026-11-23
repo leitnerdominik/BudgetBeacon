@@ -1043,6 +1043,9 @@ public sealed class TransactionsControllerTests
         Assert.Equal(-25m, GetValue<decimal>(previous, "TotalExpense"));
         var serialized = JsonSerializer.SerializeToElement(ok.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Equal(-40m, serialized.GetProperty("summary").GetProperty("totalExpense").GetDecimal());
+        var category = Assert.Single(serialized.GetProperty("categories").EnumerateArray());
+        Assert.Equal(40m, category.GetProperty("totalExpense").GetDecimal());
+        Assert.Equal(40m, category.GetProperty("medianMonthlyExpense").GetDecimal());
         var flexibility = serialized.GetProperty("financialFlexibility");
         Assert.Equal(40m, flexibility.GetProperty("grossExpenses").GetDecimal());
         Assert.Equal(40m, flexibility.GetProperty("netExpenses").GetDecimal());
@@ -1069,6 +1072,13 @@ public sealed class TransactionsControllerTests
             [
                 new Transaction
                 {
+                    Amount = 1000m,
+                    Date = new DateTime(2026, 1, 5),
+                    Category = "Income",
+                    UserId = "user-1"
+                },
+                new Transaction
+                {
                     Amount = -25m,
                     Date = new DateTime(2026, 4, 5),
                     Category = "Food & Groceries",
@@ -1085,6 +1095,9 @@ public sealed class TransactionsControllerTests
         Assert.True(GetValue<bool>(ok.Value, "AllTime"));
         Assert.Equal("year", GetValue<string>(ok.Value, "TrendGranularity"));
         Assert.Equal(25m, Assert.IsType<StatisticsOverview>(ok.Value).FinancialFlexibility.AdjustableExpenses);
+        var serialized = JsonSerializer.SerializeToElement(ok.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var category = Assert.Single(serialized.GetProperty("categories").EnumerateArray());
+        Assert.Equal(0m, category.GetProperty("medianMonthlyExpense").GetDecimal());
         Assert.Equal(1, repository.GetAllCalls);
     }
 
@@ -1144,6 +1157,8 @@ public sealed class TransactionsControllerTests
         Assert.Equal("Uncategorized", GetValue<string>(summaries[2], "Category"));
         Assert.Equal(25m, GetValue<decimal>(summaries[2], "TotalExpense"));
         Assert.Equal(1, GetValue<int>(summaries[2], "TransactionCount"));
+        var serialized = JsonSerializer.SerializeToElement(ok.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.All(serialized.EnumerateArray(), category => Assert.False(category.TryGetProperty("medianMonthlyExpense", out _)));
     }
 
     [Theory]

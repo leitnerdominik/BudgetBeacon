@@ -148,6 +148,7 @@ export interface CategoryExpenseSummary {
   totalExpense: number;
   percentage: number;
   transactionCount: number;
+  medianMonthlyExpense?: number;
 }
 
 export interface TopExpense {

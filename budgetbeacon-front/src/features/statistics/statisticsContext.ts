@@ -1,6 +1,8 @@
 import type { StatisticsOverview } from "../../types/api";
 import type { MonthReference, StatisticsTimeframeValue } from "./statisticsPeriod";
 
+export type CategorySpendingMetric = "median" | "total";
+
 export type StatisticsContext = {
   data: StatisticsOverview | undefined;
   timeframe: StatisticsTimeframeValue;
@@ -8,6 +10,8 @@ export type StatisticsContext = {
   periodLabel: string;
   isSmallScreen: boolean;
   isMobileView: boolean;
+  categorySpendingMetric: CategorySpendingMetric;
+  onCategorySpendingMetricChange: (metric: CategorySpendingMetric) => void;
   onCategorySelect: (category: string) => void;
   unclassifiedTransactionsPath: string;
 };

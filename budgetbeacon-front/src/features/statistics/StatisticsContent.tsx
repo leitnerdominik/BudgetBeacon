@@ -12,6 +12,7 @@ import {
   type StatisticsMetric,
 } from "./StatisticsMetricGrid";
 import { TopExpenses } from "./TopExpenses";
+import type { CategorySpendingMetric } from "./statisticsContext";
 import type { MonthReference, StatisticsTimeframeValue } from "./statisticsPeriod";
 import type { StatisticsView } from "./statisticsViews";
 
@@ -25,6 +26,8 @@ type StatisticsContentProps = {
   isMonthlyView: boolean;
   timeframe: StatisticsTimeframeValue;
   isSmallScreen: boolean;
+  categorySpendingMetric: CategorySpendingMetric;
+  onCategorySpendingMetricChange: (metric: CategorySpendingMetric) => void;
   onCategorySelect: (category: string) => void;
   unclassifiedTransactionsPath: string;
 };
@@ -39,6 +42,8 @@ export const StatisticsContent = ({
   isMonthlyView,
   timeframe,
   isSmallScreen,
+  categorySpendingMetric,
+  onCategorySpendingMetricChange,
   onCategorySelect,
   unclassifiedTransactionsPath,
 }: StatisticsContentProps) => {
@@ -48,6 +53,8 @@ export const StatisticsContent = ({
     <>
       <CategoryBreakdown
         categories={data?.categories ?? []}
+        metric={categorySpendingMetric}
+        onMetricChange={onCategorySpendingMetricChange}
         onCategorySelect={onCategorySelect}
         periodLabel={periodLabel}
       />

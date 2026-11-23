@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace BudgetBeacon.Core.Models;
 
 public sealed record StatisticsOverview(
@@ -77,7 +79,11 @@ public sealed record StatisticsCategorySummary(
     string Category,
     decimal TotalExpense,
     decimal Percentage,
-    int TransactionCount);
+    int TransactionCount)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? MedianMonthlyExpense { get; init; }
+}
 
 public sealed record StatisticsTopExpense(
     Guid Id,
